@@ -1,44 +1,37 @@
 import logging
 import os
 from typing import *
-
+from mgz.models.network_trainer import NetworkTrainer
+import mgz.utils.storage_utils as storage_utils
+from mgz.utils.paths import Networks as paths
 import gym.spaces as rs
 import torch
 import torch.nn as nn
+import mgz.settings as settings
 
 
 class BaseModel(nn.Module):
-    def __init__(self, obs_space: rs.Space,
-                 out_space: rs.Space, **kwargs):
+    def __init__(self, obs_space: rs.Tuple, out_space: rs.Tuple, **kwargs):
         super(BaseModel, self).__init__()
         if not (isinstance(obs_space, rs.Space) and
                 isinstance(out_space, rs.Space)):
             logging.warning(
                 'please pass in your shapes as a list of '
                 'tuples as if the network input is multi modal')
-        self.cfg = {} if not hasattr(self, 'cfg') else self.cfg
         self.extra_parameters = nn.ParameterList()
 
         self.obs_space: rs.Space = obs_space
         self.out_space: rs.Space = out_space
         print('obs space ', self.obs_space)
         print('out space ', self.out_space)
-        # self.in_shapes: rs.Space = model_utils.space_to_shapes(obs_space)
-        # self.out_shapes: rs.Space = model_utils.space_to_shapes(out_space)
-        #
-        # self.in_features = model_utils.sum_multi_modal_shapes(self.in_shapes)
-        # self.out_features = model_utils.sum_multi_modal_shapes(self.out_shapes)
 
-        self.CONFIG_FILENAME = 'config.yaml'
-        self.WEIGHTS_FILENAME = 'model.pth'
-
-        # self.trainer: Optional[NetworkTrainer] = None
+        self.trainer: Optional[NetworkTrainer] = None
         self.temp_predictor = nn.Identity()
 
-    # def create_optimizer(self) -> NetworkTrainer:
-    #     self.trainer = NetworkTrainer(self.cfg)
-    #     self.trainer.add_network(self)
-    #     return self.trainer
+    def create_optimizer(self) -> NetworkTrainer:
+        self.trainer = NetworkTrainer(self.cfg)
+        self.trainer.add_network(self)
+        return self.trainer
 
     def forward(self, *input):
         raise NotImplementedError
@@ -62,19 +55,19 @@ class BaseModel(nn.Module):
     # loading and saving
 
     def get_config_filename(self, model_folder):
-        return os.path.join(model_folder, self.CONFIG_FILENAME)
+        return os.path.join(model_folder, paths.CONFIG_FILENAME)
 
     def store_config(self, model_dir_path):
         storage_utils.save_config(self.cfg,
                                   self.get_config_filename(model_dir_path),
-                                  filename=self.CONFIG_FILENAME)
+                                  filename=paths.CONFIG_FILENAME)
 
     def load_config(self, model_dir_path):
         return storage_utils.load_config(
             self.get_config_filename(model_dir_path))
 
     def get_weights_filepath(self, model_dir_path):
-        return os.path.join(model_dir_path, self.WEIGHTS_FILENAME)
+        return os.path.join(model_dir_path, paths.WEIGHTS_FILENAME)
 
     def store_weights(self, model_folder):
         torch.save(self.state_dict(), self.get_weights_filepath(model_folder))

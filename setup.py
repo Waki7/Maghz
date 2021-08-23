@@ -16,7 +16,7 @@ setup(
     name='Maghz',
 
     # Packages to include into the distribution
-    packages=find_packages('mgz_models'),
+    packages=find_packages('mgz'),
 
     # Start with a small number and increase it with every change you make
     # https://semver.org
@@ -63,6 +63,7 @@ setup(
         'Pillow',
         'stable-baselines',
         'pyyaml',
+        # pip install torch==1.9.0+cu111 torchvision==0.10.0+cu111 torchaudio===0.9.0 -f https://download.pytorch.org/whl/torch_stable.html
     ],
 
     # https://pypi.org/classifiers/
