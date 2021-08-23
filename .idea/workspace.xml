@@ -2,32 +2,25 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="a3ed68a2-6efa-46de-9017-7165ba08a2f5" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/dataset_conversion/BSD.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/datasets/README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/datasets/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/datasets/base_dataset.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/datasets/img_dataset.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/datasets/sentence_dataset.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/datasets/spaceship.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/models/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/models/network_trainer.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/settings.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/utils/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/utils/data_structures.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/utils/paths.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/utils/storage_utils.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/notebooks/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/notebooks/coco.ipynb" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/notebooks/intersection.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tests/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tests/samples.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mgz/generators/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mgz/generators/base_generator.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mgz/generators/spaceship_generator.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mgz/generators/standard_generator.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mgz/typing/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mgz/typing/data_utils.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/spaces/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/spaces/action_node.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/spaces/hierarchical.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/spaces/image.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/spaces/regression_target.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/spaces/setup.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/spaces/utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/Maghz.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/Maghz.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mgz_models/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/dataset_conversion/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mgz_models/models/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mgz_models/models/base_model.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/models/base_model.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/protocols/base_protcool.py" beforeDir="false" afterPath="$PROJECT_DIR$/protocols/base_protcool.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/protocols/supervised.py" beforeDir="false" afterPath="$PROJECT_DIR$/protocols/supervised.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dataset_conversion/BSD.py" beforeDir="false" afterPath="$PROJECT_DIR$/dataset_conversion/BSD.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/datasets/img_dataset.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/datasets/img_dataset.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/datasets/spaceship.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/datasets/spaceship.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/setup.py" beforeDir="false" afterPath="$PROJECT_DIR$/setup.py" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -35,6 +28,118 @@
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileEditorManager">
+    <leaf>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/spaces/image.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="187">
+              <caret line="11" column="33" selection-start-line="11" selection-start-column="33" selection-end-line="11" selection-end-column="33" />
+              <folding>
+                <element signature="e#0#4#0" expanded="true" />
+              </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/spaces/regression_target.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="85">
+              <caret line="5" column="22" selection-start-line="5" selection-start-column="22" selection-end-line="5" selection-end-column="22" />
+              <folding>
+                <element signature="e#0#24#0" expanded="true" />
+              </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/mgz/datasets/img_dataset.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="34">
+              <caret line="2" column="19" lean-forward="true" selection-start-line="2" selection-end-line="3" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/mgz/datasets/base_dataset.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="115">
+              <caret line="9" column="36" selection-start-line="9" selection-start-column="36" selection-end-line="9" selection-end-column="36" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/spaces/__init__.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="34">
+              <caret line="2" column="30" lean-forward="true" selection-start-line="2" selection-start-column="30" selection-end-line="2" selection-end-column="30" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/mgz/generators/spaceship_generator.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="613">
+              <caret line="119" column="83" selection-start-line="119" selection-start-column="83" selection-end-line="119" selection-end-column="83" />
+              <folding>
+                <element signature="e#0#24#0" expanded="true" />
+              </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/mgz/generators/base_generator.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="17">
+              <caret line="1" lean-forward="true" selection-start-line="1" selection-end-line="14" selection-end-column="33" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/mgz/generators/standard_generator.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state>
+              <caret selection-end-line="5" selection-end-column="49" />
+              <folding>
+                <element signature="e#0#20#0" expanded="true" />
+              </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/mgz/typing/__init__.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="17">
+              <caret line="1" column="25" lean-forward="true" selection-start-line="1" selection-start-column="25" selection-end-line="1" selection-end-column="25" />
+              <folding>
+                <element signature="e#0#4#0" expanded="true" />
+              </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/mgz/datasets/spaceship.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="51">
+              <caret line="3" column="22" lean-forward="true" selection-start-line="3" selection-start-column="22" selection-end-line="3" selection-end-column="22" />
+              <folding>
+                <element signature="e#0#49#0" expanded="true" />
+              </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+    </leaf>
   </component>
   <component name="FileTemplateManagerImpl">
     <option name="RECENT_TEMPLATES">
@@ -46,23 +151,98 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="IdeDocumentHistory">
+    <option name="CHANGED_PATHS">
+      <list>
+        <option value="$PROJECT_DIR$/mgz/models/base_model.py" />
+        <option value="$PROJECT_DIR$/setup.py" />
+        <option value="$PROJECT_DIR$/dataset_conversion/BSD.py" />
+        <option value="$PROJECT_DIR$/rl_spaces/action_node.py" />
+        <option value="$PROJECT_DIR$/rl_spaces/image.py" />
+        <option value="$PROJECT_DIR$/rl_spaces/__init__.py" />
+        <option value="$PROJECT_DIR$/mgz/datasets/spaceship.py" />
+        <option value="$PROJECT_DIR$/mgz/generators/base_generator.py" />
+        <option value="$PROJECT_DIR$/mgz/typing/data_utils.py" />
+        <option value="$PROJECT_DIR$/mgz/typing/__init__.py" />
+        <option value="$PROJECT_DIR$/mgz/generators/standard_generator.py" />
+        <option value="$PROJECT_DIR$/spaces/image.py" />
+        <option value="$PROJECT_DIR$/spaces/regression_target.py" />
+        <option value="$PROJECT_DIR$/spaces/__init__.py" />
+        <option value="$PROJECT_DIR$/mgz/datasets/img_dataset.py" />
+        <option value="$PROJECT_DIR$/mgz/generators/spaceship_generator.py" />
+      </list>
+    </option>
+  </component>
+  <component name="ProjectFrameBounds" extendedState="6">
+    <option name="x" value="-14" />
+    <option name="y" value="-14" />
+    <option name="width" value="3868" />
+    <option name="height" value="2097" />
+  </component>
   <component name="ProjectId" id="1vS5WXoJuX3mP1opDnErJ1UsZNe" />
   <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
+  <component name="ProjectView">
+    <navigator proportions="" version="1">
+      <foldersAlwaysOnTop value="true" />
+    </navigator>
+    <panes>
+      <pane id="Scope" />
+      <pane id="ProjectPane">
+        <subPane>
+          <expand>
+            <path>
+              <item name="Maghz" type="b2602c69:ProjectViewProjectNode" />
+              <item name="Maghz" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="Maghz" type="b2602c69:ProjectViewProjectNode" />
+              <item name="Maghz" type="462c0819:PsiDirectoryNode" />
+              <item name="dataset_conversion" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="Maghz" type="b2602c69:ProjectViewProjectNode" />
+              <item name="Maghz" type="462c0819:PsiDirectoryNode" />
+              <item name="mgz" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="Maghz" type="b2602c69:ProjectViewProjectNode" />
+              <item name="Maghz" type="462c0819:PsiDirectoryNode" />
+              <item name="mgz" type="462c0819:PsiDirectoryNode" />
+              <item name="datasets" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="Maghz" type="b2602c69:ProjectViewProjectNode" />
+              <item name="Maghz" type="462c0819:PsiDirectoryNode" />
+              <item name="mgz" type="462c0819:PsiDirectoryNode" />
+              <item name="generators" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="Maghz" type="b2602c69:ProjectViewProjectNode" />
+              <item name="Maghz" type="462c0819:PsiDirectoryNode" />
+              <item name="spaces" type="462c0819:PsiDirectoryNode" />
+            </path>
+          </expand>
+          <select />
+        </subPane>
+      </pane>
+    </panes>
+  </component>
   <component name="PropertiesComponent">
     <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$/dataset_conversion" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
   </component>
   <component name="RecentsManager">
-    <key name="MoveFile.RECENT_KEYS">
-      <recent name="C:\Users\Ceyer\Documents\Projects\Maghz\mgz\models" />
-      <recent name="C:\Users\Ceyer\Documents\Projects\Maghz\mgz" />
-    </key>
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="F:\Documents\research\Maghz" />
       <recent name="C:\Users\Ceyer\Documents\Projects\Maghz\dataset_conversion" />
       <recent name="C:\Users\Ceyer\Documents\Projects\Maghz\mgz" />
       <recent name="C:\Users\Ceyer\Documents\Projects\Maghz\mgz\utils" />
       <recent name="C:\Users\Ceyer\Documents\Projects\Maghz\utils" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\Ceyer\Documents\Projects\Maghz\mgz\models" />
+      <recent name="C:\Users\Ceyer\Documents\Projects\Maghz\mgz" />
     </key>
   </component>
   <component name="RunDashboard">
@@ -162,17 +342,271 @@
     </task>
     <servers />
   </component>
+  <component name="ToolWindowManager">
+    <frame x="-6" y="-6" width="1719" height="932" extended-state="6" />
+    <editor active="true" />
+    <layout>
+      <window_info id="Favorites" side_tool="true" />
+      <window_info active="true" content_ui="combo" id="Project" order="0" visible="true" weight="0.16795252" />
+      <window_info id="Structure" order="1" side_tool="true" weight="0.25" />
+      <window_info anchor="bottom" id="Version Control" />
+      <window_info anchor="bottom" id="Python Console" />
+      <window_info anchor="bottom" id="Terminal" />
+      <window_info anchor="bottom" id="Event Log" side_tool="true" />
+      <window_info anchor="bottom" id="Message" order="0" />
+      <window_info anchor="bottom" id="Find" order="1" />
+      <window_info anchor="bottom" id="Run" order="2" />
+      <window_info anchor="bottom" id="Debug" order="3" weight="0.4" />
+      <window_info anchor="bottom" id="Cvs" order="4" weight="0.25" />
+      <window_info anchor="bottom" id="Inspection" order="5" weight="0.4" />
+      <window_info anchor="bottom" id="TODO" order="6" />
+      <window_info anchor="right" id="Commander" internal_type="SLIDING" order="0" type="SLIDING" weight="0.4" />
+      <window_info anchor="right" id="Ant Build" order="1" weight="0.25" />
+      <window_info anchor="right" content_ui="combo" id="Hierarchy" order="2" weight="0.25" />
+    </layout>
+  </component>
   <component name="Vcs.Log.Tabs.Properties">
     <option name="TAB_STATES">
       <map>
         <entry key="MAIN">
           <value>
             <State>
+              <option name="RECENTLY_FILTERED_USER_GROUPS">
+                <collection />
+              </option>
+              <option name="RECENTLY_FILTERED_BRANCH_GROUPS">
+                <collection />
+              </option>
               <option name="COLUMN_ORDER" />
             </State>
           </value>
         </entry>
       </map>
     </option>
+    <option name="RECENT_FILTERS">
+      <map>
+        <entry key="Branch">
+          <value>
+            <list />
+          </value>
+        </entry>
+        <entry key="User">
+          <value>
+            <list />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="editorHistoryManager">
+    <entry file="file://$PROJECT_DIR$/Maghz.egg-info/dependency_links.txt">
+      <provider selected="true" editor-type-id="text-editor" />
+    </entry>
+    <entry file="file://$PROJECT_DIR$/Maghz.egg-info/requires.txt">
+      <provider selected="true" editor-type-id="text-editor" />
+    </entry>
+    <entry file="file://$PROJECT_DIR$/Maghz.egg-info/SOURCES.txt">
+      <provider selected="true" editor-type-id="text-editor" />
+    </entry>
+    <entry file="file://$PROJECT_DIR$/Maghz.egg-info/top_level.txt">
+      <provider selected="true" editor-type-id="text-editor" />
+    </entry>
+    <entry file="file://$PROJECT_DIR$/Maghz.egg-info/PKG-INFO">
+      <provider selected="true" editor-type-id="text-editor" />
+    </entry>
+    <entry file="file://$USER_HOME$/Anaconda3/envs/dev/lib/site-packages/torchvision/io/__init__.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state>
+          <folding>
+            <element signature="e#0#272#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/mgz/models/base_model.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="153">
+          <caret line="9" column="31" lean-forward="true" selection-start-line="9" selection-start-column="31" selection-end-line="9" selection-end-column="31" />
+          <folding>
+            <element signature="e#0#14#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/dataset_conversion/BSD.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="204">
+          <caret line="27" column="23" lean-forward="true" selection-start-line="27" selection-start-column="23" selection-end-line="27" selection-end-column="23" />
+          <folding>
+            <element signature="e#0#20#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/setup.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="510">
+          <caret line="54" column="10" lean-forward="true" selection-start-line="54" selection-start-column="10" selection-end-line="54" selection-end-column="10" />
+          <folding>
+            <element signature="e#0#32#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/rl_spaces/action_graph.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="136">
+          <caret line="8" lean-forward="true" selection-start-line="8" selection-end-line="8" />
+          <folding>
+            <element signature="e#0#34#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$USER_HOME$/Anaconda3/envs/dev/lib/site-packages/gym/spaces/discrete.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="51">
+          <caret line="4" selection-start-line="4" selection-end-line="34" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$USER_HOME$/Anaconda3/envs/dev/lib/site-packages/gym/spaces/__init__.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="17">
+          <caret line="1" column="30" selection-start-line="1" selection-start-column="30" selection-end-line="1" selection-end-column="30" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/spaces/action_node.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="170">
+          <caret line="10" column="28" selection-start-line="10" selection-start-column="28" selection-end-line="10" selection-end-column="28" />
+          <folding>
+            <element signature="e#0#34#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/spaces/setup.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="340">
+          <caret line="20" column="28" lean-forward="true" selection-start-line="20" selection-start-column="28" selection-end-line="20" selection-end-column="28" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/spaces/hierarchical.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state>
+          <folding>
+            <element signature="e#0#35#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/mgz/typing/data_utils.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="17">
+          <caret line="1" column="13" lean-forward="true" selection-start-line="1" selection-start-column="13" selection-end-line="1" selection-end-column="13" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/mgz/typing/__init__.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="17">
+          <caret line="1" column="25" lean-forward="true" selection-start-line="1" selection-start-column="25" selection-end-line="1" selection-end-column="25" />
+          <folding>
+            <element signature="e#0#4#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/mgz/generators/base_generator.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="17">
+          <caret line="1" lean-forward="true" selection-start-line="1" selection-end-line="14" selection-end-column="33" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/mgz/generators/standard_generator.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state>
+          <caret selection-end-line="5" selection-end-column="49" />
+          <folding>
+            <element signature="e#0#20#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/mgz/datasets/spaceship.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="51">
+          <caret line="3" column="22" lean-forward="true" selection-start-line="3" selection-start-column="22" selection-end-line="3" selection-end-column="22" />
+          <folding>
+            <element signature="e#0#49#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$USER_HOME$/Anaconda3/envs/dev/lib/site-packages/gym/spaces/box.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="272">
+          <caret line="16" column="8" lean-forward="true" selection-start-line="16" selection-start-column="8" selection-end-line="16" selection-end-column="8" />
+          <folding>
+            <element signature="e#0#18#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/spaces/image.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="187">
+          <caret line="11" column="33" selection-start-line="11" selection-start-column="33" selection-end-line="11" selection-end-column="33" />
+          <folding>
+            <element signature="e#0#4#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/spaces/regression_target.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="85">
+          <caret line="5" column="22" selection-start-line="5" selection-start-column="22" selection-end-line="5" selection-end-column="22" />
+          <folding>
+            <element signature="e#0#24#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/mgz/datasets/base_dataset.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="115">
+          <caret line="9" column="36" selection-start-line="9" selection-start-column="36" selection-end-line="9" selection-end-column="36" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/spaces/__init__.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="34">
+          <caret line="2" column="30" lean-forward="true" selection-start-line="2" selection-start-column="30" selection-end-line="2" selection-end-column="30" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/mgz/datasets/img_dataset.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="34">
+          <caret line="2" column="19" lean-forward="true" selection-start-line="2" selection-end-line="3" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/mgz/generators/spaceship_generator.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="613">
+          <caret line="119" column="83" selection-start-line="119" selection-start-column="83" selection-end-line="119" selection-end-column="83" />
+          <folding>
+            <element signature="e#0#24#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
   </component>
 </project>

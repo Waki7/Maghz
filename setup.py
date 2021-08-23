@@ -16,7 +16,7 @@ setup(
     name='Maghz',
 
     # Packages to include into the distribution
-    packages=find_packages('mgz'),
+    packages=find_packages(),
 
     # Start with a small number and increase it with every change you make
     # https://semver.org
@@ -57,7 +57,8 @@ setup(
         'scipy',
         'numpy',
         'tensorflow',
-        'torch==1.5.1',
+        'torch==1.9.0',
+        'torchvision==0.10.0',
         'opencv-python',
         'array2gif',
         'Pillow',

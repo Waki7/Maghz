@@ -22,7 +22,7 @@ class DataSplits(Enum):
     Train = 'train'
     Val = 'val'
     Test = 'test'
-    Debug = 'debug'
+    Debug = 'debug'  # small subset of train data
 
 
 class DataFileLoader():
