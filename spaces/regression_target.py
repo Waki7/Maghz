@@ -1,7 +1,8 @@
 from mgz.typing import *
-from spaces import Box
-
+from gym.spaces import Box
+from spaces import Image
 import numpy as np
+
 
 class RegressionTarget(Box):
     def __init__(self, low: Union[np.ndarray, float],

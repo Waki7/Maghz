@@ -7,7 +7,7 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision import datasets
 import gym.spaces as rs
-from mgz.utils.data_structures import DataSample
+from mgz.typing import *
 
 import torchvision.io as torch_io
 import torchvision.transforms.functional as torch_f
@@ -23,7 +23,12 @@ class StandardDataset(Dataset):
         self.meta_data = None
 
     def __len__(self):
+        'Denotes the total number of samples'
         return len(self.img_index)
+
+    def __getitem__(self, index) -> DataSample:
+        'Generates one sample of data'
+        raise NotImplementedError
 
     def read_file(self, file: str) -> torch.Tensor:
         '''
@@ -41,7 +46,7 @@ class StandardDataset(Dataset):
                              size=new_shape)
         return img
 
-    def __getitem__(self, idx) -> DataSample:
+    def __getitem__(self, idx) -> Tuple[NDArray, NDArray]:
         img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0])
         image = read_image(img_path)
         label = self.img_labels.iloc[idx, 1]

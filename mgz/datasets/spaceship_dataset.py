@@ -1,8 +1,10 @@
-from mgz.typing import *
-from mgz.generators.base_generator import BaseGenerator
 import numpy as np
 from skimage.draw import polygon_perimeter, line
+
 import spaces as sp
+from mgz.datasets.img_dataset import ImageDataset
+from mgz.typing import *
+from mgz.utils.data_structures import DataSample, DataSamp
 
 
 def _rotation(pts: np.ndarray, theta: float) -> np.ndarray:
@@ -115,7 +117,20 @@ def make_data(
     return img, label
 
 
-class SpaceShip(BaseGenerator):
+class Spaceship(ImageDataset):
     def __init__(self, dir_path: DirPath):
-        sp.RegressionTarget(low=np.array([0., 0., 0., 0., 0.]), high=np.array([1., ]))
-        super(SpaceShip, self).__init__()
+        super(Spaceship, self).__init__()
+        sp.RegressionTarget(low=np.array([0., 0., 0., 0., 0.]),
+                            high=np.array([1., 1., 2 * np.pi, 1., 1.]))
+
+    def __len__(self):
+        'Denotes the total number of samples'
+        return len(self.img_index)
+
+    def __getitem__(self, index) -> \
+            Tuple[NDArray['C,H,W', np.float], NDArray['5,', np.float]]:
+        'Generates one sample of data'
+        img: np.ndarray
+        label: np.ndarray
+        img, label = make_data(has_spaceship=True)
+        return img, label

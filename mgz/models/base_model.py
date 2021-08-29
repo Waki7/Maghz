@@ -4,24 +4,24 @@ from typing import *
 from mgz.models.network_trainer import NetworkTrainer
 import mgz.utils.storage_utils as storage_utils
 from mgz.utils.paths import Networks as paths
-import gym.spaces as rs
+import spaces as sp
 import torch
 import torch.nn as nn
 import mgz.settings as settings
 
 
 class BaseModel(nn.Module):
-    def __init__(self, obs_space: rs.Tuple, out_space: rs.Tuple, **kwargs):
+    def __init__(self, obs_space: sp.Tuple, out_space: sp.Tuple, **kwargs):
         super(BaseModel, self).__init__()
-        if not (isinstance(obs_space, rs.Space) and
-                isinstance(out_space, rs.Space)):
+        if not (isinstance(obs_space, sp.Space) and
+                isinstance(out_space, sp.Space)):
             logging.warning(
                 'please pass in your shapes as a list of '
                 'tuples as if the network input is multi modal')
         self.extra_parameters = nn.ParameterList()
 
-        self.obs_space: rs.Space = obs_space
-        self.out_space: rs.Space = out_space
+        self.obs_space: sp.Space = obs_space
+        self.out_space: sp.Space = out_space
         print('obs space ', self.obs_space)
         print('out space ', self.out_space)
 
@@ -40,17 +40,6 @@ class BaseModel(nn.Module):
         self.temp_predictor = predictor
         self.trainer.add_layer_to_optimizer(predictor)
 
-    def get_in_shapes(self) -> List[int]:
-        return self.in_shapes
-
-    def get_out_shapes(self) -> List[int]:
-        return self.out_shapes
-
-    def get_out_features(self):
-        return self.out_features
-
-    def get_in_features(self):
-        return self.in_features
 
     # loading and saving
 

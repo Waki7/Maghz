@@ -1,5 +1,5 @@
 from mgz.typing import *
-from spaces import Box
+from gym.spaces import Box
 
 import numpy as np
 
