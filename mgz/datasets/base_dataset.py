@@ -15,9 +15,10 @@ import torchvision.transforms.functional as torch_f
 LabelType = []
 
 
-class StandardDataset(Dataset):
-    def __init__(self, annotations_file, img_dir, transform=None,
-                 target_transform=None):
+class BaseDataset(Dataset):
+    # def __init__(self, annotations_file, img_dir, transform=None,
+    #              target_transform=None):
+    def __init__(self):
         self.img_index: Dict[str, str] = {}
         self.img_label_index: Dict[str, LabelType] = {}
         self.meta_data = None
@@ -26,7 +27,7 @@ class StandardDataset(Dataset):
         'Denotes the total number of samples'
         return len(self.img_index)
 
-    def __getitem__(self, index) -> DataSample:
+    def __getitem__(self, index):
         'Generates one sample of data'
         raise NotImplementedError
 

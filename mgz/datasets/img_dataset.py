@@ -1,9 +1,9 @@
 import spaces as sp
-from mgz.datasets.base_dataset import StandardDataset
+from mgz.datasets.base_dataset import BaseDataset
 from mgz.typing import *
 
 
-class ImageDataset(StandardDataset):
+class ImageDataset(BaseDataset):
     def __init__(self):
         super(ImageDataset, self).__init__()
         self.img_index: Dict[str, str] = {}
