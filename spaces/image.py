@@ -7,7 +7,7 @@ import numpy as np
 class Image(Box):
     def __init__(self, low: float,
                  high: float,
-                 shape: List[int] = None,
+                 shape: List[int],
                  dtype=np.float32,
                  dim_names: List[str] = None):
         if dim_names is None:

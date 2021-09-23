@@ -11,21 +11,28 @@ import mgz.settings as settings
 
 
 class BaseModel(nn.Module):
-    def __init__(self, obs_space: sp.Tuple, out_space: sp.Tuple, **kwargs):
+    # def __init__(self, in_space: sp.Tuple, out_space: sp.Tuple, **kwargs):
+    #     super(BaseModel, self).__init__()
+    #     if not (isinstance(in_space, sp.Space) and
+    #             isinstance(out_space, sp.Space)):
+    #         logging.warning(
+    #             'please pass in your shapes as a list of '
+    #             'tuples as if the network input is multi modal')
+    #     self.extra_parameters = nn.ParameterList()
+    #
+    #     self.in_space: sp.Space = in_space
+    #     self.out_space: sp.Space = out_space
+    #     print('obs space ', self.in_space)
+    #     print('out space ', self.out_space)
+    #
+    #     self.trainer: Optional[NetworkTrainer] = None
+    #     self.temp_predictor = nn.Identity()
+    def __init__(self, **kwargs):
         super(BaseModel, self).__init__()
-        if not (isinstance(obs_space, sp.Space) and
-                isinstance(out_space, sp.Space)):
-            logging.warning(
-                'please pass in your shapes as a list of '
-                'tuples as if the network input is multi modal')
         self.extra_parameters = nn.ParameterList()
 
-        self.obs_space: sp.Space = obs_space
-        self.out_space: sp.Space = out_space
-        print('obs space ', self.obs_space)
-        print('out space ', self.out_space)
-
         self.trainer: Optional[NetworkTrainer] = None
+        self.temp_in_layer = nn.Identity()
         self.temp_predictor = nn.Identity()
 
     def create_optimizer(self) -> NetworkTrainer:
@@ -36,10 +43,13 @@ class BaseModel(nn.Module):
     def forward(self, *input):
         raise NotImplementedError
 
-    def add_temp_predictor(self, predictor):
+    def set_predictor(self, predictor):
         self.temp_predictor = predictor
-        self.trainer.add_layer_to_optimizer(predictor)
+        # self.trainer.add_layer_to_optimizer(predictor)
 
+    def set_in_layer(self, in_layer):
+        self.temp_in_layer = in_layer
+        # self.trainer.add_layer_to_optimizer(in_layer)
 
     # loading and saving
 

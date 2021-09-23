@@ -1,16 +1,22 @@
+from mgz.typing import *
 from mgz.models.base_model import BaseModel
 from mgz.datasets.base_dataset import BaseDataset
 import spaces as sp
+from mgz.models.base_model import BaseModel
+from mgz.models.mobile_net import MobileNetV2
+from mgz.model_vc.model_index import Indexer
+from mgz.model_vc.model_node import ModelNode
 
 
 class Manager():
-    def __init__(self):
-        pass
+    def __init__(self, index: Indexer):
+        self.index = index
+        self.current_pointer = None
 
     def query_by_model(self, model: BaseModel):
         pass
 
-    def query_by_dataset(self, dataset: BaseDataset):
+    def query_by_dataset(self, dataset: BaseDataset) -> ModelNode:
         pass
 
     def query_by_space(self, space: sp.Space):
