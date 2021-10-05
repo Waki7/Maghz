@@ -182,14 +182,13 @@ class MobileNetV2(BaseModel):
                 nn.init.normal_(m.weight, 0, 0.01)
                 nn.init.zeros_(m.bias)
 
-    @property
-    def out_space(self, in_space: sp.Image) -> sp.Space:
+    def out_space(self, in_space: sp.GenericBox = None) -> sp.Space:
         new_h = np.ceil(in_space.shape[-2] // 2)
-        new_w = np.ceil(in_space.shape[-2] // 2)
+        new_w = np.ceil(in_space.shape[-1] // 2)
         for i in range(0, self.n_blocks):
             new_h = np.ceil(new_h // self.ir_setting[i][-1])
             new_w = np.ceil(new_w // self.ir_setting[i][-1])
-        return new_h, new_w
+        return sp.GenericBox(-np.inf, np.inf, shape=(new_h, new_w))
 
     def forward(self, x):
         x = self.features(x)

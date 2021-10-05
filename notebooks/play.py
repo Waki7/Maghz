@@ -5,7 +5,7 @@ from mgz.model_vc.model_node import ModelNode
 from mgz.model_vc.model_index import Indexer
 from mgz.models.mobile_net import MobileNetV2
 import spaces as sp
-from mgz.models.default_layers import get_default_in_layer
+from mgz.models.default_layers import *
 
 if __name__ == '__main__':
     space_ds = Spaceship()
@@ -16,7 +16,11 @@ if __name__ == '__main__':
                                                         network_in_space)
 
     net.set_in_layer(in_layer)
-    net.out_space
+    encoded_out_space = net.out_space(in_layer_out_space)
+    predictor = get_default_pred_layer(encoded_out_space, space_ds.target_space)
+    net.set_predictor(predictor)
+
+    print(out_spaces)
     print(exit(2))
     net.set_predictor(space_ds.target_space)
 

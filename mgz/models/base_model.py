@@ -35,6 +35,7 @@ class BaseModel(nn.Module):
         self.temp_in_layer = nn.Identity()
         self.temp_predictor = nn.Identity()
 
+
     def create_optimizer(self) -> NetworkTrainer:
         self.trainer = NetworkTrainer(self.cfg)
         self.trainer.add_network(self)
