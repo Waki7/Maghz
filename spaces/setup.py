@@ -9,7 +9,7 @@ setup(
         packages=find_packages(),
         license='All Rights Reserved',
         author='Ceyer Wakilpoor',
-        author_email='cwakilpoor@mitre.com',
+        author_email='c.waki@gmail.com',
         description='Experimentation platform for farland rl algorithms.',
         long_description=long_description,
         long_description_content_type='text/markdown',

@@ -2,7 +2,7 @@ import numpy as np
 from skimage.draw import polygon_perimeter, line
 
 import spaces as sp
-from mgz.datasets.img_dataset import ImageDataset
+from mgz.datasets.image_datasets.img_datasets import ImageDataset
 from mgz.typing import *
 
 
@@ -105,7 +105,7 @@ def make_data(
     line_noise = np.zeros(shape=(image_size, image_size))
     for _ in range(no_lines):
         rr, cc = line(*np.random.randint(0, 200, size=4))
-        line_noise[rr, cc] = np.random.rand(rr.size)
+        line_noise[rr, cc] = np.random.rand(rr.n_cls)
 
     # combined noise
     noise = noise_level * np.random.rand(image_size, image_size)

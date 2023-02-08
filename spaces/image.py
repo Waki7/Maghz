@@ -1,13 +1,12 @@
-from mgz.typing import *
 from gym.spaces import Box
 
-import numpy as np
+from mgz.typing import *
 
 
 class Image(Box):
     def __init__(self, low: float,
                  high: float,
-                 shape: Tuple[int],
+                 shape: Tuple[C, H, W],
                  dtype=np.float32,
                  dim_names: List[str] = None):
         if dim_names is None:

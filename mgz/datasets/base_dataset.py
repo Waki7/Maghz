@@ -13,6 +13,7 @@ import torchvision.io as torch_io
 import torchvision.transforms.functional as torch_f
 
 LabelType = []
+T = TypeVar("T")
 
 
 class BaseDataset(Dataset):
@@ -27,33 +28,36 @@ class BaseDataset(Dataset):
         'Denotes the total number of samples'
         return len(self.img_index)
 
+    def gen(self) -> Generator[T, None, None]:
+        raise NotImplementedError
+
     def __getitem__(self, index):
         'Generates one sample of data'
         raise NotImplementedError
 
-    def read_file(self, file: str) -> torch.Tensor:
-        '''
-        >>> img = self.read_file('test_path')
-        >>> img.shape
-        (3, 100, 100)
-        :param file: full path to image
-        :return:
-        '''
-        img = torch_io.read_image(file)
-        new_shape = [img.shape[1] // self.downsample_ratio,
-                     img.shape[2] // self.downsample_ratio]
-        img = torch_f.resize(img=img,
-                             interpolation=torch_f.InterpolationMode.BILINEAR,
-                             size=new_shape)
-        return img
-
-    def __getitem__(self, idx) -> Tuple[NDArray, NDArray]:
-        img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0])
-        image = read_image(img_path)
-        label = self.img_labels.iloc[idx, 1]
-        if self.transform:
-            image = self.transform(image)
-        if self.target_transform:
-            label = self.target_transform(label)
-        ds = DataSample(features=(image,), labels=(label,))
-        return ds
+    # def read_file(self, file: str) -> torch.Tensor:
+    #     '''
+    #     >>> img = self.read_file('test_path')
+    #     >>> img.shape
+    #     (3, 100, 100)
+    #     :param file: full path to image
+    #     :return:
+    #     '''
+    #     img = torch_io.read_image(file)
+    #     new_shape = [img.shape[1] // self.downsample_ratio,
+    #                  img.shape[2] // self.downsample_ratio]
+    #     img = torch_f.resize(img=img,
+    #                          interpolation=torch_f.InterpolationMode.BILINEAR,
+    #                          size=new_shape)
+    #     return img
+    #
+    # def __getitem__(self, idx) -> Tuple[NDArray, NDArray]:
+    #     img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0])
+    #     image = read_image(img_path)
+    #     label = self.img_labels.iloc[idx, 1]
+    #     if self.transform:
+    #         image = self.transform(image)
+    #     if self.target_transform:
+    #         label = self.target_transform(label)
+    #     ds = DataSample(features=(image,), labels=(label,))
+    #     return ds

@@ -1,6 +1,11 @@
-from distutils.core import setup
-from setuptools import find_packages
 import os
+from distutils.core import setup
+
+from setuptools import find_packages
+
+# Usage
+# in development: pip install -e C:\Users\ceyer\OneDrive\Documents\Projects\Maghz
+# in prod: pip install C:\Users\ceyer\OneDrive\Documents\Projects\Maghz
 
 # User-friendly description from README.md
 current_directory = os.path.dirname(os.path.abspath(__file__))
@@ -52,19 +57,34 @@ setup(
     install_requires=[
         'tensorboard',
         'tensorboardX',
+        'torchtext',
+        'spacy',
         'gym',
         'torchvision',
         'scipy',
         'numpy',
         'tensorflow',
-        'torch==1.9.0',
-        'torchvision==0.10.0',
+        'torch',
+        'torchvision',
         'opencv-python',
         'array2gif',
         'Pillow',
         'stable-baselines',
         'pyyaml',
-        # pip install torch==1.9.0+cu111 torchvision==0.10.0+cu111 torchaudio===0.9.0 -f https://download.pytorch.org/whl/torch_stable.html
+        'skimage',
+        'pytest',
+        'spacy==3.4',
+        'torchtext==0.12',
+        'torchdata==0.3.0',
+# pip install torch==1.10.0+cu111 torchvision==0.11.0+cu111 torchaudio==0.10.0 -f https://download.pytorch.org/whl/torch_stable.html
+        #     pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
+        #     pip install -q torchdata==0.3.0 torchtext==0.12 spacy==3.2
+
+# # Uncomment for colab
+# #
+# !pip install -q torchdata==0.3.0 torchtext==0.12 spacy==3.2 altair GPUtil
+# !python -m spacy download de_core_news_sm
+# !python -m spacy download en_core_web_sm
     ],
 
     # https://pypi.org/classifiers/
