@@ -11,6 +11,51 @@ from mgz.typing import *
 # import GPUtil
 
 
+def _attention(query: TensorT,
+               key: TensorT,
+               value: TensorT,
+               mask: TensorT = None,
+               dropout=None) -> \
+        Tuple[torch.Tensor, torch.Tensor]:
+    '''
+    https://youtu.be/0PjHri8tc1c?t=727
+    :param query:
+    :param key:
+    :param value:
+    :param mask:
+    :param dropout:
+    :return: Tensor of shape [Batch,Time,EmbenLen]
+    '''
+    "Compute 'Scaled Dot Product Attention'"
+    d_k = query.size(-1)
+    scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
+    if mask is not None:
+        scores = scores.masked_fill(mask == 0, -1e9)
+    p_attn = scores.softmax(dim=-1)
+    if dropout is not None:
+        p_attn = dropout(p_attn)
+    return torch.matmul(p_attn, value), p_attn
+
+
+def attention(query: FloatTensorT['B,NHeads,SeqLen,EmbedLen/NHeads'],
+              key: FloatTensorT['B,NHeads,OutSeqLen,EmbedLen/NHeads'],
+              value: FloatTensorT['B,NHeads,OutSeqLen,EmbedLen/NHeads'],
+              mask: IntTensorT['B,1,OutSeqLen,OutSeqLen'] = None,
+              dropout=None) -> \
+        Tuple[torch.Tensor, torch.Tensor]:
+    return _attention(query, key, value, mask, dropout)
+
+
+def self_attention(query: FloatTensorT['B,NHeads,SeqLen,EmbedLen/NHeads'],
+                   key: FloatTensorT['B,NHeads,SeqLen,EmbedLen/NHeads'],
+                   value: FloatTensorT['B,NHeadsNHeads,SeqLen,EmbedLen/NHeads'],
+                   mask: IntTensorT['B,1,SeqLen,SeqLen'] = None,
+                   dropout=None) -> \
+        Tuple[torch.Tensor, torch.Tensor]:
+    mask.unsqueeze_(1)  # same masking for all nheads, so expand at dim 1
+    return _attention(query, key, value, mask, dropout)
+
+
 class MultiHeadedAttention(nn.Module):
     def __init__(self, n_heads, d_model, dropout=0.1):
         "Take in model size and number of heads."
@@ -26,7 +71,10 @@ class MultiHeadedAttention(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
 
     # update this for typing below
-    def forward(self, query, key, value, mask=None):
+    def forward(self, query: FloatTensorT['B,NHeads,SeqLen,EmbedLen/NHeads'],
+                key: FloatTensorT['B,NHeads,SeqLen,EmbedLen/NHeads'],
+                value: FloatTensorT['B,NHeads,SeqLen,EmbedLen/NHeads'],
+                mask: IntTensorT['B,OutSeqLen,OutSeqLen'] = None):
         "Implements Figure 2"
         if mask is not None:
             # Same mask applied to all h heads.
@@ -62,7 +110,7 @@ class Embeddings(nn.Module):
         self.lut = nn.Embedding(vocab_len, d_model)
         self.d_model = d_model
 
-    def forward(self, x):
+    def forward(self, x) -> FloatTensorT['B,SeqLen,EmbedLen']:
         x = self.lut(x) * math.sqrt(self.d_model)
         return x
 
@@ -77,7 +125,7 @@ class EncoderLayer(nn.Module):
         self.sublayer = clones(SublayerConnection(size, dropout), 2)
         self.size = size
 
-    def forward(self, x, mask):
+    def forward(self, x: FloatTensorT['B,SeqLen,EmbedLen'], mask):
         "Follow Figure 1 (left) for connections."
         x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
         return self.sublayer[1](x, self.feed_forward)
@@ -86,12 +134,13 @@ class EncoderLayer(nn.Module):
 class Encoder(nn.Module):
     "Core encoder is a stack of N layers"
 
-    def __init__(self, layer, N):
+    def __init__(self, layer: EncoderLayer, N: int):
         super(Encoder, self).__init__()
         self.layers = clones(layer, N)
         self.norm = LayerNorm(layer.size)
 
-    def forward(self, x, mask):
+    def forward(self, x: FloatTensorT['B,SeqLen,EmbedLen'],
+                mask: FloatTensorT['B,1,SeqLen']):
         "Pass the input (and mask) through each layer in turn."
         for layer in self.layers:
             x = layer(x, mask)
@@ -112,8 +161,17 @@ class DecoderLayer(nn.Module):
 
     def forward(self, x, memory, src_mask: IntTensorT['B,OutSeqLen'],
                 tgt_mask: IntTensorT['1,OutSeqLen']):
+        """
+        :param x:
+        :param memory:
+        :param src_mask: Typically all True unless you don't want to see all of the input
+        :param tgt_mask:
+        :return:
+        """
         "Follow Figure 1 (right) for connections."
         m = memory
+        if not (src_mask == 1).all():
+            raise ValueError("src_mask should be all True")
         x = self.sublayer[0](x,
                              lambda x: self.self_attn.forward(query=x, key=x,
                                                               value=x,
@@ -188,7 +246,7 @@ class EncoderDecoder(nn.Module):
 
     def __init__(self, encoder: Encoder, decoder: Decoder,
                  src_embed: Embeddings,
-                 tgt_embed: Embeddings, generator,
+                 tgt_embed: Embeddings, generator: PredictorHead,
                  positional_encoder: PositionalEncoding):
         super(EncoderDecoder, self).__init__()
         self.encoder = encoder
@@ -200,7 +258,9 @@ class EncoderDecoder(nn.Module):
 
     def forward(self, src, tgt, src_mask, tgt_mask):
         "Take in and process masked src and target sequences."
-        return self.decode(self.encode(src, src_mask), src_mask, tgt, tgt_mask)
+        x = self.encode(src, src_mask)
+        x = self.decode(x, src_mask, tgt, tgt_mask)
+        return x
 
     def encode(self, src: LongTensorT['B,SeqLen'], src_mask):
         x = self.src_embed(src)
@@ -282,50 +342,6 @@ def subsequent_mask(size: SeqLen):
         torch.uint8
     )
     return subsequent_mask == 0
-
-
-def _attention(query: TensorT,
-               key: TensorT,
-               value: TensorT,
-               mask: TensorT = None,
-               dropout=None) -> \
-        Tuple[torch.Tensor, torch.Tensor]:
-    '''
-    https://youtu.be/0PjHri8tc1c?t=727
-    :param query:
-    :param key:
-    :param value:
-    :param mask:
-    :param dropout:
-    :return: Tensor of shape [Batch,Time,EmbenLen]
-    '''
-    "Compute 'Scaled Dot Product Attention'"
-    d_k = query.size(-1)
-    scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
-    if mask is not None:
-        scores = scores.masked_fill(mask == 0, -1e9)
-    p_attn = scores.softmax(dim=-1)
-    if dropout is not None:
-        p_attn = dropout(p_attn)
-    return torch.matmul(p_attn, value), p_attn
-
-
-def attention(query: FloatTensorT['B,OptNDim,SeqLen,EmbedLen'],
-              key: FloatTensorT['B,OptNDim,OutSeqLen,EmbedLen'],
-              value: FloatTensorT['B,OptNDim,OutSeqLen,EmbedLen'],
-              mask: IntTensorT['1,1,OutSeqLen,OutSeqLen'] = None,
-              dropout=None) -> \
-        Tuple[torch.Tensor, torch.Tensor]:
-    return _attention(query, key, value, mask, dropout)
-
-
-def self_attention(query: FloatTensorT['B,OptNDim,SeqLen,EmbedLen'],
-                   key: FloatTensorT['B,OptNDim,SeqLen,EmbedLen'],
-                   value: FloatTensorT['B,OptNDim,SeqLen,EmbedLen'],
-                   mask: IntTensorT['1,1,SeqLen,SeqLen'] = None,
-                   dropout=None) -> \
-        Tuple[torch.Tensor, torch.Tensor]:
-    return _attention(query, key, value, mask, dropout)
 
 
 class PositionwiseFeedForward(nn.Module):

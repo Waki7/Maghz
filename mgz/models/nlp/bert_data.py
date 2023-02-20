@@ -2,41 +2,23 @@ from __future__ import annotations
 
 import time
 
+import GPUtil
 import altair as alt
 import pandas as pd
+import torch.distributed as dist
 import torch.nn as nn
+from spacy.language import Language
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim.lr_scheduler import LambdaLR
+from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
+from torchtext.vocab.vocab import Vocab
 
-from mgz.models.nlp.bert_basic import subsequent_mask, EncoderDecoder
+from mgz.datasets.sentence_datasets.german_to_english import GermanToEnglish
+from mgz.datasets.sentence_datasets.sentence_datasets import SentenceBatch
+from mgz.models.nlp.bert_basic import subsequent_mask, EncoderDecoder, \
+    PredictorHead, make_model
 from mgz.typing import *
-from mgz.datasets.sentence_datasets.sentence_datasets import SentenceDataset
-from mgz.settings import to_cuda
-
-
-# import altair as alt
-# import GPUtil
-
-
-class Batch:
-    """Object for holding a batch of data with mask during training."""
-
-    def __init__(self, src, tgt=None, pad=2):  # 2 = <blank>
-        self.src = src
-        self.src_mask = (src != pad).unsqueeze(-2)
-        if tgt is not None:
-            self.tgt = tgt[:, :-1]
-            self.tgt_y = tgt[:, 1:]
-            self.tgt_mask = self.make_std_mask(self.tgt, pad)
-            self.ntokens = (self.tgt_y != pad).data.sum()
-
-    @staticmethod
-    def make_std_mask(tgt, pad):
-        "Create a mask to hide padding and future words."
-        tgt_mask = (tgt != pad).unsqueeze(-2)
-        tgt_mask = tgt_mask & subsequent_mask(tgt.n_cls(-1)).type_as(
-            tgt_mask.data
-        )
-        return tgt_mask
 
 
 class TrainState:
@@ -49,7 +31,7 @@ class TrainState:
 
 
 def run_epoch(
-        data_iter: SentenceDataset,
+        data_generator: Generator[SentenceBatch, None, None],
         model: EncoderDecoder,
         loss_compute,
         optimizer,
@@ -64,9 +46,9 @@ def run_epoch(
     total_loss = 0
     tokens = 0
     n_accum = 0
-    data_generator = data_iter.gen()
+    i: int
+    batch: SentenceBatch
     for i, batch in enumerate(data_generator):
-        print(i)
         out = model.forward(
             batch.src, batch.tgt, batch.src_mask, batch.tgt_mask
         )
@@ -191,9 +173,11 @@ class LabelSmoothing(nn.Module):
         self.n_cls = n_cls
         self.true_dist = None
 
-    def forward(self, x, target):
+    def forward(self, x: FloatTensorT['B*SeqLen,OutNClasses'],
+                target: FloatTensorT['B*SeqLen']):
         assert x.size(1) == self.n_cls
-        true_dist = torch.ones_like(x) * (self.smoothing / (self.n_cls - 2))
+        true_dist: FloatTensorT['B*SeqLen,OutNClasses'] = torch.ones_like(x)
+        true_dist *= (self.smoothing / (self.n_cls - 2))
         true_dist.scatter_(1, target.data.unsqueeze(1), self.confidence)
         true_dist[:, self.padding_idx] = 0
         mask = torch.nonzero(target.data == self.padding_idx)
@@ -206,23 +190,27 @@ class LabelSmoothing(nn.Module):
 class SimpleLossCompute:
     "A simple loss compute and train function."
 
-    def __init__(self, generator, criterion):
+    def __init__(self, generator: PredictorHead, criterion):
         self.generator = generator
         self.criterion = criterion
 
-    def __call__(self, x, y, norm):
-        x = self.generator(x)
+    def __call__(self, x: FloatTensorT['B,SeqLen,EmbedLen'],
+                 y: FloatTensorT['B,SeqLen'],
+                 norm_by: int):
+        x: FloatTensorT['B,SeqLen,OutNClasses'] = self.generator(x)
         sloss = (
                 self.criterion(
                     x.contiguous().view(-1, x.size(-1)), y.contiguous().view(-1)
                 )
-                / norm
+                / norm_by
         )
-        return sloss.data * norm, sloss
+        return sloss.data * norm_by, sloss
 
 
-def greedy_decode(model, src, src_mask, max_len, start_symbol):
-    memory = model.encode(src, src_mask)
+def greedy_decode(model: EncoderDecoder, src: IntTensorT['B,SeqLen'],
+                  src_mask: IntTensorT['B,1,SeqLen'], max_len: int,
+                  start_symbol: int):
+    memory: FloatTensorT['B,SeqLen,EmbedLen'] = model.encode(src, src_mask)
     ys = torch.zeros(1, 1).fill_(start_symbol).type_as(src.data)
     for i in range(max_len - 1):
         out = model.decode(
@@ -252,3 +240,144 @@ class DummyOptimizer(torch.optim.Optimizer):
 class DummyScheduler:
     def step(self):
         None
+
+
+def create_dataloaders(
+        device: int,
+        batch_size: int = 12000,
+        max_padding: int = 128,
+        is_distributed: bool = True,
+) -> (DataLoader, DataLoader):
+    # def create_dataloaders(batch_size=12000):
+
+    train_iter_map = GermanToEnglish(max_padding).load_training_data()
+    train_sampler = (
+        DistributedSampler(train_iter_map) if is_distributed else None
+    )
+    train_dataloader = DataLoader(
+        train_iter_map,
+        batch_size=batch_size,
+        shuffle=(train_sampler is None),
+        sampler=train_sampler,
+        collate_fn=train_iter_map.get_collate_fn(device)
+    )
+
+    valid_iter_map = GermanToEnglish(max_padding).load_validation_data()
+    valid_sampler = (
+        DistributedSampler(valid_iter_map) if is_distributed else None
+    )
+    valid_dataloader = DataLoader(
+        valid_iter_map,
+        batch_size=batch_size,
+        shuffle=(valid_sampler is None),
+        sampler=valid_sampler,
+        collate_fn=valid_iter_map.get_collate_fn(device)
+    )
+    return train_dataloader, valid_dataloader
+
+
+def train_worker(
+        gpu,
+        ngpus_per_node,
+        vocab_src: Vocab,
+        vocab_tgt: Vocab,
+        spacy_de: Language,
+        spacy_en: Language,
+        config,
+        is_distributed=False,
+):
+    print(f"Train worker process using GPU: {gpu} for training", flush=True)
+    torch.cuda.set_device(gpu)
+
+    pad_idx = vocab_tgt["<blank>"]
+    d_model = 512
+    model = make_model(len(vocab_src), len(vocab_tgt), N=6)
+    model.cuda(gpu)
+    module = model
+    is_main_process = True
+    if is_distributed:
+        dist.init_process_group(
+            "nccl", init_method="env://", rank=gpu, world_size=ngpus_per_node
+        )
+        model = DDP(model, device_ids=[gpu])
+        module = model.module
+        is_main_process = gpu == 0
+
+    criterion = LabelSmoothing(
+        n_cls=len(vocab_tgt), padding_idx=pad_idx, smoothing=0.1
+    )
+    criterion.cuda(gpu)
+
+    train_dataloader, valid_dataloader = create_dataloaders(
+        gpu,
+        batch_size=config["batch_size"] // ngpus_per_node,
+        max_padding=config["max_padding"],
+        is_distributed=is_distributed,
+    )
+
+    optimizer = torch.optim.Adam(
+        model.parameters(), lr=config["base_lr"], betas=(0.9, 0.98), eps=1e-9
+    )
+    lr_scheduler = LambdaLR(
+        optimizer=optimizer,
+        lr_lambda=lambda step: rate(
+            step, d_model, factor=1, warmup=config["warmup"]
+        ),
+    )
+    train_state = TrainState()
+
+    for epoch in range(config["num_epochs"]):
+        if is_distributed:
+            train_dataloader.sampler.set_epoch(epoch)
+            valid_dataloader.sampler.set_epoch(epoch)
+
+        model.train()
+        print(f"[GPU{gpu}] Epoch {epoch} Training ====", flush=True)
+        _, train_state = run_epoch(
+            (SentenceBatch(b[0], b[1], pad_idx) for b in train_dataloader),
+            model,
+            SimpleLossCompute(module.generator, criterion),
+            optimizer,
+            lr_scheduler,
+            mode="train+log",
+            accum_iter=config["accum_iter"],
+            train_state=train_state,
+        )
+
+        GPUtil.showUtilization()
+        if is_main_process:
+            file_path = "%s%.2d.pt" % (config["file_prefix"], epoch)
+            torch.save(module.state_dict(), file_path)
+        torch.cuda.empty_cache()
+
+        print(f"[GPU{gpu}] Epoch {epoch} Validation ====", flush=True)
+        model.eval()
+        sloss = run_epoch(
+            (SentenceBatch(b[0], b[1], pad_idx) for b in valid_dataloader),
+            model,
+            SimpleLossCompute(module.generator, criterion),
+            DummyOptimizer(),
+            DummyScheduler(),
+            mode="eval",
+        )
+        print(sloss)
+        torch.cuda.empty_cache()
+
+    if is_main_process:
+        file_path = "%sfinal.pt" % config["file_prefix"]
+        torch.save(module.state_dict(), file_path)
+
+
+def main():
+    from mgz.models.nlp.tokenizers import load_tokenizers, load_vocab
+    # global variables used later in the script
+    spacy_de, spacy_en = load_tokenizers()
+    vocab_src, vocab_tgt = load_vocab(spacy_de, spacy_en)
+    # temp config
+    config = {'batch_size': 80, 'max_padding': 10, 'base_lr': .01, 'warmup': 2,
+              'num_epochs': 10, 'accum_iter': 1, 'file_prefix': 'model/'}
+    train_worker(0, 1, vocab_src, vocab_tgt, spacy_de, spacy_en, config)
+
+
+if __name__ == '__main__':
+    main()

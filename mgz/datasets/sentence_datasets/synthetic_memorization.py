@@ -33,7 +33,7 @@ class SyntheticMemorization(SentenceDataset):
         for i in range(self.batch_size):
             data = torch.randint(1, self.input_space.vocab_size,
                                  size=(self.batch_size, self.max_length))
-            data[:, 0] = 1
+            data[:, 0] = 1  # starting token
             src = data.requires_grad_(False).clone().detach()
             tgt = data.requires_grad_(False).clone().detach()
             batch = SentenceBatch(src, tgt, 0)

@@ -4,12 +4,17 @@ import os
 from os.path import exists
 
 import spacy
-import torch
 import torchtext.datasets as datasets
+from spacy.language import Language
+from spacy.tokens.doc import Doc
 from torchtext.vocab import build_vocab_from_iterator
+from torchtext.vocab.vocab import Vocab
+from torch.utils.data.datapipes.iter.grouping import ShardingFilterIterDataPipe
+
+from mgz.typing import *
 
 
-def load_tokenizers():
+def load_tokenizers() -> (Language, Language):
     try:
         spacy_de = spacy.load("de_core_news_sm")
     except IOError:
@@ -25,26 +30,21 @@ def load_tokenizers():
     return spacy_de, spacy_en
 
 
-def tokenize(text, tokenizer):
+def tokenize(text: str, tokenizer: Language) -> List[str]:
     return [tok.text for tok in tokenizer.tokenizer(text)]
 
 
-def yield_tokens(data_iter, tokenizer, index):
+def yield_tokens(data_iter, tokenizer: Language, language_index: int):
     for from_to_tuple in data_iter:
-        yield tokenizer(from_to_tuple[index])
+        yield tokenize(from_to_tuple[language_index], tokenizer)
 
 
-def build_vocabulary(spacy_de, spacy_en):
-    def tokenize_de(text):
-        return tokenize(text, spacy_de)
-
-    def tokenize_en(text):
-        return tokenize(text, spacy_en)
-
+def build_vocabulary(spacy_de: Language, spacy_en: Language) -> (Vocab, Vocab):
     print("Building German Vocabulary ...")
+    train: ShardingFilterIterDataPipe
     train, val, test = datasets.Multi30k(language_pair=("de", "en"))
     vocab_src = build_vocab_from_iterator(
-        yield_tokens(train + val + test, tokenize_de, index=0),
+        yield_tokens(train + val + test, spacy_de, language_index=0),
         min_freq=2,
         specials=["<s>", "</s>", "<blank>", "<unk>"],
     )
@@ -52,7 +52,7 @@ def build_vocabulary(spacy_de, spacy_en):
     print("Building English Vocabulary ...")
     train, val, test = datasets.Multi30k(language_pair=("de", "en"))
     vocab_tgt = build_vocab_from_iterator(
-        yield_tokens(train + val + test, tokenize_en, index=1),
+        yield_tokens(train + val + test, spacy_en, language_index=1),
         min_freq=2,
         specials=["<s>", "</s>", "<blank>", "<unk>"],
     )
@@ -77,9 +77,18 @@ def load_vocab(spacy_de, spacy_en):
 
 def main():
     # global variables used later in the script
-    spacy_de, spacy_en = load_tokenizers()
-    vocab_src, vocab_tgt = load_vocab(spacy_de, spacy_en)
 
+    spacy_de, spacy_en = load_tokenizers()
+
+    sentences: List[str] = ["hello! I am a sentence.", "I am another sentence."]
+    out: List[Doc] = [spacy_en.tokenizer(sent) for sent in sentences]
+    tokenized_sentences: List[List[str]] = [[tok.text for tok in doc] for doc in
+                                            out]
+
+    vocab_src, vocab_tgt = load_vocab(spacy_de, spacy_en)
+    int_tokens: List[List[int]] = [vocab_src.forward(tokenized_sentence) for
+                                   tokenized_sentence in
+                                   tokenized_sentences]
 
 if __name__ == '__main__':
     main()

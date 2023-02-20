@@ -3,24 +3,29 @@ from typing import *
 import numpy as np
 import torch
 
+#######################
+# Named Shape Types
+#######################
 B = TypeVar("Batch")
-
-NHeads = NewType("NHeads", int)
-OptNDim = NewType("OptionalNDimension", int)
-
+NHeads = NewType("NHeads", int)  # something like n attention heads
 SeqLen = NewType("SeqLen", int)  # or input sequence length
 OutSeqLen = NewType("OutSeqLen", int)  # or output sequence length
+NClasses = NewType("NClasses", int)  # or output sequence length
+OutNClasses = NewType("OutNClasses", int)  # or output sequence length
 
 C = NewType("Channel", int)
 H = NewType("Height", int)
 W = NewType("Width", int)
-
 EmbedLen = NewType("EmbeddingSize", int)
-
 Shape = TypeVar("Shape")
 DType = TypeVar("DType")
 
+#######################
+# Named Primitive Types
+#######################
 ProbT = NewType("DType", float)
+EnglishT = NewType("EnglishSentence", str)
+GermanT = NewType("GermanSentence", str)
 
 
 class NDArray(np.ndarray, Generic[Shape, DType]):
@@ -40,7 +45,12 @@ class ShapedTensorT(torch.Tensor, Generic[Shape, DType]):
         xy_points: Array['N,2', float]
         nd_mask: Array['...', bool]
     """
-    pass
+
+    def __new__(cls, data, stats, requires_grad=False):
+        data = torch.as_tensor(data, dtype=torch.float)
+        tensor = torch.Tensor._make_subclass(cls, data, requires_grad)
+        tensor.stats = stats
+        return tensor
 
 
 class TensorT(torch.Tensor, Generic[Shape]):
@@ -50,7 +60,12 @@ class TensorT(torch.Tensor, Generic[Shape]):
         xy_points: Array['N,2', float]
         nd_mask: Array['...', bool]
     """
-    pass
+
+    def __new__(cls, data, stats, requires_grad=False):
+        data = torch.as_tensor(data, dtype=torch.float)
+        tensor = torch.Tensor._make_subclass(cls, data, requires_grad)
+        tensor.stats = stats
+        return tensor
 
 
 class FloatTensorT(torch.Tensor, Generic[Shape]):

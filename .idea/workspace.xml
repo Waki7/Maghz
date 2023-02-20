@@ -5,39 +5,17 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="a3ed68a2-6efa-46de-9017-7165ba08a2f5" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/codeStyles/codeStyleConfig.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/datasets/sentence_datasets/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/datasets/sentence_datasets/sentence_datasets.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/datasets/sentence_datasets/synthetic_memorization.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/models/nlp/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/models/nlp/bert.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/models/nlp/bert_basic.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/models/nlp/bert_data.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/models/nlp/bert_demo.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/models/nlp/bert_play.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/models/nlp/test_bert_basic.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/models/nlp/tokenizers.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/scripting/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/scripting/bert.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/mgz/scripting/generator.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/spaces/sentence.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/Maghz.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/Maghz.iml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mgz/datasets/sentence_datasets/german_to_english.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mgz/datasets/base_dataset.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/datasets/base_dataset.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mgz/datasets/img_dataset.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/datasets/image_datasets/img_datasets.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mgz/datasets/sentence_dataset.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/datasets/image_datasets/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mgz/datasets/spaceship_dataset.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/datasets/image_datasets/spaceship_dataset.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mgz/datasets/tests/dataset_tests.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/datasets/tests/dataset_tests.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mgz/typing/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/typing/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/datasets/sentence_datasets/sentence_datasets.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/datasets/sentence_datasets/sentence_datasets.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/datasets/sentence_datasets/synthetic_memorization.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/datasets/sentence_datasets/synthetic_memorization.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/models/nlp/bert_basic.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/models/nlp/bert_basic.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/models/nlp/bert_data.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/models/nlp/bert_data.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/models/nlp/bert_demo.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/models/nlp/bert_demo.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/models/nlp/test_bert_basic.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/models/nlp/test_bert_basic.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/models/nlp/tokenizers.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/models/nlp/tokenizers.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mgz/typing/shape_typing.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/typing/shape_typing.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/play.py" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/play.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/setup.py" beforeDir="false" afterPath="$PROJECT_DIR$/setup.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/spaces/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/spaces/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/spaces/image.py" beforeDir="false" afterPath="$PROJECT_DIR$/spaces/image.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/spaces/regression_target.py" beforeDir="false" afterPath="$PROJECT_DIR$/spaces/regression_target.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/spaces/setup.py" beforeDir="false" afterPath="$PROJECT_DIR$/spaces/setup.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -54,6 +32,11 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file://$USER_HOME$/miniconda3/envs/py39/Lib/site-packages/torch/utils/data/dataloader.py" root0="SKIP_INSPECTION" />
+    <setting file="file://$USER_HOME$/miniconda3/envs/py39/Lib/site-packages/torch/utils/data/datapipes/iter/grouping.py" root0="SKIP_INSPECTION" />
+    <setting file="file://$USER_HOME$/miniconda3/envs/py39/Lib/site-packages/torchtext/data/functional.py" root0="SKIP_INSPECTION" />
+  </component>
   <component name="MarkdownSettingsMigration">
     <option name="stateVersion" value="1" />
   </component>
@@ -66,15 +49,15 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/ceyer/OneDrive/Documents/Projects/transformers-main&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;Errors&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "RunOnceActivity.OpenProjectViewOnStart": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
+    "last_opened_file_path": "C:/Users/ceyer/OneDrive/Documents/Projects/transformers-main",
+    "settings.editor.selected.configurable": "preferences.lookFeel"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="C:\Users\Ceyer\Documents\Projects\Maghz\spaces" />
@@ -91,7 +74,28 @@
       <recent name="C:\Users\Ceyer\Documents\Projects\Maghz\mgz\models" />
     </key>
   </component>
-  <component name="RunManager" selected="Python.tokenizers">
+  <component name="RunManager" selected="Python.bert_data">
+    <configuration name="bert_data" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="Maghz" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/mgz/models/nlp" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/mgz/models/nlp/bert_data.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
     <configuration name="bert_demo" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="Maghz" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -150,7 +154,7 @@
       <option name="_new_targetType" value="&quot;PYTHON&quot;" />
       <method v="2" />
     </configuration>
-    <configuration name="pytest for test_bert_basic.TestBert.test_attention" type="tests" factoryName="py.test" temporary="true" nameIsGenerated="true">
+    <configuration name="pytest for test_bert_basic.TestBert.test_mask" type="tests" factoryName="py.test" temporary="true" nameIsGenerated="true">
       <module name="Maghz" />
       <option name="INTERPRETER_OPTIONS" value="" />
       <option name="PARENT_ENVS" value="true" />
@@ -162,33 +166,17 @@
       <option name="_new_keywords" value="&quot;&quot;" />
       <option name="_new_parameters" value="&quot;&quot;" />
       <option name="_new_additionalArguments" value="&quot;&quot;" />
-      <option name="_new_target" value="&quot;test_bert_basic.TestBert.test_attention&quot;" />
+      <option name="_new_target" value="&quot;test_bert_basic.TestBert.test_mask&quot;" />
       <option name="_new_targetType" value="&quot;PYTHON&quot;" />
-      <method v="2" />
-    </configuration>
-    <configuration name="pytest in test_bert_basic.py" type="tests" factoryName="py.test" temporary="true" nameIsGenerated="true">
-      <module name="Maghz" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/mgz/models/nlp" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <option name="_new_keywords" value="&quot;&quot;" />
-      <option name="_new_parameters" value="&quot;&quot;" />
-      <option name="_new_additionalArguments" value="&quot;&quot;" />
-      <option name="_new_target" value="&quot;$PROJECT_DIR$/mgz/models/nlp/test_bert_basic.py&quot;" />
-      <option name="_new_targetType" value="&quot;PATH&quot;" />
       <method v="2" />
     </configuration>
     <recent_temporary>
       <list>
+        <item itemvalue="Python.bert_data" />
         <item itemvalue="Python.tokenizers" />
         <item itemvalue="Python.bert_demo" />
+        <item itemvalue="Python tests.pytest for test_bert_basic.TestBert.test_mask" />
         <item itemvalue="Python tests.pytest for test_bert_basic.TestBert" />
-        <item itemvalue="Python tests.pytest for test_bert_basic.TestBert.test_attention" />
-        <item itemvalue="Python tests.pytest in test_bert_basic.py" />
       </list>
     </recent_temporary>
   </component>

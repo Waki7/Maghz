@@ -4,7 +4,7 @@ import pandas as pd
 from torchvision.io import read_image
 import torch
 from torch import Tensor
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, ConcatDataset
 from torchvision import datasets
 import gym.spaces as rs
 from mgz.typing import *
@@ -24,6 +24,8 @@ class BaseDataset(Dataset):
         self.img_label_index: Dict[str, LabelType] = {}
         self.meta_data = None
 
+    def __add__(self, other: 'Dataset[T_co]') -> 'ConcatDataset[T_co]':
+        raise NotImplementedError
     def __len__(self):
         'Denotes the total number of samples'
         return len(self.img_index)
@@ -34,6 +36,18 @@ class BaseDataset(Dataset):
     def __getitem__(self, index):
         'Generates one sample of data'
         raise NotImplementedError
+
+    # class _MapStyleDataset(torch.utils.data.Dataset):
+
+    # def __init__(self, iter_data) -> None:
+    #     # TODO Avoid list issue #1296
+    #     self._data = list(iter_data)
+    #
+    # def __len__(self):
+    #     return len(self._data)
+    #
+    # def __getitem__(self, idx):
+    #     return self._data[idx]
 
     # def read_file(self, file: str) -> torch.Tensor:
     #     '''

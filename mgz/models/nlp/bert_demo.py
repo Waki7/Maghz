@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from mgz.datasets.sentence_datasets.synthetic_memorization import \
     SyntheticMemorization
-from mgz.models.nlp.bert_basic import PositionalEncoding, make_model
+from mgz.models.nlp.bert_basic import PositionalEncoding
 from mgz.models.nlp.bert_data import *
 from mgz.settings import to_cuda
 from mgz.typing import *
@@ -86,9 +86,9 @@ def example_label_smoothing():
 
 
 def example_simple_model():
-    V = 11
-    criterion = LabelSmoothing(n_cls=V, padding_idx=0, smoothing=0.0)
-    model = to_cuda(make_model(V, V, N=2))
+    n_cls = 11
+    criterion = LabelSmoothing(n_cls=n_cls, padding_idx=0, smoothing=0.0)
+    model = to_cuda(make_model(n_cls, n_cls, N=2))
 
     optimizer = torch.optim.Adam(
         model.parameters(), lr=0.5, betas=(0.9, 0.98), eps=1e-9
@@ -103,13 +103,14 @@ def example_simple_model():
     batch_size = 80
     n_train_samples = 80
     n_eval_samples = 80
-    iters = 20
+    iters = 1
     for epoch in range(iters):
         model.train()
         run_epoch(
-            SyntheticMemorization(vocab_size=V, out_vocab_size=V, max_length=10,
+            SyntheticMemorization(vocab_size=n_cls, out_vocab_size=n_cls,
+                                  max_length=10,
                                   batch_size=batch_size,
-                                  n_samples=n_train_samples).cuda(),
+                                  n_samples=n_train_samples).cuda().gen(),
             model,
             SimpleLossCompute(model.generator, criterion),
             optimizer,
@@ -119,60 +120,10 @@ def example_simple_model():
 
         model.eval()
         run_epoch(
-            SyntheticMemorization(vocab_size=V, out_vocab_size=V, max_length=10,
+            SyntheticMemorization(vocab_size=n_cls, out_vocab_size=n_cls,
+                                  max_length=10,
                                   batch_size=batch_size,
-                                  n_samples=n_eval_samples).cuda(),
-            model,
-            SimpleLossCompute(model.generator, criterion),
-            DummyOptimizer(),
-            DummyScheduler(),
-            mode="eval",
-        )
-
-    model.eval()
-    src = to_cuda(torch.LongTensor([[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]]))
-    max_len = src.shape[1]
-    src_mask = to_cuda(torch.ones(1, 1, max_len))
-    print(greedy_decode(model, src, src_mask, max_len=max_len, start_symbol=0))
-
-
-def example_simple_model():
-    V = 11
-    criterion = LabelSmoothing(n_cls=V, padding_idx=0, smoothing=0.0)
-    model = to_cuda(make_model(V, V, N=2))
-
-    optimizer = torch.optim.Adam(
-        model.parameters(), lr=0.5, betas=(0.9, 0.98), eps=1e-9
-    )
-    lr_scheduler = LambdaLR(
-        optimizer=optimizer,
-        lr_lambda=lambda step: rate(
-            step, model_size=model.src_embed.d_model, factor=1.0, warmup=400
-        ),
-    )
-
-    batch_size = 80
-    n_train_samples = 80
-    n_eval_samples = 80
-    iters = 20
-    for epoch in range(iters):
-        model.train()
-        run_epoch(
-            SyntheticMemorization(vocab_size=V, out_vocab_size=V, max_length=10,
-                                  batch_size=batch_size,
-                                  n_samples=n_train_samples).cuda(),
-            model,
-            SimpleLossCompute(model.generator, criterion),
-            optimizer,
-            lr_scheduler,
-            mode="train",
-        )
-
-        model.eval()
-        run_epoch(
-            SyntheticMemorization(vocab_size=V, out_vocab_size=V, max_length=10,
-                                  batch_size=batch_size,
-                                  n_samples=n_eval_samples).cuda(),
+                                  n_samples=n_eval_samples).cuda().gen(),
             model,
             SimpleLossCompute(model.generator, criterion),
             DummyOptimizer(),
@@ -193,7 +144,7 @@ def example_simple_model():
 def main():
     # show_example(example_positional)
     # show_example(example_label_smoothing)
-    # example_simple_model()
+    example_simple_model()
 
 
 if __name__ == '__main__':

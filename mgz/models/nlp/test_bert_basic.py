@@ -82,13 +82,26 @@ class TestBert(unittest.TestCase):
     #     assert False
 
     def test_attention(self):
-        query = TensorT([[[1, 1, 1], [0, 0, 0]]])
-        key = TensorT([[[1, 1, 1], [0, 0, 0]]])
-        value = TensorT([[[2, 2, 2], [1, 1, 1]]])
+        query = torch.Tensor([[[1, 1, 1], [0, 0, 0]]])
+        key = torch.Tensor([[[1, 1, 1], [0, 0, 0]]])
+        value = torch.Tensor([[[2, 2, 2], [1, 1, 1]]])
         ans, p = attention(query, key, value)
         self.assertEqual(ans.shape, (1, 2, 3))
         torch.testing.assert_close(ans.to(torch.float16), torch.Tensor(
             [[[1.8497, 1.8497, 1.8497], [1.5, 1.5, 1.5]]]).to(torch.float16))
+
+    def test_mask(self):
+        x = torch.ones(2, 3, 2)
+        mask = torch.Tensor([
+            [[1, 1]], [[0, 1]]
+        ])
+        self.assertEqual(mask.shape, (2, 1, 2))
+        prediction = x.masked_fill(mask == 0, 0)
+        target = torch.tensor([
+            [[1., 1.], [1., 1.], [1., 1.]],
+            [[0., 1.], [0., 1.], [0., 1.]]
+        ])
+        torch.testing.assert_close(prediction, target)
 
     def test_inference(self):
         for _ in range(1):
@@ -97,11 +110,11 @@ class TestBert(unittest.TestCase):
             test_model.eval()
             # one_sentence = LongTensorT([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]],
             #                            dtype=torch.long)
-            one_sentence = LongTensorT([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]])
+            one_sentence = torch.LongTensor([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]])
             n_batch, seq_len = one_sentence.shape  # 1, 10
             assert one_sentence.shape == (n_batch, seq_len)
 
-            src_mask = IntTensorT(torch.ones(1, 1, 10))
+            src_mask = torch.ones(1, 1, 10)
 
             memory = test_model.encode(one_sentence, src_mask)
             ys = torch.zeros(1, 1).type_as(one_sentence)
