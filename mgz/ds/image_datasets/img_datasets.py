@@ -1,5 +1,5 @@
 import spaces as sp
-from mgz.datasets.base_dataset import BaseDataset
+from mgz.ds.base_dataset import BaseDataset
 from mgz.typing import *
 
 

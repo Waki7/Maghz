@@ -5,17 +5,32 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="a3ed68a2-6efa-46de-9017-7165ba08a2f5" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/mgz/datasets/sentence_datasets/german_to_english.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mgz/ds/sentence_datasets/multi_lex_sum.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/mgz/run_ops/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mgz/datasets/base_dataset.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/datasets/base_dataset.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mgz/datasets/sentence_datasets/sentence_datasets.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/datasets/sentence_datasets/sentence_datasets.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mgz/datasets/sentence_datasets/synthetic_memorization.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/datasets/sentence_datasets/synthetic_memorization.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/datasets/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/ds/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/datasets/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/ds/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/datasets/base_dataset.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/ds/base_dataset.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/datasets/image_datasets/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/ds/image_datasets/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/datasets/image_datasets/img_datasets.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/ds/image_datasets/img_datasets.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/datasets/image_datasets/spaceship_dataset.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/ds/image_datasets/spaceship_dataset.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/datasets/sentence_datasets/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/ds/sentence_datasets/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/datasets/sentence_datasets/german_to_english.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/ds/sentence_datasets/german_to_english.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/datasets/sentence_datasets/sentence_datasets.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/ds/sentence_datasets/sentence_datasets.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/datasets/sentence_datasets/synthetic_memorization.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/ds/sentence_datasets/synthetic_memorization.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/datasets/tests/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/ds/tests/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/datasets/tests/dataset_tests.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/ds/tests/dataset_tests.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/model_vc/manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/model_vc/manager.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/model_vc/model_index.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/model_vc/model_index.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mgz/models/nlp/bert_basic.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/models/nlp/bert_basic.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mgz/models/nlp/bert_data.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/models/nlp/bert_data.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/models/nlp/bert_data.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/run_ops/bert_ops.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mgz/models/nlp/bert_demo.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/models/nlp/bert_demo.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mgz/models/nlp/test_bert_basic.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/models/nlp/test_bert_basic.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mgz/models/nlp/tokenizers.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/models/nlp/tokenizers.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/models/nlp/vocab.pt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/typing/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/typing/__init__.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mgz/typing/shape_typing.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/typing/shape_typing.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/play.py" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/play.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -54,48 +69,33 @@
     "RunOnceActivity.OpenProjectViewOnStart": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "SHARE_PROJECT_CONFIGURATION_FILES": "true",
-    "last_opened_file_path": "C:/Users/ceyer/OneDrive/Documents/Projects/transformers-main",
-    "settings.editor.selected.configurable": "preferences.lookFeel"
+    "WebServerToolWindowFactoryState": "false",
+    "last_opened_file_path": "C:/Users/ceyer/OneDrive/Documents/Projects/Maghz/mgz/datasets/sentence_datasets",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable",
+    "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\ceyer\OneDrive\Documents\Projects\Maghz\mgz\datasets\sentence_datasets" />
       <recent name="C:\Users\Ceyer\Documents\Projects\Maghz\spaces" />
       <recent name="C:\Users\Ceyer\Documents\Projects\Maghz\mgz\models" />
       <recent name="C:\Users\Ceyer\Documents\Projects\Maghz" />
       <recent name="F:\Documents\research\Maghz" />
-      <recent name="C:\Users\Ceyer\Documents\Projects\Maghz\dataset_conversion" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\ceyer\OneDrive\Documents\Projects\Maghz\mgz\run_ops" />
       <recent name="C:\Users\ceyer\OneDrive\Documents\Projects\Maghz\mgz\datasets\sentence_datasets" />
       <recent name="C:\Users\ceyer\OneDrive\Documents\Projects\Maghz\mgz\datasets\image_datasets" />
       <recent name="C:\Users\ceyer\OneDrive\Documents\Projects\Maghz\mgz\models\nlp" />
       <recent name="C:\Users\ceyer\OneDrive\Documents\Projects\Maghz\mgz\models\nlp\bert" />
-      <recent name="C:\Users\Ceyer\Documents\Projects\Maghz\mgz\models" />
     </key>
   </component>
-  <component name="RunManager" selected="Python.bert_data">
-    <configuration name="bert_data" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
-      <module name="Maghz" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <envs>
-        <env name="PYTHONUNBUFFERED" value="1" />
-      </envs>
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/mgz/models/nlp" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/mgz/models/nlp/bert_data.py" />
-      <option name="PARAMETERS" value="" />
-      <option name="SHOW_COMMAND_LINE" value="false" />
-      <option name="EMULATE_TERMINAL" value="false" />
-      <option name="MODULE_MODE" value="false" />
-      <option name="REDIRECT_INPUT" value="false" />
-      <option name="INPUT_FILE" value="" />
-      <method v="2" />
-    </configuration>
+  <component name="RunManager" selected="Python.bert_ops">
     <configuration name="bert_demo" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="Maghz" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -108,7 +108,74 @@
       <option name="IS_MODULE_SDK" value="true" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
       <option name="SCRIPT_NAME" value="$PROJECT_DIR$/mgz/models/nlp/bert_demo.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="bert_ops" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="Maghz" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/mgz/run_ops" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/mgz/run_ops/bert_ops.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="multi_lex_sum (1)" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="Maghz" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/mgz/ds/sentence_datasets" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/mgz/ds/sentence_datasets/multi_lex_sum.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="multi_lex_sum" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="Maghz" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/mgz/ds/sentence_datasets" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="C:\Users\ceyer\OneDrive\Documents\Projects\Maghz\mgz\ds\sentence_datasets\multi_lex_sum.py" />
       <option name="PARAMETERS" value="" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
@@ -129,6 +196,7 @@
       <option name="IS_MODULE_SDK" value="true" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
       <option name="SCRIPT_NAME" value="$PROJECT_DIR$/mgz/models/nlp/tokenizers.py" />
       <option name="PARAMETERS" value="" />
       <option name="SHOW_COMMAND_LINE" value="false" />
@@ -138,45 +206,20 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
-    <configuration name="pytest for test_bert_basic.TestBert" type="tests" factoryName="py.test" temporary="true" nameIsGenerated="true">
-      <module name="Maghz" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/mgz/models/nlp" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <option name="_new_keywords" value="&quot;&quot;" />
-      <option name="_new_parameters" value="&quot;&quot;" />
-      <option name="_new_additionalArguments" value="&quot;&quot;" />
-      <option name="_new_target" value="&quot;test_bert_basic.TestBert&quot;" />
-      <option name="_new_targetType" value="&quot;PYTHON&quot;" />
-      <method v="2" />
-    </configuration>
-    <configuration name="pytest for test_bert_basic.TestBert.test_mask" type="tests" factoryName="py.test" temporary="true" nameIsGenerated="true">
-      <module name="Maghz" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/mgz/models/nlp" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <option name="_new_keywords" value="&quot;&quot;" />
-      <option name="_new_parameters" value="&quot;&quot;" />
-      <option name="_new_additionalArguments" value="&quot;&quot;" />
-      <option name="_new_target" value="&quot;test_bert_basic.TestBert.test_mask&quot;" />
-      <option name="_new_targetType" value="&quot;PYTHON&quot;" />
-      <method v="2" />
-    </configuration>
+    <list>
+      <item itemvalue="Python.bert_ops" />
+      <item itemvalue="Python.multi_lex_sum" />
+      <item itemvalue="Python.multi_lex_sum (1)" />
+      <item itemvalue="Python.bert_demo" />
+      <item itemvalue="Python.tokenizers" />
+    </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Python.bert_data" />
-        <item itemvalue="Python.tokenizers" />
+        <item itemvalue="Python.bert_ops" />
+        <item itemvalue="Python.multi_lex_sum (1)" />
         <item itemvalue="Python.bert_demo" />
-        <item itemvalue="Python tests.pytest for test_bert_basic.TestBert.test_mask" />
-        <item itemvalue="Python tests.pytest for test_bert_basic.TestBert" />
+        <item itemvalue="Python.tokenizers" />
+        <item itemvalue="Python.multi_lex_sum" />
       </list>
     </recent_temporary>
   </component>
@@ -191,8 +234,12 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1626542681677</updated>
+      <workItem from="1676935351693" duration="31456000" />
     </task>
     <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
     <option name="TAB_STATES">
@@ -218,5 +265,14 @@
         </entry>
       </map>
     </option>
+  </component>
+  <component name="com.intellij.coverage.CoverageDataManagerImpl">
+    <SUITE FILE_PATH="coverage/Maghz$tokenizers.coverage" NAME="tokenizers Coverage Results" MODIFIED="1676966554058" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/mgz/models/nlp" />
+    <SUITE FILE_PATH="coverage/Maghz$multi_lex_sum__1_.coverage" NAME="multi_lex_sum (1) Coverage Results" MODIFIED="1676968545009" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/mgz/ds/sentence_datasets" />
+    <SUITE FILE_PATH="coverage/Maghz$bert_data.coverage" NAME="bert_data Coverage Results" MODIFIED="1676939929429" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/mgz/models/nlp" />
+    <SUITE FILE_PATH="coverage/Maghz$bert_demo.coverage" NAME="bert_demo Coverage Results" MODIFIED="1676967212692" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/mgz/models/nlp" />
+    <SUITE FILE_PATH="coverage/Maghz$bert_ops.coverage" NAME="bert_ops Coverage Results" MODIFIED="1676970266065" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/mgz/run_ops" />
+    <SUITE FILE_PATH="coverage/Maghz$bert_ops__1_.coverage" NAME="bert_ops (1) Coverage Results" MODIFIED="1676943236252" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/mgz/run_ops" />
+    <SUITE FILE_PATH="coverage/Maghz$multilexsum.coverage" NAME="multilexsum Coverage Results" MODIFIED="1676949925398" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/mgz/ds/sentence_datasets" />
   </component>
 </project>

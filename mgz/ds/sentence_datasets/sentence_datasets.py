@@ -1,7 +1,9 @@
+from functools import partial
+
 from torch.nn.functional import pad
 
 import spaces as sp
-from mgz.datasets.base_dataset import BaseDataset
+from mgz.ds.base_dataset import BaseDataset
 from mgz.typing import *
 
 
@@ -42,6 +44,12 @@ class SentenceBatch:
 class SentenceDataset(BaseDataset):
     def __init__(self):
         super(SentenceDataset, self).__init__()
+        self.input_space = None
+        self.target_space = None
+
+        # --- Initialization flags ---
+        self.use_cuda = False
+        self.loaded = False
 
     @property
     def in_space(self) -> sp.Sentence:
@@ -50,6 +58,14 @@ class SentenceDataset(BaseDataset):
     @property
     def pred_space(self) -> Union[sp.Sentence, sp.RegressionTarget]:
         raise NotImplementedError
+
+    def _collate_fn(self, device: Union[int, torch.device],
+                    batch: List[Tuple[GermanT, EnglishT]]):
+        raise NotImplementedError
+
+    def get_collate_fn(self, device: Union[int, torch.device]):
+        assert self.loaded, "Dataset not loaded"
+        return partial(self._collate_fn, device)
 
 
 def subsequent_mask(size: SeqLen):
@@ -63,7 +79,7 @@ def subsequent_mask(size: SeqLen):
 
 def collate_batch(
         batch,
-        src_pipeline: Callable[[str], List[str]],  # tokenizer function
+        src_pipeline: Callable[[SrcStringT], List[str]],  # tokenizer function
         tgt_pipeline: Callable[[str], List[str]],  # tokenizer function
         src_vocab,
         tgt_vocab,
@@ -71,10 +87,9 @@ def collate_batch(
         max_padding=128,
         pad_id=2,
 ):
-    print(batch)
-    exit(3)
-    bs_id = torch.tensor([0], device=device)  # <s> token id
-    eos_id = torch.tensor([1], device=device)  # </s> token id
+    dtype = torch.int32
+    bs_id = torch.tensor([0], device=device, dtype=dtype)  # <s> token id
+    eos_id = torch.tensor([1], device=device, dtype=dtype)  # </s> token id
     src_list, tgt_list = [], []
     for (_src, _tgt) in batch:
         processed_src = torch.cat(
@@ -82,7 +97,7 @@ def collate_batch(
                 bs_id,
                 torch.tensor(
                     src_vocab(src_pipeline(_src)),
-                    dtype=torch.int64,
+                    dtype=dtype,
                     device=device,
                 ),
                 eos_id,
@@ -94,7 +109,7 @@ def collate_batch(
                 bs_id,
                 torch.tensor(
                     tgt_vocab(tgt_pipeline(_tgt)),
-                    dtype=torch.int64,
+                    dtype=dtype,
                     device=device,
                 ),
                 eos_id,

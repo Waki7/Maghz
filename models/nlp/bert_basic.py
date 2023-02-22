@@ -30,7 +30,7 @@ def _attention(query: TensorT,
     d_k = query.size(-1)
     scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
     if mask is not None:
-        scores = scores.masked_fill(mask == 0, -1e4)
+        scores = scores.masked_fill(mask == 0, -1e9)
     p_attn = scores.softmax(dim=-1)
     if dropout is not None:
         p_attn = dropout(p_attn)
@@ -170,6 +170,8 @@ class DecoderLayer(nn.Module):
         """
         "Follow Figure 1 (right) for connections."
         m = memory
+        if not (src_mask == 1).all():
+            raise ValueError("src_mask should be all True")
         x = self.sublayer[0](x,
                              lambda x: self.self_attn.forward(query=x, key=x,
                                                               value=x,

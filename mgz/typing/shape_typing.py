@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import *
 
 import numpy as np
@@ -26,6 +28,12 @@ DType = TypeVar("DType")
 ProbT = NewType("DType", float)
 EnglishT = NewType("EnglishSentence", str)
 GermanT = NewType("GermanSentence", str)
+
+CaseSourceT = str  # NewType("LegalDocumentCaseSource", str)
+SourceListT = List[CaseSourceT]
+SummaryT = str  # NewType("SummaryOfCase", str)
+
+SrcStringT = Union[SourceListT, GermanT, EnglishT]
 
 
 class NDArray(np.ndarray, Generic[Shape, DType]):

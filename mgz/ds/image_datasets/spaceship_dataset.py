@@ -2,7 +2,7 @@ import numpy as np
 from skimage.draw import polygon_perimeter, line
 
 import spaces as sp
-from mgz.datasets.image_datasets.img_datasets import ImageDataset
+from mgz.ds.image_datasets.img_datasets import ImageDataset
 from mgz.typing import *
 
 

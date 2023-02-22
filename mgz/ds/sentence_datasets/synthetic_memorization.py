@@ -1,5 +1,5 @@
 import spaces as sp
-from mgz.datasets.sentence_datasets.sentence_datasets import SentenceDataset, \
+from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
     SentenceBatch
 from mgz.typing import *
 
