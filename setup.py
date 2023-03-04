@@ -66,18 +66,18 @@ setup(
         'tensorflow',
         'torch',
         'torchvision',
+        'transformers',
         'opencv-python',
         'array2gif',
         'Pillow',
         'stable-baselines',
         'pyyaml',
-        'skimage',
+        'scikit-image',
         'pytest',
         'spacy==3.4',
         'torchtext==0.12',
         'torchdata==0.3.0',
-# pip install torch==1.10.0+cu111 torchvision==0.11.0+cu111 torchaudio==0.10.0 -f https://download.pytorch.org/whl/torch_stable.html
-        #     pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
+        # pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
         #     pip install -q torchdata==0.3.0 torchtext==0.12 spacy==3.2
 
 # # Uncomment for colab

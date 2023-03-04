@@ -14,7 +14,7 @@ import spaces as sp
 from mgz.ds.base_dataset import T
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
     collate_batch
-from mgz.models.nlp.tokenizers import Tokenizer, tokenize
+from mgz.models.nlp.tokenizing import Tokenizer, tokenize
 from mgz.typing import *
 
 

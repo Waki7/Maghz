@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import multiprocessing as mp
+import os
 import time
 
 import GPUtil
@@ -7,15 +9,14 @@ import altair as alt
 import pandas as pd
 import torch.distributed as dist
 import torch.nn as nn
-from spacy.language import Language
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from torchtext.vocab.vocab import Vocab
 
-from mgz.ds.sentence_datasets.german_to_english import GermanToEnglish
-from mgz.ds.sentence_datasets.sentence_datasets import SentenceBatch
+from mgz.ds.sentence_datasets.multi_lex_sum import MultiLexSum
+from mgz.ds.sentence_datasets.sentence_datasets import SentenceBatch, \
+    SentenceDataset
 from mgz.models.nlp.bert_basic import subsequent_mask, EncoderDecoder, \
     PredictorHead, make_model
 from mgz.typing import *
@@ -39,7 +40,7 @@ def run_epoch(
         mode="train",
         accum_iter=1,
         train_state=TrainState(),
-):
+) -> (torch.Tensor, TrainState):
     """Train a single epoch"""
     start = time.time()
     total_tokens = 0
@@ -178,7 +179,7 @@ class LabelSmoothing(nn.Module):
         assert x.size(1) == self.n_cls
         true_dist: FloatTensorT['B*SeqLen,OutNClasses'] = torch.ones_like(x)
         true_dist *= (self.smoothing / (self.n_cls - 2))
-        true_dist.scatter_(1, target.data.unsqueeze(1), self.confidence)
+        true_dist.scatter_(1, target.data.unsqueeze(1).long(), self.confidence)
         true_dist[:, self.padding_idx] = 0
         mask = torch.nonzero(target.data == self.padding_idx)
         if mask.dim() > 0:
@@ -242,57 +243,57 @@ class DummyScheduler:
         None
 
 
-def create_dataloaders(
-        device: int,
-        batch_size: int = 12000,
-        max_padding: int = 128,
-        is_distributed: bool = True,
-) -> (DataLoader, DataLoader):
-    # def create_dataloaders(batch_size=12000):
-
-    train_iter_map = GermanToEnglish(max_padding).load_training_data()
+def create_dataloaders(train_ds: SentenceDataset, val_ds: SentenceDataset,
+                       device: Union[torch.device, int],
+                       batch_size: int = 12000,
+                       is_distributed: bool = True,
+                       ) -> (DataLoader, DataLoader):
     train_sampler = (
-        DistributedSampler(train_iter_map) if is_distributed else None
+        DistributedSampler(train_ds) if is_distributed else None
     )
     train_dataloader = DataLoader(
-        train_iter_map,
+        train_ds,
         batch_size=batch_size,
         shuffle=(train_sampler is None),
         sampler=train_sampler,
-        collate_fn=train_iter_map.get_collate_fn(device)
+        collate_fn=train_ds.get_collate_fn(device)
     )
-
-    valid_iter_map = GermanToEnglish(max_padding).load_validation_data()
     valid_sampler = (
-        DistributedSampler(valid_iter_map) if is_distributed else None
+        DistributedSampler(val_ds) if is_distributed else None
     )
     valid_dataloader = DataLoader(
-        valid_iter_map,
+        val_ds,
         batch_size=batch_size,
         shuffle=(valid_sampler is None),
         sampler=valid_sampler,
-        collate_fn=valid_iter_map.get_collate_fn(device)
+        collate_fn=val_ds.get_collate_fn(device)
     )
     return train_dataloader, valid_dataloader
 
 
 def train_worker(
-        gpu,
+        gpu: Union[torch.device, int],
         ngpus_per_node,
-        vocab_src: Vocab,
-        vocab_tgt: Vocab,
-        spacy_de: Language,
-        spacy_en: Language,
         config,
         is_distributed=False,
 ):
     print(f"Train worker process using GPU: {gpu} for training", flush=True)
     torch.cuda.set_device(gpu)
 
-    pad_idx = vocab_tgt["<blank>"]
+    train_ds = MultiLexSum(config["max_padding"]).load_training_data()
+    valid_ds = MultiLexSum(config["max_padding"]).load_validation_data()
+    train_dataloader, valid_dataloader = create_dataloaders(
+        train_ds, valid_ds, gpu,
+        batch_size=config["batch_size"] // ngpus_per_node,
+        is_distributed=is_distributed,
+    )
+
+    pad_idx = train_ds.vocab_tgt["<blank>"]
     d_model = 512
-    model = make_model(len(vocab_src), len(vocab_tgt), N=6)
-    model.cuda(gpu)
+    model = make_model(len(train_ds.vocab_src), len(train_ds.vocab_tgt), N=6,
+                       max_seq_len=config["max_padding"])
+    model.cuda(gpu).half()
+
     module = model
     is_main_process = True
     if is_distributed:
@@ -304,16 +305,9 @@ def train_worker(
         is_main_process = gpu == 0
 
     criterion = LabelSmoothing(
-        n_cls=len(vocab_tgt), padding_idx=pad_idx, smoothing=0.1
+        n_cls=len(train_ds.vocab_tgt), padding_idx=pad_idx, smoothing=0.1
     )
     criterion.cuda(gpu)
-
-    train_dataloader, valid_dataloader = create_dataloaders(
-        gpu,
-        batch_size=config["batch_size"] // ngpus_per_node,
-        max_padding=config["max_padding"],
-        is_distributed=is_distributed,
-    )
 
     optimizer = torch.optim.Adam(
         model.parameters(), lr=config["base_lr"], betas=(0.9, 0.98), eps=1e-9
@@ -368,15 +362,72 @@ def train_worker(
         torch.save(module.state_dict(), file_path)
 
 
+def train_distributed_model(config):
+    ngpus = torch.cuda.device_count()
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12356"
+    print(f"Number of GPUs detected: {ngpus}")
+    print("Spawning training processes ...")
+    mp.spawn(
+        train_worker,
+        nprocs=ngpus,
+        args=(ngpus, config, True),
+    )
+
+
+def load_trained_model(config):
+    # config = {
+    #     "batch_size": 32,
+    #     "distributed": False,
+    #     "num_epochs": 8,
+    #     "accum_iter": 10,
+    #     "base_lr": 1.0,
+    #     "max_padding": 72,
+    #     "warmup": 3000,
+    #     "file_prefix": "multi30k_model_",
+    # }
+    model_path = "C:/Users/ceyer/OneDrive/Documents/Projects/Maghz/index_dir/model_storage/multi30k_model_final.pt"
+    # if not exists(model_path):
+    #     train_model(config)
+
+    ds = MultiLexSum(config["max_padding"])
+    exit(4)
+    model = make_model(len(ds.vocab_src), len(ds.vocab_tgt), N=6)
+    print(model)
+    model.load_state_dict(torch.load(model_path))
+    return model
+
+
+def train_model(config: Dict):
+    if config["distributed"]:
+        train_distributed_model(config)
+    else:
+        train_worker(0, 1, config, False)
+
+
 def main():
-    from mgz.models.nlp.tokenizing import load_tokenizers, load_vocab
-    # global variables used later in the script
-    spacy_de, spacy_en = load_tokenizers()
-    vocab_src, vocab_tgt = load_vocab(spacy_de, spacy_en)
-    # temp config
-    config = {'batch_size': 80, 'max_padding': 10, 'base_lr': .01, 'warmup': 2,
-              'num_epochs': 10, 'accum_iter': 1, 'file_prefix': 'model/'}
-    train_worker(0, 1, vocab_src, vocab_tgt, spacy_de, spacy_en, config)
+    from transformers import AutoTokenizer, BertForPreTraining
+    from mgz.models.nlp.bert_basic import make_model, EncoderDecoder
+
+    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+    model_hug: BertForPreTraining = BertForPreTraining.from_pretrained(
+        "bert-base-uncased")
+
+    print(model_hug)
+
+    train_ds = MultiLexSum(10).load_training_data()
+
+    pad_idx = train_ds.vocab_tgt["<blank>"]
+    d_model = 512
+    model_mgz: EncoderDecoder = make_model(len(train_ds.vocab_src),
+                                           len(train_ds.vocab_tgt), N=6,
+                                           max_seq_len=10)
+    print(model_mgz)
+    # inputs = tokenizer("Hello, my dog is cute", return_tensors="pt")
+    # outputs = model_mgz(**inputs)
+    #
+    # prediction_logits = outputs.prediction_logits
+    # seq_relationship_logits = outputs.seq_relationship_logits
 
 
 if __name__ == '__main__':

@@ -260,16 +260,17 @@ class EncoderDecoder(nn.Module):
         x = self.decode(x, src_mask, tgt, tgt_mask)
         return x
 
-    def encode(self, src: LongTensorT['B,SeqLen'], src_mask):
-        x = self.src_embed(src)
-        x = self.positional_encoder(x)
+    def encode(self, src: LongTensorT['B,SeqLen'],
+               src_mask: FloatTensorT['B,1,SeqLen']):
+        x: FloatTensorT['B,SeqLen,EmbedLen'] = self.src_embed(src)
+        x: FloatTensorT['B,SeqLen,EmbedLen'] = self.positional_encoder(x)
         return self.encoder(x, src_mask)
 
     def decode_train(self, memory: FloatTensorT['B,SeqLen,EmbedLen'],
                      src_mask: IntTensorT['B,OutSeqLen'],
                      tgt: IntTensorT['B,OutSeqLen'], tgt_mask):
         '''
-        Executes for our output at a time when doing training
+        Executes for one output at a time when doing training
         :param memory:
         :param src_mask:
         :param tgt:
@@ -285,7 +286,7 @@ class EncoderDecoder(nn.Module):
                tgt: IntTensorT['B,OutSeqLen'],
                tgt_mask: IntTensorT['1,OutSeqLen']):
         '''
-        Executes for our output at a time when doing inference
+        Executes for one output at a time when doing inference
         :param memory:
         :param src_mask:
         :param tgt:

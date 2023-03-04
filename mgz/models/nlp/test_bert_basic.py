@@ -126,6 +126,8 @@ class TestBert(unittest.TestCase):
                     memory, src_mask, ys,
                     subsequent_mask(ys.size(1)).type_as(one_sentence.data)
                 )
+                print('src_mask',  subsequent_mask(ys.size(1)).type_as(one_sentence.data))
+                print('target_mask',  subsequent_mask(ys.size(1)).type_as(one_sentence.data))
                 prob = test_model.generator(out[:, -1])
                 _, next_word = torch.max(prob, dim=1)
                 next_word = next_word.data[0]
