@@ -10,10 +10,10 @@ from mgz.typing import *
 class SentenceBatch:
     """Object for holding a batch of data with mask during training."""
 
-    def __init__(self, src: SentenceT['B,SeqLen'],
+    def __init__(self, src: SentenceT['B,SrcSeqLen'],
                  tgt: SentenceT['B,SeqLen - 1'] = None,
                  pad=2):  # 2 = <blank>
-        self.src: SentenceT['B,SeqLen'] = src
+        self.src: SentenceT['B,SrcSeqLen'] = src
         self.src_mask = (src != pad).unsqueeze(-2)
         if tgt is not None:
             # The target is memorization, for the forward pass we don't need the last character since we are just passing the previous ones for decoding in training.
@@ -24,7 +24,7 @@ class SentenceBatch:
             self.ntokens = (self.tgt_y != pad).data.sum()
 
     @staticmethod
-    def make_std_mask(tgt: SentenceT['B,SeqLen'], pad: int):
+    def make_std_mask(tgt: SentenceT['B,SrcSeqLen'], pad: int):
         "Create a mask to hide padding and future words."
         tgt_mask = (tgt != pad).unsqueeze(-2)
         tgt_mask = tgt_mask & subsequent_mask(tgt.size(-1)).type_as(
@@ -68,7 +68,7 @@ class SentenceDataset(BaseDataset):
         return partial(self._collate_fn, device)
 
 
-def subsequent_mask(size: SeqLen):
+def subsequent_mask(size: SrcSeqLen):
     "Mask out subsequent positions."
     attn_shape = (1, size, size)
     subsequent_mask = torch.triu(torch.ones(attn_shape), diagonal=1).type(

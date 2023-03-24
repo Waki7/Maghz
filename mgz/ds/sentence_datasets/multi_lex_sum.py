@@ -21,7 +21,7 @@ from mgz.typing import *
 
 
 class MultiLexSum(SentenceDataset):
-    def __init__(self, max_length: SeqLen):
+    def __init__(self, max_length: SrcSeqLen):
         super(MultiLexSum, self).__init__()
 
         self.max_length = max_length

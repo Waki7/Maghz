@@ -174,10 +174,10 @@ class LabelSmoothing(nn.Module):
         self.n_cls = n_cls
         self.true_dist = None
 
-    def forward(self, x: FloatTensorT['B*SeqLen,OutNClasses'],
-                target: FloatTensorT['B*SeqLen']):
+    def forward(self, x: FloatTensorT['B*SrcSeqLen,OutNClasses'],
+                target: FloatTensorT['B*SrcSeqLen']):
         assert x.size(1) == self.n_cls
-        true_dist: FloatTensorT['B*SeqLen,OutNClasses'] = torch.ones_like(x)
+        true_dist: FloatTensorT['B*SrcSeqLen,OutNClasses'] = torch.ones_like(x)
         true_dist *= (self.smoothing / (self.n_cls - 2))
         true_dist.scatter_(1, target.data.unsqueeze(1).long(), self.confidence)
         true_dist[:, self.padding_idx] = 0
@@ -195,10 +195,10 @@ class SimpleLossCompute:
         self.generator = generator
         self.criterion = criterion
 
-    def __call__(self, x: FloatTensorT['B,SeqLen,EmbedLen'],
-                 y: FloatTensorT['B,SeqLen'],
+    def __call__(self, x: FloatTensorT['B,SrcSeqLen,EmbedLen'],
+                 y: FloatTensorT['B,SrcSeqLen'],
                  norm_by: int):
-        x: FloatTensorT['B,SeqLen,OutNClasses'] = self.generator(x)
+        x: FloatTensorT['B,SrcSeqLen,OutNClasses'] = self.generator(x)
         sloss = (
                 self.criterion(
                     x.contiguous().view(-1, x.size(-1)), y.contiguous().view(-1)
@@ -208,10 +208,10 @@ class SimpleLossCompute:
         return sloss.data * norm_by, sloss
 
 
-def greedy_decode(model: EncoderDecoder, src: IntTensorT['B,SeqLen'],
-                  src_mask: IntTensorT['B,1,SeqLen'], max_len: int,
+def greedy_decode(model: EncoderDecoder, src: IntTensorT['B,SrcSeqLen'],
+                  src_mask: IntTensorT['B,1,SrcSeqLen'], max_len: int,
                   start_symbol: int):
-    memory: FloatTensorT['B,SeqLen,EmbedLen'] = model.encode(src, src_mask)
+    memory: FloatTensorT['B,SrcSeqLen,EmbedLen'] = model.encode(src, src_mask)
     ys = torch.zeros(1, 1).fill_(start_symbol).type_as(src.data)
     for i in range(max_len - 1):
         out = model.decode(

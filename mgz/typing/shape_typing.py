@@ -10,7 +10,7 @@ import torch
 #######################
 B = TypeVar("Batch")
 NHeads = NewType("NHeads", int)  # something like n attention heads
-SeqLen = NewType("SeqLen", int)  # or input sequence length
+SrcSeqLen = NewType("SeqLen", int)  # or input sequence length
 OutSeqLen = NewType("OutSeqLen", int)  # or output sequence length
 NClasses = NewType("NClasses", int)  # or output sequence length
 OutNClasses = NewType("OutNClasses", int)  # or output sequence length

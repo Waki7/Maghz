@@ -1,6 +1,11 @@
 # from mgz.models.nlp.bart_interface import BARTHubInterface
 from spacy.language import Language
-
+'''
+input_ids tensor([[    0, 31414,   232,  1437,     2,     2]])
+attention_mask None
+attn_weights torch.Size([16, 6, 6])
+attn_probs torch.Size([16, 6, 6])
+'''
 def main2():
     from transformers import BartConfig
     from transformers import BartForConditionalGeneration, BartTokenizer
@@ -19,9 +24,14 @@ def main2():
         model.generate(input_ids)
 
     else:
-        from transformers import BartModel
+        # from transformers import BartModel
+        from bart_orig import BartModel
+        input_ids = tokenizer("Hello world </s>",
+                              return_tensors="pt").input_ids  # Batch size 1
         # Initializing a model (with random weights) from the facebook/bart-large style configuration
         model = BartModel(configuration)
+        model.forward(input_ids)
+
     # print(model)
     # Accessing the model configuration
     configuration = model.config

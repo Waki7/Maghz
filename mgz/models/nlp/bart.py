@@ -17,9 +17,7 @@ import copy
 import math
 import random
 import warnings
-from typing import List, Optional, Tuple, Union
 
-import torch
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
@@ -43,6 +41,8 @@ from transformers.utils import (
     logging,
     replace_return_docstrings,
 )
+
+from mgz.typing import *
 
 logger = logging.get_logger(__name__)
 
@@ -144,14 +144,14 @@ class BartLearnedPositionalEmbedding(nn.Embedding):
         return super().forward(positions + self.offset)
 
 
-class BartAttention(nn.Module):
+class MultiHeadedAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
     def __init__(
             self,
             embed_dim: int,
             num_heads: int,
-            dropout: float = 0.0,
+            dropout: ProbT = 0.0,
             is_decoder: bool = False,
             bias: bool = True,
     ):
@@ -174,15 +174,17 @@ class BartAttention(nn.Module):
         self.q_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
 
-    def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
+    def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int) -> \
+            FloatTensorT['B,SrcSeqLen,NHeads']:
         return tensor.view(bsz, seq_len, self.num_heads,
                            self.head_dim).transpose(1, 2).contiguous()
 
     def forward(
             self,
-            hidden_states: torch.Tensor,
-            key_value_states: Optional[torch.Tensor] = None,
-            past_key_value: Optional[Tuple[torch.Tensor]] = None,
+            # Embed Length must be divisible by num_heads
+            hidden_states: FloatTensorT['B,SrcSeqLen,EmbedLen'],
+            memory_kv_states: Optional[torch.Tensor] = None,
+            past_mem_kv_val: Optional[Tuple[torch.Tensor]] = None,
             attention_mask: Optional[torch.Tensor] = None,
             layer_head_mask: Optional[torch.Tensor] = None,
             output_attentions: bool = False,
@@ -192,34 +194,32 @@ class BartAttention(nn.Module):
 
         # if key_value_states are provided this layer is used as a cross-attention layer
         # for the decoder
-        is_cross_attention = key_value_states is not None
-
+        is_cross_attention = memory_kv_states is not None
         bsz, tgt_len, _ = hidden_states.size()
 
-        # get query proj
-        query_states = self.q_proj(hidden_states) * self.scaling
         # get key, value proj
         # `past_key_value[0].shape[2] == key_value_states.shape[1]`
         # is checking that the `sequence_length` of the `past_key_value` is the same as
         # the provided `key_value_states` to support prefix tuning
         if (
                 is_cross_attention
-                and past_key_value is not None
-                and past_key_value[0].shape[2] == key_value_states.shape[1]
+                and past_mem_kv_val is not None
+                and past_mem_kv_val[0].shape[2] == memory_kv_states.shape[1]
         ):
             # reuse k,v, cross_attentions
-            key_states = past_key_value[0]
-            value_states = past_key_value[1]
+            key_states = past_mem_kv_val[0]
+            value_states = past_mem_kv_val[1]
+
         elif is_cross_attention:
             # cross_attentions
-            key_states = self._shape(self.k_proj(key_value_states), -1, bsz)
-            value_states = self._shape(self.v_proj(key_value_states), -1, bsz)
-        elif past_key_value is not None:
+            key_states = self._shape(self.k_proj(memory_kv_states), -1, bsz)
+            value_states = self._shape(self.v_proj(memory_kv_states), -1, bsz)
+        elif past_mem_kv_val is not None:
             # reuse k, v, self_attention
             key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
             value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
-            key_states = torch.cat([past_key_value[0], key_states], dim=2)
-            value_states = torch.cat([past_key_value[1], value_states], dim=2)
+            key_states = torch.cat([past_mem_kv_val[0], key_states], dim=2)
+            value_states = torch.cat([past_mem_kv_val[1], value_states], dim=2)
         else:
             # self_attention
             key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
@@ -233,19 +233,23 @@ class BartAttention(nn.Module):
             # all previous decoder key/value_states. Further calls to uni-directional self-attention
             # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
             # if encoder bi-directional self-attention `past_key_value` is always `None`
-            past_key_value = (key_states, value_states)
+            past_mem_kv_val = (key_states, value_states)
 
-        proj_shape = (bsz * self.num_heads, -1, self.head_dim)
+        # get query proj
+        query_states = self.q_proj(
+            hidden_states) * self.scaling  # -> (B,SrcSeqLen,EmbedLen)
+        proj_shape = (bsz, self.num_heads, -1, self.head_dim)
         query_states = self._shape(query_states, tgt_len, bsz).view(*proj_shape)
         key_states = key_states.view(*proj_shape)
         value_states = value_states.view(*proj_shape)
 
-        src_len = key_states.size(1)
-        attn_weights = torch.bmm(query_states, key_states.transpose(1, 2))
+        src_len = key_states.size(-2)
+        # flipping key's SeqLen with EmbedDim (the embed for each head)
+        attn_weights = torch.matmul(query_states, key_states.transpose(-2, -1))
 
-        if attn_weights.size() != (bsz * self.num_heads, tgt_len, src_len):
+        if attn_weights.size() != (bsz, self.num_heads, tgt_len, src_len):
             raise ValueError(
-                f"Attention weights should be of size {(bsz * self.num_heads, tgt_len, src_len)}, but is"
+                f"Attention weights should be of size {(bsz, self.num_heads, tgt_len, src_len)}, but is"
                 f" {attn_weights.size()}"
             )
 
@@ -261,38 +265,23 @@ class BartAttention(nn.Module):
 
         attn_weights = nn.functional.softmax(attn_weights, dim=-1)
 
+        attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len,
+                                         src_len)
+
         if layer_head_mask is not None:
-            if layer_head_mask.size() != (self.num_heads,):
-                raise ValueError(
-                    f"Head mask for a single layer should be of size {(self.num_heads,)}, but is"
-                    f" {layer_head_mask.size()}"
-                )
+            attn_weights = attn_weights.masked_fill(layer_head_mask == 0, -1e4)
             attn_weights = layer_head_mask.view(1, -1, 1,
                                                 1) * attn_weights.view(bsz,
                                                                        self.num_heads,
                                                                        tgt_len,
                                                                        src_len)
-            attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len,
-                                             src_len)
-
-        if output_attentions:
-            # this operation is a bit awkward, but it's required to
-            # make sure that attn_weights keeps its gradient.
-            # In order to do so, attn_weights have to be reshaped
-            # twice and have to be reused in the following
-            attn_weights_reshaped = attn_weights.view(bsz, self.num_heads,
-                                                      tgt_len, src_len)
-            attn_weights = attn_weights_reshaped.view(bsz * self.num_heads,
-                                                      tgt_len, src_len)
-        else:
-            attn_weights_reshaped = None
-
+        print('attn_weights', attn_weights.shape)
         attn_probs = nn.functional.dropout(attn_weights, p=self.dropout,
                                            training=self.training)
 
-        attn_output = torch.bmm(attn_probs, value_states)
+        attn_output = torch.matmul(attn_probs, value_states)
 
-        if attn_output.size() != (bsz * self.num_heads, tgt_len, self.head_dim):
+        if attn_output.size() != (bsz,  self.num_heads, tgt_len, self.head_dim):
             raise ValueError(
                 f"`attn_output` should be of size {(bsz, self.num_heads, tgt_len, self.head_dim)}, but is"
                 f" {attn_output.size()}"
@@ -301,21 +290,25 @@ class BartAttention(nn.Module):
         attn_output = attn_output.view(bsz, self.num_heads, tgt_len,
                                        self.head_dim)
         attn_output = attn_output.transpose(1, 2)
+        print('attn_probs', attn_probs.shape)
 
+        attn_output = torch.matmul(attn_probs, value_states)
+        print('attn_output', attn_output.shape)
+        exit(3)
         # Use the `embed_dim` from the config (stored in the class) rather than `hidden_state` because `attn_output` can be
         # partitioned aross GPUs when using tensor-parallelism.
         attn_output = attn_output.reshape(bsz, tgt_len, self.embed_dim)
 
         attn_output = self.out_proj(attn_output)
 
-        return attn_output, attn_weights_reshaped, past_key_value
+        return attn_output, past_key_value
 
 
 class BartEncoderLayer(nn.Module):
     def __init__(self, config: BartConfig):
         super().__init__()
         self.embed_dim = config.d_model
-        self.self_attn = BartAttention(
+        self.self_attn = MultiHeadedAttention(
             embed_dim=self.embed_dim,
             num_heads=config.encoder_attention_heads,
             dropout=config.attention_dropout,
@@ -332,8 +325,7 @@ class BartEncoderLayer(nn.Module):
             self,
             hidden_states: torch.FloatTensor,
             attention_mask: torch.FloatTensor,
-            layer_head_mask: torch.FloatTensor,
-            output_attentions: Optional[bool] = False,
+            layer_head_mask: torch.FloatTensor
     ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
         """
         Args:
@@ -342,16 +334,12 @@ class BartEncoderLayer(nn.Module):
                 `(batch, 1, tgt_len, src_len)` where padding elements are indicated by very large negative values.
             layer_head_mask (`torch.FloatTensor`): mask for attention heads in a given layer of size
                 `(encoder_attention_heads,)`.
-            output_attentions (`bool`, *optional*):
-                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
-                returned tensors for more detail.
         """
         residual = hidden_states
         hidden_states, attn_weights, _ = self.self_attn(
             hidden_states=hidden_states,
             attention_mask=attention_mask,
             layer_head_mask=layer_head_mask,
-            output_attentions=output_attentions,
         )
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout,
                                               training=self.training)
@@ -390,7 +378,7 @@ class BartDecoderLayer(nn.Module):
         super().__init__()
         self.embed_dim = config.d_model
 
-        self.self_attn = BartAttention(
+        self.self_attn = MultiHeadedAttention(
             embed_dim=self.embed_dim,
             num_heads=config.decoder_attention_heads,
             dropout=config.attention_dropout,
@@ -401,7 +389,7 @@ class BartDecoderLayer(nn.Module):
         self.activation_dropout = config.activation_dropout
 
         self.self_attn_layer_norm = nn.LayerNorm(self.embed_dim)
-        self.encoder_attn = BartAttention(
+        self.encoder_attn = MultiHeadedAttention(
             self.embed_dim,
             config.decoder_attention_heads,
             dropout=config.attention_dropout,
@@ -414,15 +402,11 @@ class BartDecoderLayer(nn.Module):
 
     def forward(
             self,
-            hidden_states: torch.Tensor,
-            attention_mask: Optional[torch.Tensor] = None,
-            encoder_hidden_states: Optional[torch.Tensor] = None,
-            encoder_attention_mask: Optional[torch.Tensor] = None,
-            layer_head_mask: Optional[torch.Tensor] = None,
-            cross_attn_layer_head_mask: Optional[torch.Tensor] = None,
+            hidden_states: FloatTensorT['B,SrcSeqLen,EmbedLen'],
+            attention_mask: IntTensorT['B,SrcSeqLen,SrcSeqLen'] = None,
+            encoder_hidden_states: FloatTensorT['B,SrcSeqLen,EmbedLen'] = None,
+            encoder_attention_mask: IntTensorT['B,SrcSeqLen,OutSeqLen'] = None,
             past_key_value: Optional[Tuple[torch.Tensor]] = None,
-            output_attentions: Optional[bool] = False,
-            use_cache: Optional[bool] = True,
     ) -> Tuple[torch.FloatTensor, Optional[
         Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
@@ -434,14 +418,7 @@ class BartDecoderLayer(nn.Module):
                 cross attention input to the layer of shape `(batch, seq_len, embed_dim)`
             encoder_attention_mask (`torch.FloatTensor`): encoder attention mask of size
                 `(batch, 1, tgt_len, src_len)` where padding elements are indicated by very large negative values.
-            layer_head_mask (`torch.FloatTensor`): mask for attention heads in a given layer of size
-                `(encoder_attention_heads,)`.
-            cross_attn_layer_head_mask (`torch.FloatTensor`): mask for cross-attention heads in a given layer of
-                size `(decoder_attention_heads,)`.
             past_key_value (`Tuple(torch.FloatTensor)`): cached past key and value projection states
-            output_attentions (`bool`, *optional*):
-                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
-                returned tensors for more detail.
         """
         residual = hidden_states
 
@@ -454,8 +431,7 @@ class BartDecoderLayer(nn.Module):
             hidden_states=hidden_states,
             past_key_value=self_attn_past_key_value,
             attention_mask=attention_mask,
-            layer_head_mask=layer_head_mask,
-            output_attentions=output_attentions,
+            output_attentions=self.config.output_attentions,
         )
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout,
                                               training=self.training)
@@ -475,9 +451,8 @@ class BartDecoderLayer(nn.Module):
                 hidden_states=hidden_states,
                 key_value_states=encoder_hidden_states,
                 attention_mask=encoder_attention_mask,
-                layer_head_mask=cross_attn_layer_head_mask,
                 past_key_value=cross_attn_past_key_value,
-                output_attentions=output_attentions,
+                output_attentions=self.config.output_attentions,
             )
             hidden_states = nn.functional.dropout(hidden_states, p=self.dropout,
                                                   training=self.training)
@@ -504,7 +479,7 @@ class BartDecoderLayer(nn.Module):
         if output_attentions:
             outputs += (self_attn_weights, cross_attn_weights)
 
-        if use_cache:
+        if self.config.use_cache:
             outputs += (present_key_value,)
 
         return outputs
@@ -786,9 +761,6 @@ class BartEncoder(BartPretrainedModel):
             attention_mask: Optional[torch.Tensor] = None,
             head_mask: Optional[torch.Tensor] = None,
             inputs_embeds: Optional[torch.FloatTensor] = None,
-            output_attentions: Optional[bool] = None,
-            output_hidden_states: Optional[bool] = None,
-            return_dict: Optional[bool] = None,
     ) -> Union[Tuple, BaseModelOutput]:
         r"""
         Args:
@@ -812,25 +784,11 @@ class BartEncoder(BartPretrainedModel):
 
                 - 1 indicates the head is **not masked**,
                 - 0 indicates the head is **masked**.
-
-            inputs_embeds (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`, *optional*):
-                Optionally, instead of passing `input_ids` you can choose to directly pass an embedded representation.
-                This is useful if you want more control over how to convert `input_ids` indices into associated vectors
-                than the model's internal embedding lookup matrix.
-            output_attentions (`bool`, *optional*):
-                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
-                returned tensors for more detail.
-            output_hidden_states (`bool`, *optional*):
-                Whether or not to return the hidden states of all layers. See `hidden_states` under returned tensors
-                for more detail.
-            return_dict (`bool`, *optional*):
-                Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
         """
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        output_attentions = self.config.output_attentions
+        output_hidden_states = (self.config.output_hidden_states
+                                )
+        return_dict = self.config.use_return_dict
 
         # retrieve input_ids and inputs_embeds
         if input_ids is not None and inputs_embeds is not None:
@@ -901,7 +859,6 @@ class BartEncoder(BartPretrainedModel):
                         attention_mask,
                         layer_head_mask=(
                             head_mask[idx] if head_mask is not None else None),
-                        output_attentions=output_attentions,
                     )
 
                 hidden_states = layer_outputs[0]
@@ -995,14 +952,7 @@ class BartDecoder(BartPretrainedModel):
             attention_mask: Optional[torch.Tensor] = None,
             encoder_hidden_states: Optional[torch.FloatTensor] = None,
             encoder_attention_mask: Optional[torch.LongTensor] = None,
-            head_mask: Optional[torch.Tensor] = None,
-            cross_attn_head_mask: Optional[torch.Tensor] = None,
             past_key_values: Optional[List[torch.FloatTensor]] = None,
-            inputs_embeds: Optional[torch.FloatTensor] = None,
-            use_cache: Optional[bool] = None,
-            output_attentions: Optional[bool] = None,
-            output_hidden_states: Optional[bool] = None,
-            return_dict: Optional[bool] = None,
     ) -> Union[Tuple, BaseModelOutputWithPastAndCrossAttentions]:
         r"""
         Args:
@@ -1032,19 +982,6 @@ class BartDecoder(BartPretrainedModel):
                 - 0 for tokens that are **masked**.
 
                 [What are attention masks?](../glossary#attention-mask)
-            head_mask (`torch.Tensor` of shape `(decoder_layers, decoder_attention_heads)`, *optional*):
-                Mask to nullify selected heads of the attention modules. Mask values selected in `[0, 1]`:
-
-                - 1 indicates the head is **not masked**,
-                - 0 indicates the head is **masked**.
-
-            cross_attn_head_mask (`torch.Tensor` of shape `(decoder_layers, decoder_attention_heads)`, *optional*):
-                Mask to nullify selected heads of the cross-attention modules in the decoder to avoid performing
-                cross-attention on hidden heads. Mask values selected in `[0, 1]`:
-
-                - 1 indicates the head is **not masked**,
-                - 0 indicates the head is **masked**.
-
             past_key_values (`tuple(tuple(torch.FloatTensor))`, *optional*, returned when `use_cache=True` is passed or when `config.use_cache=True`):
                 Tuple of `tuple(torch.FloatTensor)` of length `config.n_layers`, with each tuple having 2 tensors of
                 shape `(batch_size, num_heads, sequence_length, embed_size_per_head)`) and 2 additional tensors of
@@ -1060,43 +997,23 @@ class BartDecoder(BartPretrainedModel):
                 `input_ids` you can choose to directly pass an embedded representation. This is useful if you want more
                 control over how to convert `input_ids` indices into associated vectors than the model's internal
                 embedding lookup matrix.
-            output_attentions (`bool`, *optional*):
-                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
-                returned tensors for more detail.
-            output_hidden_states (`bool`, *optional*):
-                Whether or not to return the hidden states of all layers. See `hidden_states` under returned tensors
-                for more detail.
-            return_dict (`bool`, *optional*):
-                Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
+
         """
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-        use_cache = use_cache if use_cache is not None else self.config.use_cache
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        output_attentions = self.config.output_attentions
+        output_hidden_states = (self.config.output_hidden_states)
+        use_cache = self.config.use_cache
+        return_dict = self.config.use_return_dict
 
         # retrieve input_ids and inputs_embeds
-        if input_ids is not None and inputs_embeds is not None:
-            raise ValueError(
-                "You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
-        elif input_ids is not None:
-            input = input_ids
-            input_shape = input.shape
-            input_ids = input_ids.view(-1, input_shape[-1])
-        elif inputs_embeds is not None:
-            input_shape = inputs_embeds.size()[:-1]
-            input = inputs_embeds[:, :, -1]
-        else:
-            raise ValueError(
-                "You have to specify either decoder_input_ids or decoder_inputs_embeds")
+        input = input_ids
+        input_shape = input.shape
+        input_ids = input_ids.view(-1, input_shape[-1])
 
         # past_key_values_length
         past_key_values_length = past_key_values[0][0].shape[
             2] if past_key_values is not None else 0
 
-        if inputs_embeds is None:
-            inputs_embeds = self.embed_tokens(input) * self.embed_scale
+        inputs_embeds = self.embed_tokens(input) * self.embed_scale
 
         attention_mask = self._prepare_decoder_attention_mask(
             attention_mask, input_shape, inputs_embeds, past_key_values_length
@@ -1125,16 +1042,6 @@ class BartDecoder(BartPretrainedModel):
         all_cross_attentions = () if (
                 output_attentions and encoder_hidden_states is not None) else None
         next_decoder_cache = () if use_cache else None
-
-        # check if head_mask/cross_attn_head_mask has a correct number of layers specified if desired
-        for attn_mask, mask_name in zip([head_mask, cross_attn_head_mask],
-                                        ["head_mask", "cross_attn_head_mask"]):
-            if attn_mask is not None:
-                if attn_mask.size()[0] != (len(self.layers)):
-                    raise ValueError(
-                        f"The `{mask_name}` should be specified for {len(self.layers)} layers, but it is for"
-                        f" {head_mask.size()[0]}."
-                    )
 
         for idx, decoder_layer in enumerate(self.layers):
             # add LayerDrop (see https://arxiv.org/abs/1909.11556 for description)
@@ -1168,9 +1075,6 @@ class BartDecoder(BartPretrainedModel):
                     attention_mask,
                     encoder_hidden_states,
                     encoder_attention_mask,
-                    head_mask[idx] if head_mask is not None else None,
-                    cross_attn_head_mask[
-                        idx] if cross_attn_head_mask is not None else None,
                     None,
                 )
             else:
@@ -1180,12 +1084,6 @@ class BartDecoder(BartPretrainedModel):
                     attention_mask=attention_mask,
                     encoder_hidden_states=encoder_hidden_states,
                     encoder_attention_mask=encoder_attention_mask,
-                    layer_head_mask=(
-                        head_mask[idx] if head_mask is not None else None),
-                    cross_attn_layer_head_mask=(
-                        cross_attn_head_mask[
-                            idx] if cross_attn_head_mask is not None else None
-                    ),
                     past_key_value=past_key_value,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
@@ -1271,33 +1169,44 @@ class BartModel(BartPretrainedModel):
             attention_mask: Optional[torch.Tensor] = None,
             decoder_input_ids: Optional[torch.LongTensor] = None,
             decoder_attention_mask: Optional[torch.LongTensor] = None,
-            # head_mask: Optional[torch.Tensor] = None,
-            # decoder_head_mask: Optional[torch.Tensor] = None,
-            # cross_attn_head_mask: Optional[torch.Tensor] = None,
-            # encoder_outputs: Optional[List[torch.FloatTensor]] = None,
-            # past_key_values: Optional[List[torch.FloatTensor]] = None,
-            # inputs_embeds: Optional[torch.FloatTensor] = None,
-            # decoder_inputs_embeds: Optional[torch.FloatTensor] = None,
-            # use_cache: Optional[bool] = None,
-            # output_attentions: Optional[bool] = None,
-            # output_hidden_states: Optional[bool] = None,
-            # return_dict: Optional[bool] = None,
+            head_mask: Optional[torch.Tensor] = None,
+            decoder_head_mask: Optional[torch.Tensor] = None,
+            cross_attn_head_mask: Optional[torch.Tensor] = None,
+            encoder_outputs: Optional[List[torch.FloatTensor]] = None,
+            past_key_values: Optional[List[torch.FloatTensor]] = None,
+            inputs_embeds: Optional[torch.FloatTensor] = None,
+            decoder_inputs_embeds: Optional[torch.FloatTensor] = None,
     ) -> Union[Tuple, Seq2SeqModelOutput]:
 
+        # different to other models, Bart automatically creates decoder_input_ids from
+        # input_ids if no decoder_input_ids are provided
+        print('input_ids', input_ids)
+        print('attention_mask', attention_mask)
+        if decoder_input_ids is None and decoder_inputs_embeds is None:
+            if input_ids is None:
+                raise ValueError(
+                    "If no `decoder_input_ids` or `decoder_inputs_embeds` are "
+                    "passed, `input_ids` cannot be `None`. Please pass either "
+                    "`input_ids` or `decoder_input_ids` or `decoder_inputs_embeds`."
+                )
+
+            decoder_input_ids = shift_tokens_right(
+                input_ids, self.config.pad_token_id,
+                self.config.decoder_start_token_id
+            )
+
         output_attentions = self.config.output_attentions
-        output_hidden_states = self.config.output_hidden_states
+        output_hidden_states = (self.config.output_hidden_states)
         use_cache = self.config.use_cache
         return_dict = self.config.use_return_dict
 
-        encoder_outputs = self.encoder(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            head_mask=head_mask,
-            inputs_embeds=inputs_embeds,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
+        if encoder_outputs is None:
+            encoder_outputs = self.encoder(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                head_mask=head_mask,
+                inputs_embeds=inputs_embeds,
+            )
         # If the user passed a tuple for encoder_outputs, we wrap it in a BaseModelOutput when return_dict=True
         elif return_dict and not isinstance(encoder_outputs, BaseModelOutput):
             encoder_outputs = BaseModelOutput(
@@ -1318,10 +1227,6 @@ class BartModel(BartPretrainedModel):
             cross_attn_head_mask=cross_attn_head_mask,
             past_key_values=past_key_values,
             inputs_embeds=decoder_inputs_embeds,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
         )
 
         if not return_dict:

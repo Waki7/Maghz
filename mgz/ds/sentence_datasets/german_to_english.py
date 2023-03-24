@@ -19,7 +19,7 @@ from mgz.typing import *
 
 
 class GermanToEnglish(SentenceDataset):
-    def __init__(self, max_length: SeqLen):
+    def __init__(self, max_length: SrcSeqLen):
         super(GermanToEnglish, self).__init__()
 
         self.max_length = max_length

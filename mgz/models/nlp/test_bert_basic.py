@@ -82,13 +82,14 @@ class TestBert(unittest.TestCase):
     #     assert False
 
     def test_attention(self):
-        query = torch.Tensor([[[1, 1, 1], [0, 0, 0]]])
+        query = torch.Tensor([[[0, 0, 0]]])
         key = torch.Tensor([[[1, 1, 1], [0, 0, 0]]])
         value = torch.Tensor([[[2, 2, 2], [1, 1, 1]]])
-        ans, p = attention(query, key, value)
-        self.assertEqual(ans.shape, (1, 2, 3))
+        mask = torch.ones((1, 1, 2))
+        ans, p = attention(query, key, value, mask=mask)
+        self.assertEqual((1, 1, 3), ans.shape)
         torch.testing.assert_close(ans.to(torch.float16), torch.Tensor(
-            [[[1.8497, 1.8497, 1.8497], [1.5, 1.5, 1.5]]]).to(torch.float16))
+            [[ [1.5, 1.5, 1.5]]]).to(torch.float16))
 
     def test_mask(self):
         x = torch.ones(2, 3, 2)
