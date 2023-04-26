@@ -35,6 +35,8 @@ SummaryT = str  # NewType("SummaryOfCase", str)
 
 SrcStringT = Union[SourceListT, GermanT, EnglishT]
 
+Opt = Optional
+
 
 class NDArray(np.ndarray, Generic[Shape, DType]):
     """

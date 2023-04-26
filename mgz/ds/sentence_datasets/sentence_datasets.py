@@ -10,21 +10,19 @@ from mgz.typing import *
 class SentenceBatch:
     """Object for holding a batch of data with mask during training."""
 
-    def __init__(self, src: SentenceT['B,SrcSeqLen'],
+    def __init__(self, src: LongTensorT['B,SrcSeqLen'],
                  tgt: SentenceT['B,SeqLen - 1'] = None,
                  pad=2):  # 2 = <blank>
-        self.src: SentenceT['B,SrcSeqLen'] = src
+        self.src: LongTensorT['B,SrcSeqLen'] = src
         self.src_mask = (src != pad).unsqueeze(-2)
         if tgt is not None:
-            # The target is memorization, for the forward pass we don't need the last character since we are just passing the previous ones for decoding in training.
-            # The loss doesn't include the first character because it's the starting character (1)
-            self.tgt: SentenceT['B,SeqLen - 1'] = tgt[:, :-1]
+            self.tgt: LongTensorT['B,SeqLen - 1'] = tgt
             self.tgt_y = tgt[:, 1:]
             self.tgt_mask = self.make_std_mask(self.tgt, pad)
             self.ntokens = (self.tgt_y != pad).data.sum()
 
     @staticmethod
-    def make_std_mask(tgt: SentenceT['B,SrcSeqLen'], pad: int):
+    def make_std_mask(tgt: LongTensorT['B,SrcSeqLen'], pad: int):
         "Create a mask to hide padding and future words."
         tgt_mask = (tgt != pad).unsqueeze(-2)
         tgt_mask = tgt_mask & subsequent_mask(tgt.size(-1)).type_as(

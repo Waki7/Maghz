@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch.nn.functional import log_softmax
 
 from mgz.typing import *
+from mgz.models.nlp.base_transformer import BaseTransformer
 
 
 # import altair as alt
@@ -15,7 +16,7 @@ def _attention(query: TensorT,
                key: TensorT,
                value: TensorT,
                mask: TensorT = None,
-               dropout=None) -> \
+               dropout: nn.Dropout=None) -> \
         Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
     '''
     https://youtu.be/0PjHri8tc1c?t=727
@@ -27,66 +28,53 @@ def _attention(query: TensorT,
     :return: Tensor of shape [Batch,Time,EmbenLen]
     '''
     "Compute 'Scaled Dot Product Attention'"
-    print(query.shape, key.shape, value.shape)
+    "Implements Figure 2"
+    if mask is not None:
+        # Same mask applied to all nheads.
+        mask = mask.unsqueeze(1)
     d_k = query.size(-1)
-    scores: FloatTensorT['B,SrcSeqLen,OutSeqLen'] = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
-    print(scores.shape)
+    scores: FloatTensorT['B,NHeads,SrcSeqLen,OutSeqLen'] = \
+        torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
     if mask is not None:
         scores = scores.masked_fill(mask == 0, -1e4)
+    print('------')
+    print('scores', scores.shape)
+    print('mask', mask.shape)
     # also called attention weights
     p_attn = scores.softmax(dim=-1)
     if dropout is not None:
         p_attn = dropout(p_attn)
-    print(p_attn.shape, value.shape)
-    exit(3)
     return torch.matmul(p_attn, value), p_attn
 
 
-def attention(query: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
-              key: FloatTensorT['B,NHeads,OutSeqLen,EmbedLen/NHeads'],
-              value: FloatTensorT['B,NHeads,OutSeqLen,EmbedLen/NHeads'],
-              mask: IntTensorT['B,1,OutSeqLen,OutSeqLen'] = None,
-              dropout=None) -> \
-        Tuple[torch.Tensor, torch.Tensor]:
-    return _attention(query, key, value, mask, dropout)
-
-
-def self_attention(query: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
-                   key: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
-                   value: FloatTensorT[
-                       'B,NHeadsNHeads,SrcSeqLen,EmbedLen/NHeads'],
-                   mask: IntTensorT['B,1,SrcSeqLen,SrcSeqLen'] = None,
-                   dropout=None) -> \
-        Tuple[torch.Tensor, torch.Tensor]:
-    mask.unsqueeze_(1)  # same masking for all nheads, so expand at dim 1
-    return _attention(query, key, value, mask, dropout)
-
-
 class MultiHeadedAttention(nn.Module):
-    def __init__(self, n_heads, d_model, dropout=0.1):
+    def __init__(self, n_heads, embed_dim, dropout=0.1):
         "Take in model size and number of heads."
         super(MultiHeadedAttention, self).__init__()
-        assert d_model % n_heads == 0
+        assert embed_dim % n_heads == 0
         # We assume d_v always equals d_k
-        self.d_k = d_model // n_heads
+        self.d_k = embed_dim // n_heads
         self.d_v = self.d_k
 
         self.h = n_heads
-        self.linears = clones(nn.Linear(d_model, d_model), 4)
+        self.linears = clones(nn.Linear(embed_dim, embed_dim), 4)
         self.attn = None
         self.dropout = nn.Dropout(p=dropout)
+
+    def _attn(self, query: TensorT,
+              key: TensorT,
+              value: TensorT,
+              mask: TensorT = None,
+              dropout=None) -> \
+            Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
+        raise NotImplementedError
 
     # update this for typing below
     def forward(self, query: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
                 key: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
                 value: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
-                mask: IntTensorT['B,OutSeqLen,OutSeqLen'] = None):
-        "Implements Figure 2"
-        if mask is not None:
-            # Same mask applied to all h heads.
-            mask = mask.unsqueeze(1)
+                mask: IntTensorT['B,OutSeqLen'] = None):
         nbatches = query.size(0)
-
         # 1) Do all the linear projections in batch from d_model => h x d_k
         query, key, value = [
             lin(x).view(nbatches, -1, self.h, self.d_k).transpose(1, 2)
@@ -94,7 +82,7 @@ class MultiHeadedAttention(nn.Module):
         ]
 
         # 2) Apply attention on all the projected vectors in batch.
-        x, self.attn = attention(
+        x, self.attn = self._attn(
             query, key, value, mask=mask, dropout=self.dropout
         )
 
@@ -108,6 +96,38 @@ class MultiHeadedAttention(nn.Module):
         del key
         del value
         return self.linears[-1](x)
+
+
+class MultiHeadedSelfAttention(MultiHeadedAttention):
+    def __init__(self, n_heads, embed_dim, dropout=0.1):
+        super(MultiHeadedSelfAttention, self).__init__(n_heads, embed_dim,
+                                                       dropout)
+
+    def _attn(self,
+              query: FloatTensorT[
+                  'B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
+              key: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
+              value: FloatTensorT[
+                  'B,NHeadsNHeads,SrcSeqLen,EmbedLen/NHeads'],
+              mask: IntTensorT['B,Opt[OutSeqLen],SrcSeqLen'] = None,
+              dropout=None) -> \
+            Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
+        return _attention(query, key, value, mask, dropout)
+
+
+class MultiHeadedCrossAttention(MultiHeadedAttention):
+    def __init__(self, n_heads, embed_dim, dropout=0.1):
+        super(MultiHeadedCrossAttention, self).__init__(n_heads, embed_dim,
+                                                        dropout)
+
+    def _attn(self,
+              query: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
+              key: FloatTensorT['B,NHeads,OutSeqLen,EmbedLen/NHeads'],
+              value: FloatTensorT['B,NHeads,OutSeqLen,EmbedLen/NHeads'],
+              mask: IntTensorT['B,Opt[OutSeqLen],OutSeqLen'] = None,
+              dropout=None) -> \
+            Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
+        return _attention(query, key, value, mask, dropout)
 
 
 class Embeddings(nn.Module):
@@ -156,8 +176,8 @@ class Encoder(nn.Module):
 class DecoderLayer(nn.Module):
     "Decoder is made of self-attn, src-attn, and feed forward (defined below)"
 
-    def __init__(self, size, self_attn: MultiHeadedAttention,
-                 src_attn: MultiHeadedAttention, feed_forward, dropout):
+    def __init__(self, size, self_attn: MultiHeadedSelfAttention,
+                 src_attn: MultiHeadedCrossAttention, feed_forward, dropout):
         super(DecoderLayer, self).__init__()
         self.size = size
         self.self_attn = self_attn
@@ -195,9 +215,10 @@ class Decoder(nn.Module):
         self.layers = clones(layer, N)
         self.norm = LayerNorm(layer.size)
 
-    def forward(self, x, memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
-                src_mask: IntTensorT['B,OutSeqLen'],
-                tgt_mask: IntTensorT['1,OutSeqLen']):
+    def forward(self, x: FloatTensorT['B,OutSeqLen,EmbedLen'],
+                memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
+                src_mask: IntTensorT['B,SrcSeqLen'],
+                tgt_mask: IntTensorT['B,OutSeqLen']):
         for layer in self.layers:
             x = layer(x, memory, src_mask, tgt_mask)
         return self.norm(x)
@@ -242,7 +263,7 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
 
 
-class EncoderDecoder(nn.Module):
+class EncoderDecoder(BaseTransformer):
     """
     A standard Encoder-Decoder architecture. Base for this and many
     other models.
@@ -260,21 +281,24 @@ class EncoderDecoder(nn.Module):
         self.generator = generator
         self.positional_encoder = positional_encoder
 
-    def forward(self, src, tgt, src_mask, tgt_mask):
+    def forward(self, src: LongTensorT['B,SrcSeqLen'],
+                tgt: LongTensorT['B,OutSeqLen'],
+                src_mask: IntTensorT['B,SrcSeqLen'],
+                tgt_mask: IntTensorT['B,OutSeqLen']):
         "Take in and process masked src and target sequences."
         x = self.encode(src, src_mask)
         x = self.decode(x, src_mask, tgt, tgt_mask)
         return x
 
     def encode(self, src: LongTensorT['B,SrcSeqLen'],
-               src_mask: FloatTensorT['B,1,SrcSeqLen']):
+               src_mask: IntTensorT['B,SrcSeqLen']):
         x: FloatTensorT['B,SrcSeqLen,EmbedLen'] = self.src_embed(src)
         x: FloatTensorT['B,SrcSeqLen,EmbedLen'] = self.positional_encoder(x)
         return self.encoder(x, src_mask)
 
     def decode_train(self, memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
                      src_mask: IntTensorT['B,OutSeqLen'],
-                     tgt: IntTensorT['B,OutSeqLen'], tgt_mask):
+                     tgt: LongTensorT['B,OutSeqLen'], tgt_mask):
         '''
         Executes for one output at a time when doing training
         :param memory:
@@ -340,7 +364,7 @@ class SublayerConnection(nn.Module):
         return x + self.dropout(sublayer(self.norm(x)))
 
 
-def subsequent_mask(size: SrcSeqLen):
+def subsequent_mask(size: SrcSeqLen) -> IntTensorT['1,OutSeqLen,OutSeqLen']:
     "Mask out subsequent positions."
     attn_shape = (1, size, size)
     subsequent_mask = torch.triu(torch.ones(attn_shape), diagonal=1).type(
@@ -363,18 +387,21 @@ class PositionwiseFeedForward(nn.Module):
 
 
 def make_model(
-        src_vocab: int, tgt_vocab: int, N=6, d_model=512, d_ff=2048, h=8,
+        src_vocab: int, tgt_vocab: int, N=6, d_model=512, d_ff=2048, n_heads=8,
         dropout: ProbT = 0.1, max_seq_len: int = 1024
 ) -> EncoderDecoder:
     "Helper: Construct a model from hyperparameters."
     c = copy.deepcopy
-    attn = MultiHeadedAttention(h, d_model)
+    cross_attn = MultiHeadedCrossAttention(n_heads, d_model)
+    self_attn = MultiHeadedSelfAttention(n_heads, d_model)
     ff = PositionwiseFeedForward(d_model, d_ff, dropout)
     position = PositionalEncoding(max_seq_len, d_model, dropout)
 
     model = EncoderDecoder(
-        Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N),
-        Decoder(DecoderLayer(d_model, c(attn), c(attn), c(ff), dropout), N),
+        Encoder(EncoderLayer(d_model, c(self_attn), c(ff), dropout), N),
+        Decoder(
+            DecoderLayer(d_model, c(self_attn), c(cross_attn), c(ff), dropout),
+            N),
         Embeddings(src_vocab, d_model),
         Embeddings(tgt_vocab, d_model),
         PredictorHead(d_model, tgt_vocab), position

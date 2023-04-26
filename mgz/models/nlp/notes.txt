@@ -1,0 +1,3 @@
+past_key_value: these are cached primarily for training (or for evaluation where u have the labels) it's useful for
+when you are using the embedding over multiple timesteps, you can use the cached value to save computation. The query
+changes every step of decoding so you can't cache it.

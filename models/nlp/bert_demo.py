@@ -3,7 +3,7 @@ from __future__ import annotations
 from mgz.ds.sentence_datasets.synthetic_memorization import \
     SyntheticMemorization
 from mgz.models.nlp.bert_basic import PositionalEncoding
-from mgz.run_ops.bert_ops import *
+from mgz.run_ops.run_ops import *
 from mgz.settings import to_cuda
 from mgz.typing import *
 

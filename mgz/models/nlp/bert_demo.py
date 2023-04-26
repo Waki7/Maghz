@@ -3,9 +3,11 @@ from __future__ import annotations
 from mgz.ds.sentence_datasets.synthetic_memorization import \
     SyntheticMemorization
 from mgz.models.nlp.bert_basic import PositionalEncoding
-from mgz.run_ops.bert_ops import *
+from mgz.run_ops.run_ops import *
+from mgz.run_ops.learning_ops import *
 from mgz.settings import to_cuda
 from mgz.typing import *
+from mgz.run_ops.basic_ops import greedy_decode
 
 
 def show_example(fn, args=[]):
@@ -86,7 +88,7 @@ def example_label_smoothing():
 
 
 def example_simple_model():
-    n_cls = 11
+    n_cls = 15
     criterion = LabelSmoothing(n_cls=n_cls, padding_idx=0, smoothing=0.0)
     model = to_cuda(make_model(n_cls, n_cls, N=2))
 
@@ -135,6 +137,7 @@ def example_simple_model():
     src = to_cuda(torch.LongTensor([[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]]))
     max_len = src.shape[1]
     src_mask = to_cuda(torch.ones(1, 1, max_len))
+    print('greeeedy')
     print(greedy_decode(model, src, src_mask, max_len=max_len, start_symbol=0))
 
 

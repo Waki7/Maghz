@@ -16,10 +16,14 @@ from mgz.typing import *
 # import altair as alt
 # import GPUtil
 
+from bart_orig import BartAttention
+from mgz.models.nlp.bart import MultiHeadedAttention
+
 
 class TestBert(unittest.TestCase):
     def setUp(self):
         pass
 
     def verify_attention(self):
-        pass
+        attn_orig  = BartAttention(512, 8, 0.1)
+        attn_new  = MultiHeadedAttention(8, 512, 0.1)

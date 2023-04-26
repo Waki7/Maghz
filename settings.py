@@ -37,3 +37,11 @@ SEED = 23
 torch.manual_seed(SEED)
 np.random.seed(SEED)
 random.seed(SEED)
+
+def print_gpu_usage():
+    print("torch.cuda.memory_allocated: %f GB" % (
+            torch.cuda.memory_allocated(0) / 1024 / 1024 / 1024))
+    print("torch.cuda.memory_reserved: %f GB" % (
+            torch.cuda.memory_reserved(0) / 1024 / 1024 / 1024))
+    print("torch.cuda.max_memory_reserved: %f GB" % (
+            torch.cuda.max_memory_reserved(0) / 1024 / 1024 / 1024))

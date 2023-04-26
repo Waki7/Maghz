@@ -75,10 +75,14 @@ setup(
         'scikit-image',
         'pytest',
         'spacy==3.4',
-        'torchtext==0.12',
-        'torchdata==0.3.0',
-        # pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
-        #     pip install -q torchdata==0.3.0 torchtext==0.12 spacy==3.2
+        'torchtext',
+        'torchdata',
+        'datasets',
+        'GPUtil',
+        'altair',
+        # pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116 -U
+        # pip install -q torchdata==0.3.0 torchtext==0.12 spacy==3.2 -U
+        # python -m spacy download de_core_news_sm
 
 # # Uncomment for colab
 # #

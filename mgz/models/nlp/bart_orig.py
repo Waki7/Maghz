@@ -129,7 +129,7 @@ class BartLearnedPositionalEmbedding(nn.Embedding):
 
     def forward(self, input_ids: torch.Tensor, past_key_values_length: int = 0):
         """`input_ids' shape is expected to be [bsz x seqlen]."""
-
+        print('bert learned past_key_values_length', past_key_values_length)
         bsz, seq_len = input_ids.shape[:2]
         positions = torch.arange(
             past_key_values_length, past_key_values_length + seq_len, dtype=torch.long, device=self.weight.device
@@ -226,7 +226,7 @@ class BartAttention(nn.Module):
             # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
             # if encoder bi-directional self-attention `past_key_value` is always `None`
             past_key_value = (key_states, value_states)
-
+        print('value_states', value_states.shape)
         proj_shape = (bsz * self.num_heads, -1, self.head_dim)
         query_states = self._shape(query_states, tgt_len, bsz).view(*proj_shape)
         key_states = key_states.view(*proj_shape)
@@ -270,12 +270,9 @@ class BartAttention(nn.Module):
         else:
             attn_weights_reshaped = None
 
-        print('attn_weights', attn_weights.shape)
         attn_probs = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
-        print('attn_probs', attn_probs.shape)
         attn_output = torch.bmm(attn_probs, value_states)
         assert (attn_output == torch.matmul(attn_probs, value_states)).all()
-        exit(34)
         if attn_output.size() != (bsz * self.num_heads, tgt_len, self.head_dim):
             raise ValueError(
                 f"`attn_output` should be of size {(bsz, self.num_heads, tgt_len, self.head_dim)}, but is"
@@ -425,6 +422,7 @@ class BartDecoderLayer(nn.Module):
         # decoder uni-directional self-attention cached key/values tuple is at positions 1,2
         self_attn_past_key_value = past_key_value[:2] if past_key_value is not None else None
         # add present self-attn cache to positions 1,2 of present_key_value tuple
+        print('pre self_attn')
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
             past_key_value=self_attn_past_key_value,
@@ -444,6 +442,7 @@ class BartDecoderLayer(nn.Module):
 
             # cross_attn cached key/values tuple is at positions 3,4 of present_key_value tuple
             cross_attn_past_key_value = past_key_value[-2:] if past_key_value is not None else None
+            print('pre encoder attention')
             hidden_states, cross_attn_weights, cross_attn_present_key_value = self.encoder_attn(
                 hidden_states=hidden_states,
                 key_value_states=encoder_hidden_states,
@@ -467,7 +466,7 @@ class BartDecoderLayer(nn.Module):
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
         hidden_states = residual + hidden_states
         hidden_states = self.final_layer_norm(hidden_states)
-
+        print('decoder hidden_states', hidden_states.shape)
         outputs = (hidden_states,)
 
         if output_attentions:
@@ -1038,7 +1037,7 @@ class BartDecoder(BartPretrainedModel):
 
         # past_key_values_length
         past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
-
+        print('past_key_values_length', past_key_values_length)
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input) * self.embed_scale
 
@@ -1052,6 +1051,7 @@ class BartDecoder(BartPretrainedModel):
             encoder_attention_mask = _expand_mask(encoder_attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1])
 
         # embed positions
+        print('decoder input', input)
         positions = self.embed_positions(input, past_key_values_length)
         positions = positions.to(inputs_embeds.device)
 
