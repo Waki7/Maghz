@@ -1,3 +1,2 @@
-past_key_value: these are cached primarily for training (or for evaluation where u have the labels) it's useful for
-when you are using the embedding over multiple timesteps, you can use the cached value to save computation. The query
-changes every step of decoding so you can't cache it.
+past_key_value: Basically when you are decoding, your key, value vectors have a sequence length of "tokens predicted till current step" whereas the query vector has a sequence length of 1. So you can keep using the previous key, value vectors and appent the new vector of the new token to the previous ongoing one
+https://jalammar.github.io/illustrated-gpt2/#part-2-illustrated-self-attention:~:text=And%20so%20on-,GPT%2D2%20Masked%20Self%2DAttention,-Let%E2%80%99s%20get%20into

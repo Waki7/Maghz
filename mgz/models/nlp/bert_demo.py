@@ -17,7 +17,7 @@ def show_example(fn, args=[]):
 
 def example_positional():
     max_len, embed = 256, 20
-    pe = PositionalEncoding(max_len=max_len, d_model=embed, drop_prob=.0)
+    pe = PositionalEncoding(max_len=max_len, d_model=embed, dropout_p=.0)
     b, seq, embed = 1, 100, 20
     y = pe.forward(torch.zeros(b, seq, embed))
     print(y.shape)

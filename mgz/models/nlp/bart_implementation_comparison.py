@@ -35,12 +35,13 @@ def main2():
                            return_tensors="pt").input_ids  # Batch size 1
     if not use_mgz:
         # from transformers import BartModel
-        from bart_orig import BartModel
+        from bart_orig import BartModel, BartForConditionalGeneration
         input_ids = tokenizer("Hello world </s>",
                               return_tensors="pt").input_ids  # Batch size 1
         # Initializing a model (with random weights) from the facebook/bart-large style configuration
-        model = BartModel(cfg)
-        model.forward(input_ids)
+        model = BartForConditionalGeneration(cfg)
+        # model.forward(input_ids)
+        model.generate(input_ids)
     else:
         from mgz.models.nlp.bart import BartForConditionalGeneration
         input_ids = tokenizer("Hello world </s>",

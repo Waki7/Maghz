@@ -8,14 +8,13 @@ import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers.activations import ACT2FN
-from mgz.models.nlp.base_transformer import BaseTransformer
 from transformers.modeling_utils import PreTrainedModel
 from transformers.models.bart.configuration_bart import BartConfig
 from transformers.utils import (
     logging,
 )
 
-from mgz.models.nlp.bert_basic import EncoderDecoder
+from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.models.nlp.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     CausalLMOutputWithCrossAttentions,
@@ -133,28 +132,28 @@ def _attention(query: TensorT,
                key: TensorT,
                value: TensorT,
                mask: TensorT = None,
-               dropout=None) -> \
+               dropout_p: float = None) -> \
         Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
     "Compute 'Scaled Dot Product Attention'"
     d_k = query.size(-1)
-    scores: FloatTensorT['B,SrcSeqLen,OutSeqLen'] = \
+    scores: FloatTensorT['B,OutSeqLen,SrcSeqLen'] = \
         torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
     if mask is not None:
         scores = scores.masked_fill(mask == 0, -1e4)
     # also called attention weights
     p_attn: torch.Tensor = scores.softmax(dim=-1)
-    if dropout is not None:
-        p_attn = dropout(p_attn)
+    if dropout_p is not None:
+        p_attn = nn.Dropout(dropout_p).forward(p_attn)
     # using the probabilities to pay attention to the value
     return torch.matmul(p_attn, value), p_attn
 
 
-def attention(query: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
-              key: FloatTensorT['B,NHeads,OutSeqLen,EmbedLen/NHeads'],
-              value: FloatTensorT['B,NHeads,OutSeqLen,EmbedLen/NHeads'],
-              mask: IntTensorT['B,1,OutSeqLen,OutSeqLen'] = None,
-              dropout=None) -> \
-        Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
+def attention(query: FloatTensorT['B,NHeads,OutSeqLen,EmbedLen/NHeads'],
+              key: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
+              value: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
+              mask: IntTensorT['B,1,OutSeqLen,SrcSeqLen'] = None,
+              dropout: ProbT = None) -> \
+        Tuple[FloatTensorT['B,OutSeqLen,EmbedLen'], torch.Tensor]:
     return _attention(query, key, value, mask, dropout)
 
 
@@ -166,6 +165,7 @@ def self_attention(query: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
                    dropout=None) -> \
         Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
     mask.unsqueeze_(1)  # same masking for all nheads, so expand at dim 1
+    print('self attn')
     return _attention(query, key, value, mask, dropout)
 
 
@@ -234,7 +234,7 @@ class MultiHeadedAttention(nn.Module):
         x = (
             x.transpose(1, 2)
             .contiguous()
-            .view(nbatches, -1, self.h * self.d_k)
+            .view(nbatches, -1, self.n_heads * self.head_dim)
         )
         del query
         del key
@@ -394,7 +394,6 @@ class BartClassificationHead(nn.Module):
 
 
 class BartPretrainedModel(PreTrainedModel, BaseTransformer, ABC):
-
     config_class = BartConfig
     base_model_prefix = "model"
     supports_gradient_checkpointing = True
@@ -593,7 +592,7 @@ class BartDecoder(BartPretrainedModel):
     def forward(
             self,
             tgt_ids: LongTensorT['B,SrcSeqLen'],
-            encoder_hidden_states: Optional[torch.FloatTensor],
+            encoder_hidden_states: FloatTensorT['B,SeqLen,EmbedLen'],
             src_mask: IntTensorT['B,SrcSeqLen'],
             tgt_mask: IntTensorT['B,SrcSeqLen']
     ) -> Union[Tuple, BaseModelOutputWithPastAndCrossAttentions]:

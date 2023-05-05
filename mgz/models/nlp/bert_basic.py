@@ -4,8 +4,8 @@ import math
 import torch.nn as nn
 from torch.nn.functional import log_softmax
 
-from mgz.typing import *
 from mgz.models.nlp.base_transformer import BaseTransformer
+from mgz.typing import *
 
 
 # import altair as alt
@@ -16,7 +16,7 @@ def _attention(query: TensorT,
                key: TensorT,
                value: TensorT,
                mask: TensorT = None,
-               dropout: nn.Dropout=None) -> \
+               dropout_p: ProbT = None) -> \
         Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
     '''
     https://youtu.be/0PjHri8tc1c?t=727
@@ -24,7 +24,7 @@ def _attention(query: TensorT,
     :param key:
     :param value:
     :param mask:
-    :param dropout:
+    :param dropout_p:
     :return: Tensor of shape [Batch,Time,EmbenLen]
     '''
     "Compute 'Scaled Dot Product Attention'"
@@ -38,17 +38,21 @@ def _attention(query: TensorT,
     if mask is not None:
         scores = scores.masked_fill(mask == 0, -1e4)
     print('------')
+    print('query', query.shape)
+    print('key', key.shape)
+    print('value', value.shape)
     print('scores', scores.shape)
     print('mask', mask.shape)
     # also called attention weights
     p_attn = scores.softmax(dim=-1)
-    if dropout is not None:
-        p_attn = dropout(p_attn)
+    if dropout_p is not None:
+        p_attn = nn.Dropout(dropout_p)(p_attn)
+    print('p_attn', p_attn.shape)
     return torch.matmul(p_attn, value), p_attn
 
 
 class MultiHeadedAttention(nn.Module):
-    def __init__(self, n_heads, embed_dim, dropout=0.1):
+    def __init__(self, n_heads, embed_dim, dropout_p=0.1):
         "Take in model size and number of heads."
         super(MultiHeadedAttention, self).__init__()
         assert embed_dim % n_heads == 0
@@ -59,13 +63,13 @@ class MultiHeadedAttention(nn.Module):
         self.h = n_heads
         self.linears = clones(nn.Linear(embed_dim, embed_dim), 4)
         self.attn = None
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout_p = dropout_p
 
     def _attn(self, query: TensorT,
               key: TensorT,
               value: TensorT,
               mask: TensorT = None,
-              dropout=None) -> \
+              dropout_p=None) -> \
             Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
         raise NotImplementedError
 
@@ -83,7 +87,7 @@ class MultiHeadedAttention(nn.Module):
 
         # 2) Apply attention on all the projected vectors in batch.
         x, self.attn = self._attn(
-            query, key, value, mask=mask, dropout=self.dropout
+            query, key, value, mask=mask, dropout_p=self.dropout_p
         )
 
         # 3) "Concat" using a view and apply a final linear.
@@ -99,9 +103,9 @@ class MultiHeadedAttention(nn.Module):
 
 
 class MultiHeadedSelfAttention(MultiHeadedAttention):
-    def __init__(self, n_heads, embed_dim, dropout=0.1):
+    def __init__(self, n_heads, embed_dim, dropout_p=0.1):
         super(MultiHeadedSelfAttention, self).__init__(n_heads, embed_dim,
-                                                       dropout)
+                                                       dropout_p)
 
     def _attn(self,
               query: FloatTensorT[
@@ -110,24 +114,24 @@ class MultiHeadedSelfAttention(MultiHeadedAttention):
               value: FloatTensorT[
                   'B,NHeadsNHeads,SrcSeqLen,EmbedLen/NHeads'],
               mask: IntTensorT['B,Opt[OutSeqLen],SrcSeqLen'] = None,
-              dropout=None) -> \
+              dropout_p=None) -> \
             Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
-        return _attention(query, key, value, mask, dropout)
+        return _attention(query, key, value, mask, dropout_p)
 
 
 class MultiHeadedCrossAttention(MultiHeadedAttention):
-    def __init__(self, n_heads, embed_dim, dropout=0.1):
+    def __init__(self, n_heads, embed_dim, dropout_p=0.1):
         super(MultiHeadedCrossAttention, self).__init__(n_heads, embed_dim,
-                                                        dropout)
+                                                        dropout_p)
 
     def _attn(self,
               query: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
               key: FloatTensorT['B,NHeads,OutSeqLen,EmbedLen/NHeads'],
               value: FloatTensorT['B,NHeads,OutSeqLen,EmbedLen/NHeads'],
               mask: IntTensorT['B,Opt[OutSeqLen],OutSeqLen'] = None,
-              dropout=None) -> \
+              dropout_p=None) -> \
             Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
-        return _attention(query, key, value, mask, dropout)
+        return _attention(query, key, value, mask, dropout_p)
 
 
 class Embeddings(nn.Module):
@@ -186,7 +190,7 @@ class DecoderLayer(nn.Module):
         self.sublayer = clones(SublayerConnection(size, dropout), 3)
 
     def forward(self, x, memory, src_mask: IntTensorT['B,OutSeqLen'],
-                tgt_mask: IntTensorT['1,OutSeqLen']):
+                tgt_mask: IntTensorT['B,OutSeqLen']):
         """
         :param x:
         :param memory:
@@ -238,9 +242,9 @@ class PredictorHead(nn.Module):
 class PositionalEncoding(nn.Module):
     "Implement the PE function."
 
-    def __init__(self, max_len: int, d_model: int, drop_prob: ProbT):
+    def __init__(self, max_len: int, d_model: int, dropout_p: ProbT):
         super(PositionalEncoding, self).__init__()
-        self.dropout = nn.Dropout(p=drop_prob)
+        self.dropout_p = dropout_p
 
         # Compute the positional encodings once in log space.
         pe = torch.zeros(max_len, d_model)
@@ -260,7 +264,7 @@ class PositionalEncoding(nn.Module):
         assert len(
             x.shape) >= 3, "Expect (batch, sequence, embedding) dimensions in `PositionalEncoding` forward"
         x = x + self.pe[:, : x.size(1)].requires_grad_(False)
-        return self.dropout(x)
+        return nn.Dropout(self.dropout_p)(x)
 
 
 class EncoderDecoder(BaseTransformer):
@@ -354,14 +358,14 @@ class SublayerConnection(nn.Module):
     Note for code simplicity the norm is first as opposed to last.
     """
 
-    def __init__(self, size, dropout):
+    def __init__(self, size, dropout_p):
         super(SublayerConnection, self).__init__()
         self.norm = LayerNorm(size)
-        self.dropout = nn.Dropout(dropout)
+        self.dropout_p = dropout_p
 
     def forward(self, x, sublayer):
         "Apply residual connection to any sublayer with the same size."
-        return x + self.dropout(sublayer(self.norm(x)))
+        return x + nn.Dropout(self.dropout_p)(sublayer(self.norm(x)))
 
 
 def subsequent_mask(size: SrcSeqLen) -> IntTensorT['1,OutSeqLen,OutSeqLen']:
@@ -376,14 +380,14 @@ def subsequent_mask(size: SrcSeqLen) -> IntTensorT['1,OutSeqLen,OutSeqLen']:
 class PositionwiseFeedForward(nn.Module):
     "Implements FFN equation."
 
-    def __init__(self, d_model: int, d_ff: int, dropout: ProbT = 0.1):
+    def __init__(self, d_model: int, d_ff: int, dropout_p: ProbT = 0.1):
         super(PositionwiseFeedForward, self).__init__()
         self.w_1 = nn.Linear(d_model, d_ff)
         self.w_2 = nn.Linear(d_ff, d_model)
-        self.dropout = nn.Dropout(dropout)
+        self.dropout_p = dropout_p
 
     def forward(self, x):
-        return self.w_2(self.dropout(self.w_1(x).relu()))
+        return self.w_2(nn.Dropout(self.dropout_p)(self.w_1(x).relu()))
 
 
 def make_model(
