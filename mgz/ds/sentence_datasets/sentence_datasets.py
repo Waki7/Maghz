@@ -1,6 +1,7 @@
 from functools import partial
 
 from torch.nn.functional import pad
+from torchtext.vocab.vocab import Vocab
 
 import spaces as sp
 from mgz.ds.base_dataset import BaseDataset
@@ -78,13 +79,13 @@ def subsequent_mask(size: SrcSeqLen):
 def collate_batch(
         batch,
         src_pipeline: Callable[[SrcStringT], List[str]],  # tokenizer function
-        tgt_pipeline: Callable[[str], List[str]],  # tokenizer function
-        src_vocab,
-        tgt_vocab,
+        tgt_pipeline: Callable[[TgtStringT], List[str]],  # tokenizer function
+        src_vocab: Vocab,
+        tgt_vocab: Vocab,
         device,
         max_padding=128,
         pad_id=2,
-):
+) -> Tuple[LongTensorT['B,SrcSeqLen'], LongTensorT['B,OutSeqLen']]:
     dtype = torch.int32
     bs_id = torch.tensor([0], device=device, dtype=dtype)  # <s> token id
     eos_id = torch.tensor([1], device=device, dtype=dtype)  # </s> token id
@@ -94,7 +95,7 @@ def collate_batch(
             [
                 bs_id,
                 torch.tensor(
-                    src_vocab(src_pipeline(_src)),
+                    src_vocab.forward(src_pipeline(_src)),
                     dtype=dtype,
                     device=device,
                 ),
@@ -106,7 +107,7 @@ def collate_batch(
             [
                 bs_id,
                 torch.tensor(
-                    tgt_vocab(tgt_pipeline(_tgt)),
+                    tgt_vocab.forward(tgt_pipeline(_tgt)),
                     dtype=dtype,
                     device=device,
                 ),

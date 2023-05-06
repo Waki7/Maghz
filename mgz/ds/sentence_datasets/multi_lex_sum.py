@@ -18,7 +18,12 @@ from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
     collate_batch
 from mgz.models.nlp.tokenizing import Tokenizer, tokenize, TokenStrings
 from mgz.typing import *
+from enum import Enum
 
+class InputSource(Enum):
+    LONG = 'summary/long'
+    SHORT = 'summary/short'
+    TINY = 'summary/tiny'
 
 class MultiLexSum(SentenceDataset):
     def __init__(self, max_length: SrcSeqLen):
@@ -61,8 +66,27 @@ class MultiLexSum(SentenceDataset):
     def gen(self) -> Generator[T, None, None]:
         raise NotImplementedError
 
+    @staticmethod
+    def yield_src_tokens(data_iter: Dataset,
+                         tokenizer: Language) -> Generator[List[SourceListT]]:
+        from_to_tuple: Dict[str, Union[str, List[str]]]
+        for from_to_tuple in tqdm(data_iter):
+            input_text: List[str] = from_to_tuple['sources']
+            for text in input_text:
+                yield tokenize(text, tokenizer)
+
+    @staticmethod
+    def yield_tgt_tokens(data_iter: Dataset,
+                         tokenizer: Language) -> Generator[List[SummaryT]]:
+        from_to_tuple: Dict[str, Union[str, List[str]]]
+        for from_to_tuple in tqdm(data_iter):
+            for key in ['summary/long', 'summary/short', 'summary/tiny']:
+                tgt_text: str = from_to_tuple[key]
+                if tgt_text is not None:
+                    yield tokenize(tgt_text, tokenizer)
+
     def _collate_fn(self, device: Union[int, torch.device],
-                    batch: List[Tuple[GermanT, EnglishT]]):
+                    batch: List[Tuple[SourceListT, SummaryT]]):
         assert self.loaded, "Dataset not loaded"
 
         def tokenize_src(sources: SourceListT) -> List[str]:
@@ -78,7 +102,6 @@ class MultiLexSum(SentenceDataset):
 
         def tokenize_tgt(text: SummaryT) -> List[str]:
             return tokenize(text, self.tokenizer_tgt)
-
         return collate_batch(
             batch,
             tokenize_src,
@@ -136,25 +159,6 @@ class MultiLexSum(SentenceDataset):
         return self
 
     @staticmethod
-    def yield_src_tokens(data_iter: Dataset,
-                         tokenizer: Language):
-        from_to_tuple: Dict[str, Union[str, List[str]]]
-        for from_to_tuple in tqdm(data_iter):
-            input_text: List[str] = from_to_tuple['sources']
-            for text in input_text:
-                yield tokenize(text, tokenizer)
-
-    @staticmethod
-    def yield_tgt_tokens(data_iter: Dataset,
-                         tokenizer: Language):
-        from_to_tuple: Dict[str, Union[str, List[str]]]
-        for from_to_tuple in tqdm(data_iter):
-            for key in ['summary/long', 'summary/short', 'summary/tiny']:
-                tgt_text: str = from_to_tuple[key]
-                if tgt_text is not None:
-                    yield tokenize(tgt_text, tokenizer)
-
-    @staticmethod
     def build_vocabulary(tokenizer_src: Language,
                          tokenizer_tgt: Language) -> (Vocab, Vocab):
         print("Building English Vocabulary ...")
@@ -190,10 +194,18 @@ class MultiLexSum(SentenceDataset):
         else:
             vocab_src, vocab_tgt = torch.load(vocab_path)
         print("Finished.\nVocabulary sizes:")
-        print(len(vocab_src))
-        print(len(vocab_tgt))
+        print('length of vocab src', len(vocab_src))
+        print('length of vocab tgt', len(vocab_tgt))
         return vocab_src, vocab_tgt
 
+    def pad_idx(self) -> int:
+        return self.vocab_tgt['<blank>']
+
+    def src_vocab_len(self) -> int:
+        return len(self.vocab_src)
+
+    def tgt_vocab_len(self) -> int:
+        return len(self.vocab_tgt)
 
 def main():
     # please install HuggingFace ds by pip install ds

@@ -1,6 +1,9 @@
+from functools import partial
+
 import spaces as sp
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
     SentenceBatch
+from mgz.models.nlp.tokenizing import tokenize
 from mgz.typing import *
 
 
@@ -12,9 +15,10 @@ class SyntheticMemorization(SentenceDataset):
         self.target_space = sp.Sentence(out_vocab_size, shape=(max_length,))
 
         self.max_length = max_length
+        self.n_samples = n_samples
         self.n_batches = n_samples // batch_size
         self.batch_size = batch_size
-
+        self.loaded = True
         self.use_cuda = False
 
     def cuda(self):
@@ -27,7 +31,7 @@ class SyntheticMemorization(SentenceDataset):
 
     def __len__(self):
         'Denotes the total number of samples'
-        return len(self.img_index)
+        return self.n_samples
 
     def gen(self) -> Generator[SentenceBatch, None, None]:
         for i in range(self.batch_size):
@@ -50,3 +54,30 @@ class SyntheticMemorization(SentenceDataset):
         '''
         batch: SentenceBatch = next(self.gen())
         return batch
+
+    def _collate_fn(self, device: Union[int, torch.device],
+                    batch: List[SentenceBatch]):
+        assert self.loaded, "Dataset not loaded"
+        func = torch.cat if len(batch[0].src.shape) == 2 else torch.stack
+        src = func([b.src for b in batch])
+        tgt = func([b.src for b in batch])
+        return src, tgt
+
+    def get_collate_fn(self, device: Union[int, torch.device]):
+        assert self.loaded, "Dataset not loaded"
+        return partial(self._collate_fn, device)
+
+    def tokenize_src(self, text) -> List[str]:
+        return tokenize(text, self.tokenizer_src)
+
+    def tokenize_tgt(self, text) -> List[str]:
+        return tokenize(text, self.tokenizer_tgt)
+
+    def pad_idx(self) -> int:
+        return -1
+
+    def src_vocab_len(self) -> int:
+        return self.input_space.vocab_size
+
+    def tgt_vocab_len(self) -> int:
+        return self.target_space.vocab_size

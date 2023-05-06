@@ -34,6 +34,7 @@ SourceListT = List[CaseSourceT]
 SummaryT = str  # NewType("SummaryOfCase", str)
 
 SrcStringT = Union[SourceListT, GermanT, EnglishT]
+TgtStringT = Union[SourceListT, GermanT, EnglishT]
 
 Opt = Optional
 

@@ -6,14 +6,13 @@
   <component name="ChangeListManager">
     <list default="true" id="a3ed68a2-6efa-46de-9017-7165ba08a2f5" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/ds/base_dataset.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/ds/base_dataset.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/ds/sentence_datasets/multi_lex_sum.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/ds/sentence_datasets/multi_lex_sum.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/ds/sentence_datasets/sentence_datasets.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/ds/sentence_datasets/sentence_datasets.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/ds/sentence_datasets/synthetic_memorization.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/ds/sentence_datasets/synthetic_memorization.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mgz/models/nlp/bart.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/models/nlp/bart.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/mgz/models/nlp/bart_implementation_comparison.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/models/nlp/bart_implementation_comparison.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mgz/models/nlp/bart_orig.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/models/nlp/bart_orig.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mgz/models/nlp/bert_basic.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/models/nlp/bert_basic.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mgz/models/nlp/bert_demo.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/models/nlp/bert_demo.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mgz/models/nlp/notes.txt" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/models/nlp/notes.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mgz/run_ops/basic_ops.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/run_ops/basic_ops.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/nlp/bert_demo.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/nlp/bert_demo.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mgz/typing/shape_typing.py" beforeDir="false" afterPath="$PROJECT_DIR$/mgz/typing/shape_typing.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -213,7 +212,7 @@
       <workItem from="1681769014820" duration="21890000" />
       <workItem from="1682577193177" duration="802000" />
       <workItem from="1682643810163" duration="597000" />
-      <workItem from="1682967312121" duration="8918000" />
+      <workItem from="1682967312121" duration="12447000" />
     </task>
     <servers />
   </component>
@@ -255,7 +254,7 @@
     <SUITE FILE_PATH="coverage/Maghz$pytest_for_test_bert_basic_TestBert_test_input_embedding.coverage" NAME="pytest for test_bert_basic.TestBert.test_input_embedding Coverage Results" MODIFIED="1679644660745" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/mgz/models/nlp" />
     <SUITE FILE_PATH="coverage/Maghz$pytest_for_test_bert_basic_TestBert_test_mask.coverage" NAME="pytest for test_bert_basic.TestBert.test_mask Coverage Results" MODIFIED="1679644718792" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/mgz/models/nlp" />
     <SUITE FILE_PATH="coverage/Maghz$bert_ops__1_.coverage" NAME="bert_ops (1) Coverage Results" MODIFIED="1676943236252" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/mgz/run_ops" />
-    <SUITE FILE_PATH="coverage/Maghz$bart_implementation_comparison__1_.coverage" NAME="bart_implementation_comparison (1) Coverage Results" MODIFIED="1683265729424" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/mgz/models/nlp" />
+    <SUITE FILE_PATH="coverage/Maghz$bart_implementation_comparison__1_.coverage" NAME="bart_implementation_comparison (1) Coverage Results" MODIFIED="1683355462630" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/mgz/models/nlp" />
     <SUITE FILE_PATH="coverage/Maghz$pytest_for_test_bert_basic_TestBert_test_inference.coverage" NAME="pytest for test_bert_basic.TestBert.test_inference Coverage Results" MODIFIED="1679902331333" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/mgz/models/nlp" />
     <SUITE FILE_PATH="coverage/Maghz$tokenizers.coverage" NAME="tokenizers Coverage Results" MODIFIED="1676966554058" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/mgz/models/nlp" />
     <SUITE FILE_PATH="coverage/Maghz$loading_weights.coverage" NAME="loading_weights Coverage Results" MODIFIED="1677111976570" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/mgz/model_vc" />

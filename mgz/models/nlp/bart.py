@@ -239,7 +239,7 @@ class MultiHeadedAttention(nn.Module):
         del query
         del key
         del value
-        return self.linears[-1](x)
+        return self.out_proj(x)
 
 
 class BartEncoderLayer(nn.Module):
@@ -265,12 +265,14 @@ class BartEncoderLayer(nn.Module):
             src_mask: IntTensorT['B,SrcSeqLen'],
     ) -> FloatTensorT['B,SrcSeqLen,EmbedLen']:
         residual = enc_input
-        hidden_states, _ = self.self_attn.forward(
+        hidden_states = self.self_attn.forward(
             query=enc_input, key=enc_input, value=enc_input, mask=src_mask
         )
 
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout,
                                               training=self.training)
+        print('hidden states', hidden_states.shape)
+        print ('residual', residual.shape)
         hidden_states = residual + hidden_states
         hidden_states = self.self_attn_layer_norm(hidden_states)
 

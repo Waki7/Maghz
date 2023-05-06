@@ -37,6 +37,8 @@ class BaseDataset(Dataset):
         'Generates one sample of data'
         raise NotImplementedError
 
+    def pad_idx(self) -> int:
+       raise NotImplementedError
     # class _MapStyleDataset(torch.utils.data.Dataset):
 
     # def __init__(self, iter_data) -> None:
