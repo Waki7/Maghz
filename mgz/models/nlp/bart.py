@@ -136,10 +136,21 @@ def _attention(query: TensorT,
         Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
     "Compute 'Scaled Dot Product Attention'"
     d_k = query.size(-1)
+    print('mask', mask.shape)
+    print('d_k', query.shape, key.transpose(-2, -1).shape)
     scores: FloatTensorT['B,OutSeqLen,SrcSeqLen'] = \
         torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
+    print('scores', scores.shape)
     if mask is not None:
         scores = scores.masked_fill(mask == 0, -1e4)
+    print('scores', scores.shape)
+
+    print('------')
+    print('query', query.shape)
+    print('key', key.shape)
+    print('value', value.shape)
+    print('scores', scores.shape)
+    print('mask', mask.shape)
     # also called attention weights
     p_attn: torch.Tensor = scores.softmax(dim=-1)
     if dropout_p is not None:
@@ -164,8 +175,6 @@ def self_attention(query: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
                    mask: IntTensorT['B,1,SrcSeqLen,SrcSeqLen'] = None,
                    dropout=None) -> \
         Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
-    mask.unsqueeze_(1)  # same masking for all nheads, so expand at dim 1
-    print('self attn')
     return _attention(query, key, value, mask, dropout)
 
 
@@ -205,17 +214,15 @@ class MultiHeadedAttention(nn.Module):
     def forward(
             self,
             # Embed Length must be divisible by num_heads
-            query: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
-            key: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
-            value: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
+            query: FloatTensorT['B,SrcSeqLen,EmbedLen'],
+            key: FloatTensorT['B,SrcSeqLen,EmbedLen'],
+            value: FloatTensorT['B,SrcSeqLen,EmbedLen'],
             mask: IntTensorT['B,OutSeqLen,OutSeqLen'] = None
     ) -> FloatTensorT['B,SrcSeqLen,EmbedLen']:
         """Input shape: Batch x Time x Channel"""
         "Implements Figure 2"
-        if mask is not None:
-            # Same mask applied to all h heads.
-            attention_mask = mask.unsqueeze(1)
-        nbatches = attention_mask.size(0)
+        nbatches = query.size(0)
+        seq_len = query.size(1)
 
         # 1) Do all the linear projections in batch from d_model => h x d_k
         query = self.q_proj(query).view(nbatches, -1, self.n_heads,
@@ -224,10 +231,20 @@ class MultiHeadedAttention(nn.Module):
                                     self.head_dim).transpose(1, 2)
         value = self.q_proj(value).view(nbatches, -1, self.n_heads,
                                         self.head_dim).transpose(1, 2)
+        print('n heads', self.n_heads)
+        print('query', query.shape)
+        print('key', key.shape)
+        print('value', value.shape)
+        # query: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'] = query.view(
+        #     nbatches, seq_len, self.head_dim, self.n_heads).permute(0, -1, 1, 2)
+        # key: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'] = key.view(
+        #     nbatches, seq_len, self.head_dim, self.n_heads).permute(0, -1, 1, 2)
+        # value: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'] = value.view(
+        #     nbatches, seq_len, self.head_dim, self.n_heads).permute(0, -1, 1, 2)
 
         # 2) Apply attention on all the projected vectors in batch.
         x, self.attn = attention(
-            query, key, value, mask=attention_mask, dropout=self.dropout
+            query, key, value, mask=mask, dropout=self.dropout
         )
 
         # 3) "Concat" using a view and apply a final linear.
@@ -239,6 +256,7 @@ class MultiHeadedAttention(nn.Module):
         del query
         del key
         del value
+        print('out_proj', x.shape)
         return self.out_proj(x)
 
 
@@ -264,15 +282,15 @@ class BartEncoderLayer(nn.Module):
             enc_input: FloatTensorT['B,SrcSeqLen,EmbedLen'],
             src_mask: IntTensorT['B,SrcSeqLen'],
     ) -> FloatTensorT['B,SrcSeqLen,EmbedLen']:
+        print('enc input', enc_input.shape)
         residual = enc_input
         hidden_states = self.self_attn.forward(
             query=enc_input, key=enc_input, value=enc_input, mask=src_mask
         )
-
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout,
                                               training=self.training)
         print('hidden states', hidden_states.shape)
-        print ('residual', residual.shape)
+        print('residual', residual.shape)
         hidden_states = residual + hidden_states
         hidden_states = self.self_attn_layer_norm(hidden_states)
 
@@ -516,7 +534,6 @@ class BartEncoder(BartPretrainedModel):
                 [What are attention masks?](../glossary#attention-mask)
         """
         inputs_embeds = self.embed_tokens(input_ids) * self.embed_scale
-
         embed_pos = self.embed_positions(input_ids)
         embed_pos = embed_pos.to(inputs_embeds.device)
 
@@ -673,10 +690,10 @@ class BartModel(BartPretrainedModel):
                      tgt_mask: IntTensorT['B,OutSeqLen'],
                      encoder_memory: FloatTensorT['B,SrcSeqLen,EmbedLen']):
         return self.decoder(
-            input_ids=tgt_ids,
-            attention_mask=tgt_mask,
+            tgt_ids=tgt_ids,
             encoder_hidden_states=encoder_memory,
-            encoder_attention_mask=src_mask,
+            src_mask=src_mask,
+            tgt_mask=tgt_mask
         )
 
     def forward(
