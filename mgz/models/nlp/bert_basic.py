@@ -99,6 +99,8 @@ class MultiHeadedAttention(nn.Module):
         del query
         del key
         del value
+        print('x', x.shape)
+        exit(3)
         return self.linears[-1](x)
 
 
