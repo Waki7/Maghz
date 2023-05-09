@@ -15,8 +15,7 @@ from mgz.ds.sentence_datasets.multi_lex_sum import MultiLexSum
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceBatch, \
     SentenceDataset
 from mgz.models.nlp.base_transformer import BaseTransformer
-from mgz.models.nlp.bert_basic import EncoderDecoder, \
-    make_model
+from mgz.models.nlp.bert_basic import make_model
 from mgz.run_ops.learning_ops import LabelSmoothing, DummyOptimizer, \
     DummyScheduler, SimpleLossCompute, rate
 from mgz.typing import *
@@ -51,7 +50,8 @@ def run_epoch(
     batch: SentenceBatch
     for i, batch in enumerate(data_generator):
         out = model.forward(
-            batch.src, batch.tgt, batch.src_mask, batch.tgt_mask
+            src_ids=batch.src, tgt_ids=batch.tgt, src_mask=batch.src_mask,
+            tgt_mask=batch.tgt_mask
         )
         loss, loss_node = loss_compute(out, batch.tgt_y, batch.ntokens)
         # loss_node = loss_node / accum_iter

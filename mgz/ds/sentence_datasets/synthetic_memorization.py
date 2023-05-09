@@ -1,5 +1,6 @@
 from functools import partial
 
+import settings
 import spaces as sp
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
     SentenceBatch
@@ -19,7 +20,7 @@ class SyntheticMemorization(SentenceDataset):
         self.n_batches = n_samples // batch_size
         self.batch_size = batch_size
         self.loaded = True
-        self.use_cuda = False
+        self.use_cuda = True
 
     def cuda(self):
         self.use_cuda = True
@@ -40,9 +41,10 @@ class SyntheticMemorization(SentenceDataset):
             data[:, 0] = 1  # starting token
             src = data.requires_grad_(False).clone().detach()
             tgt = data.requires_grad_(False).clone().detach()
-            batch = SentenceBatch(src, tgt, 0)
             if self.use_cuda:
-                yield batch.cuda()
+                src = src.to(settings.DEVICE)
+                tgt = tgt.to(settings.DEVICE)
+            batch = SentenceBatch(src, tgt, 0)
             yield batch
 
     def __getitem__(self, index) -> SentenceBatch:

@@ -21,6 +21,8 @@ class SentenceBatch:
             self.tgt_y = tgt[:, 1:]
             self.tgt_mask = self.make_std_mask(self.tgt, pad)
             self.ntokens = (self.tgt_y != pad).data.sum()
+        self.tgt_mask.to(self.tgt.device)
+        self.src_mask.to(self.src.device)
 
     @staticmethod
     def make_std_mask(tgt: LongTensorT['B,SrcSeqLen'], pad: int):
@@ -31,7 +33,7 @@ class SentenceBatch:
         )
         return tgt_mask
 
-    def cuda(self):
+    def try_cuda(self):
         self.src = self.src.cuda()
         self.src_mask = self.src_mask.cuda()
         self.tgt = self.tgt.cuda()

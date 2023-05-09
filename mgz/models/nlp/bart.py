@@ -87,24 +87,6 @@ def _make_causal_mask(input_ids_shape: torch.Size, dtype: torch.dtype,
     return mask[None, None, :, :].expand(bsz, 1, tgt_len,
                                          tgt_len + past_key_values_length)
 
-
-def _expand_mask(mask: torch.Tensor, dtype: torch.dtype,
-                 tgt_len: Optional[int] = None):
-    """
-    Expands attention_mask from `[bsz, seq_len]` to `[bsz, 1, tgt_seq_len, src_seq_len]`.
-    """
-    bsz, src_len = mask.size()
-    tgt_len = tgt_len if tgt_len is not None else src_len
-
-    expanded_mask = mask[:, None, None, :].expand(bsz, 1, tgt_len, src_len).to(
-        dtype)
-
-    inverted_mask = 1.0 - expanded_mask
-
-    return inverted_mask.masked_fill(inverted_mask.to(torch.bool),
-                                     torch.finfo(dtype).min)
-
-
 class BartLearnedPositionalEmbedding(nn.Embedding):
     """
     This module learns positional embeddings up to a fixed maximum size.
@@ -128,10 +110,10 @@ class BartLearnedPositionalEmbedding(nn.Embedding):
         return super().forward(positions + self.offset)
 
 
-def _attention(query: TensorT,
-               key: TensorT,
-               value: TensorT,
-               mask: TensorT = None,
+def _attention(query: FloatTensorT,
+               key: FloatTensorT,
+               value: FloatTensorT,
+               mask: IntTensorT = None,
                dropout_p: float = None) -> \
         Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
     "Compute 'Scaled Dot Product Attention'"
@@ -139,6 +121,8 @@ def _attention(query: TensorT,
     scores: FloatTensorT['B,OutSeqLen,SrcSeqLen'] = \
         torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
     if mask is not None:
+        # same mask per head
+        mask = mask.unsqueeze(1)
         scores = scores.masked_fill(mask == 0, -1e4)
     # also called attention weights
     p_attn: torch.Tensor = scores.softmax(dim=-1)
@@ -164,8 +148,7 @@ def self_attention(query: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
                    mask: IntTensorT['B,1,SrcSeqLen,SrcSeqLen'] = None,
                    dropout=None) -> \
         Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
-    mask.unsqueeze_(1)  # same masking for all nheads, so expand at dim 1
-    print('self attn')
+    # mask.unsqueeze_(1)  # same masking for all nheads, so expand at dim 1
     return _attention(query, key, value, mask, dropout)
 
 
@@ -205,18 +188,20 @@ class MultiHeadedAttention(nn.Module):
     def forward(
             self,
             # Embed Length must be divisible by num_heads
-            query: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
-            key: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
-            value: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
-            mask: IntTensorT['B,OutSeqLen,OutSeqLen'] = None
+            query: FloatTensorT['B,OutSeqLen,EmbedLen'],
+            key: FloatTensorT['B,SrcSeqLen,EmbedLen'],
+            value: FloatTensorT['B,SrcSeqLen,EmbedLen'],
+            mask: IntTensorT['B,Opt[OutSeqLen],OutSeqLen'] = None
     ) -> FloatTensorT['B,SrcSeqLen,EmbedLen']:
         """Input shape: Batch x Time x Channel"""
         "Implements Figure 2"
-        if mask is not None:
-            # Same mask applied to all h heads.
-            attention_mask = mask.unsqueeze(1)
+        attention_mask = mask
+        if mask is not None and mask.dim() == 2:
+            # Same mask applied to all tgt sequence if not specified
+            attention_mask = mask.unsqueeze(1)#.expand(-1, query.size(1), -1)
         nbatches = attention_mask.size(0)
 
+        # here we split the embedding into n_heads
         # 1) Do all the linear projections in batch from d_model => h x d_k
         query = self.q_proj(query).view(nbatches, -1, self.n_heads,
                                         self.head_dim).transpose(1, 2)
@@ -271,8 +256,6 @@ class BartEncoderLayer(nn.Module):
 
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout,
                                               training=self.training)
-        print('hidden states', hidden_states.shape)
-        print ('residual', residual.shape)
         hidden_states = residual + hidden_states
         hidden_states = self.self_attn_layer_norm(hidden_states)
 
@@ -494,12 +477,12 @@ class BartEncoder(BartPretrainedModel):
 
     def forward(
             self,
-            input_ids: LongTensorT['B,SrcSeqLen'],
+            src_ids: LongTensorT['B,SrcSeqLen'],
             src_mask: IntTensorT['B,SrcSeqLen']
     ) -> FloatTensorT['B,SrcSeqLen,EmbedLen']:
         r"""
         Args:
-            input_ids (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
+            src_ids (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
                 Indices of input sequence tokens in the vocabulary. Padding will be ignored by default should you
                 provide it.
 
@@ -515,20 +498,15 @@ class BartEncoder(BartPretrainedModel):
 
                 [What are attention masks?](../glossary#attention-mask)
         """
-        inputs_embeds = self.embed_tokens(input_ids) * self.embed_scale
+        inputs_embeds = self.embed_tokens(src_ids) * self.embed_scale
 
-        embed_pos = self.embed_positions(input_ids)
+        embed_pos = self.embed_positions(src_ids)
         embed_pos = embed_pos.to(inputs_embeds.device)
 
         hidden_states = inputs_embeds + embed_pos
         hidden_states = self.layernorm_embedding(hidden_states)
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout,
                                               training=self.training)
-
-        # expand attention_mask
-        if src_mask is not None:
-            # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-            src_mask = _expand_mask(src_mask, inputs_embeds.dtype)
 
         encoder_layer: BartEncoderLayer
         for idx, encoder_layer in enumerate(self.layers):
@@ -650,7 +628,7 @@ class BartModel(BartPretrainedModel):
     def encode(self, src_ids: LongTensorT['B,SrcSeqLen'],
                src_mask: IntTensorT['B,SrcSeqLen']):
         return self.encoder.forward(
-            input_ids=src_ids,
+            src_ids=src_ids,
             src_mask=src_mask,
         )
 
@@ -668,28 +646,29 @@ class BartModel(BartPretrainedModel):
     #     )
 
     def decode_train(self,
-                     src_mask: IntTensorT['B,SrcSeqLen'],
                      tgt_ids: LongTensorT['B,OutSeqLen'],
+                     src_mask: IntTensorT['B,SrcSeqLen'],
                      tgt_mask: IntTensorT['B,OutSeqLen'],
                      encoder_memory: FloatTensorT['B,SrcSeqLen,EmbedLen']):
-        return self.decoder(
-            input_ids=tgt_ids,
-            attention_mask=tgt_mask,
+        print(tgt_ids)
+        return self.decoder.forward(
+            tgt_ids=tgt_ids,
             encoder_hidden_states=encoder_memory,
-            encoder_attention_mask=src_mask,
+            src_mask=src_mask,
+            tgt_mask=tgt_mask,
         )
 
     def forward(
             self,
             src_ids: LongTensorT['B,SrcSeqLen'],
-            src_mask: IntTensorT['B,SrcSeqLen'],
             tgt_ids: LongTensorT['B,OutSeqLen'],
+            src_mask: IntTensorT['B,SrcSeqLen'],
             tgt_mask: IntTensorT['B,OutSeqLen']
     ) -> FloatTensorT['B,OutSeqLen,EmbedLen']:
         encoder_outputs = self.encode(src_ids=src_ids, src_mask=src_mask)
         decoder_hidden_state = self.decode_train(
-            src_mask=src_mask,
             tgt_ids=tgt_ids,
+            src_mask=src_mask,
             tgt_mask=tgt_mask,
             encoder_memory=encoder_outputs,
         )
@@ -746,7 +725,7 @@ class BartForConditionalGeneration(BartPretrainedModel):
     def encode(self, src_ids: LongTensorT['B,SrcSeqLen'],
                src_mask: IntTensorT['B,SrcSeqLen']):
         return self.encoder.forward(
-            input_ids=src_ids,
+            src_ids=src_ids,
             src_mask=src_mask,
         )
 

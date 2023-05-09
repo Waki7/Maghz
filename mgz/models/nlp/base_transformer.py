@@ -13,8 +13,8 @@ from mgz.typing import *
 
 class BaseTransformer(nn.Module):
 
-    def forward(self, src: LongTensorT['B,SrcSeqLen'],
-                tgt: LongTensorT['B,OutSeqLen'],
+    def forward(self, src_ids: LongTensorT['B,SrcSeqLen'],
+                tgt_ids: LongTensorT['B,OutSeqLen'],
                 src_mask: IntTensorT['B,SrcSeqLen'],
                 tgt_mask: IntTensorT['B,OutSeqLen']):
        raise NotImplementedError

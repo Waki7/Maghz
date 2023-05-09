@@ -3,11 +3,10 @@ import torch
 from torch.optim.lr_scheduler import LambdaLR
 from transformers import BartConfig
 
+import settings
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceBatch
 from mgz.ds.sentence_datasets.synthetic_memorization import \
     SyntheticMemorization
-
-from mgz.ds.sentence_datasets.multi_lex_sum import MultiLexSum
 from mgz.run_ops.learning_ops import LabelSmoothing, SimpleLossCompute, rate
 from mgz.run_ops.run_ops import TrainState
 from mgz.run_ops.run_ops import run_epoch
@@ -57,7 +56,7 @@ def main2():
         # train_ds = valid_ds
 
         train_dl, val_dl = create_dataloaders(
-            train_ds, valid_ds, torch.device('cpu'),
+            train_ds, valid_ds, settings.DEVICE,
             batch_size=10,
             is_distributed=False,
         )
@@ -65,7 +64,7 @@ def main2():
 
         cfg.vocab_size = max(train_ds.src_vocab_len(), train_ds.tgt_vocab_len())
         model = BartForConditionalGeneration(cfg)
-        # model.to(settings.DEVICE)
+        model.to(settings.DEVICE)
         model.train()
         train_state = TrainState()
         criterion = LabelSmoothing(
