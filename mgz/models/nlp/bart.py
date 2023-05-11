@@ -87,6 +87,7 @@ def _make_causal_mask(input_ids_shape: torch.Size, dtype: torch.dtype,
     return mask[None, None, :, :].expand(bsz, 1, tgt_len,
                                          tgt_len + past_key_values_length)
 
+
 class BartLearnedPositionalEmbedding(nn.Embedding):
     """
     This module learns positional embeddings up to a fixed maximum size.
@@ -118,23 +119,12 @@ def _attention(query: FloatTensorT,
         Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
     "Compute 'Scaled Dot Product Attention'"
     d_k = query.size(-1)
-    print('mask', mask.shape)
-    print('d_k', query.shape, key.transpose(-2, -1).shape)
     scores: FloatTensorT['B,OutSeqLen,SrcSeqLen'] = \
         torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
-    print('scores', scores.shape)
     if mask is not None:
         # same mask per head
         mask = mask.unsqueeze(1)
         scores = scores.masked_fill(mask == 0, -1e4)
-    print('scores', scores.shape)
-
-    print('------')
-    print('query', query.shape)
-    print('key', key.shape)
-    print('value', value.shape)
-    print('scores', scores.shape)
-    print('mask', mask.shape)
     # also called attention weights
     p_attn: torch.Tensor = scores.softmax(dim=-1)
     if dropout_p is not None:
@@ -208,9 +198,8 @@ class MultiHeadedAttention(nn.Module):
         attention_mask = mask
         if mask is not None and mask.dim() == 2:
             # Same mask applied to all tgt sequence if not specified
-            attention_mask = mask.unsqueeze(1)#.expand(-1, query.size(1), -1)
+            attention_mask = mask.unsqueeze(1)  # .expand(-1, query.size(1), -1)
         nbatches = attention_mask.size(0)
-
         # here we split the embedding into n_heads
         # 1) Do all the linear projections in batch from d_model => h x d_k
         query = self.q_proj(query).view(nbatches, -1, self.n_heads,
@@ -219,16 +208,6 @@ class MultiHeadedAttention(nn.Module):
                                     self.head_dim).transpose(1, 2)
         value = self.q_proj(value).view(nbatches, -1, self.n_heads,
                                         self.head_dim).transpose(1, 2)
-        print('n heads', self.n_heads)
-        print('query', query.shape)
-        print('key', key.shape)
-        print('value', value.shape)
-        # query: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'] = query.view(
-        #     nbatches, seq_len, self.head_dim, self.n_heads).permute(0, -1, 1, 2)
-        # key: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'] = key.view(
-        #     nbatches, seq_len, self.head_dim, self.n_heads).permute(0, -1, 1, 2)
-        # value: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'] = value.view(
-        #     nbatches, seq_len, self.head_dim, self.n_heads).permute(0, -1, 1, 2)
 
         # 2) Apply attention on all the projected vectors in batch.
         x, self.attn = attention(
@@ -244,7 +223,6 @@ class MultiHeadedAttention(nn.Module):
         del query
         del key
         del value
-        print('out_proj', x.shape)
         return self.out_proj(x)
 
 
@@ -270,7 +248,6 @@ class BartEncoderLayer(nn.Module):
             enc_input: FloatTensorT['B,SrcSeqLen,EmbedLen'],
             src_mask: IntTensorT['B,SrcSeqLen'],
     ) -> FloatTensorT['B,SrcSeqLen,EmbedLen']:
-        print('enc input', enc_input.shape)
         residual = enc_input
         hidden_states = self.self_attn.forward(
             query=enc_input, key=enc_input, value=enc_input, mask=src_mask
@@ -350,7 +327,7 @@ class BartDecoderLayer(nn.Module):
 
         # Cross-Attention Block
         residual = hidden_states
-        hidden_states, cross_attn_present_key_value = \
+        hidden_states = \
             self.encoder_attn.forward(
                 query=hidden_states, key=encoder_hidden_states,
                 value=encoder_hidden_states,
@@ -519,16 +496,9 @@ class BartEncoder(BartPretrainedModel):
 
                 [What are attention masks?](../glossary#attention-mask)
         """
-<<<<<<< HEAD
         inputs_embeds = self.embed_tokens(src_ids) * self.embed_scale
-
         embed_pos = self.embed_positions(src_ids)
-=======
-        inputs_embeds = self.embed_tokens(input_ids) * self.embed_scale
-        embed_pos = self.embed_positions(input_ids)
->>>>>>> a82cfb1f9d3898f3a262a4e9001e656ffe7a8b60
         embed_pos = embed_pos.to(inputs_embeds.device)
-
         hidden_states = inputs_embeds + embed_pos
         hidden_states = self.layernorm_embedding(hidden_states)
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout,
@@ -622,7 +592,7 @@ class BartDecoder(BartPretrainedModel):
                 src_mask=src_mask,
                 tgt_mask=tgt_mask
             )
-            hidden_states = layer_outputs[0]
+            hidden_states = layer_outputs
 
         return hidden_states
 
@@ -835,365 +805,4 @@ class BartForConditionalGeneration(BartPretrainedModel):
                 tuple(past_state.index_select(0, beam_idx) for past_state in
                       layer_past[:2]) + layer_past[2:],
             )
-        return reordered_past
-
-
-class BartForSequenceClassification(BartPretrainedModel):
-    _keys_to_ignore_on_load_missing = ["encoder.embed_tokens.weight",
-                                       "decoder.embed_tokens.weight"]
-
-    def __init__(self, config: BartConfig, **kwargs):
-        super().__init__(config, **kwargs)
-        self.model = BartModel(config)
-        self.classification_head = BartClassificationHead(
-            config.d_model,
-            config.d_model,
-            config.num_labels,
-            config.classifier_dropout,
-        )
-        self.model._init_weights(self.classification_head.dense)
-        self.model._init_weights(self.classification_head.out_proj)
-
-    def forward(
-            self,
-            input_ids: torch.LongTensor = None,
-            attention_mask: Optional[torch.Tensor] = None,
-            decoder_input_ids: Optional[torch.LongTensor] = None,
-            decoder_attention_mask: Optional[torch.LongTensor] = None,
-            head_mask: Optional[torch.Tensor] = None,
-            decoder_head_mask: Optional[torch.Tensor] = None,
-            cross_attn_head_mask: Optional[torch.Tensor] = None,
-            encoder_outputs: Optional[List[torch.FloatTensor]] = None,
-            inputs_embeds: Optional[torch.FloatTensor] = None,
-            decoder_inputs_embeds: Optional[torch.FloatTensor] = None,
-            labels: Optional[torch.LongTensor] = None,
-            use_cache: Optional[bool] = None,
-            output_attentions: Optional[bool] = None,
-            output_hidden_states: Optional[bool] = None,
-            return_dict: Optional[bool] = None,
-    ) -> Union[Tuple, Seq2SeqSequenceClassifierOutput]:
-        r"""
-        labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
-            Labels for computing the sequence classification/regression loss. Indices should be in `[0, ...,
-            config.num_labels - 1]`. If `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
-        """
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        if labels is not None:
-            use_cache = False
-
-        if input_ids is None and inputs_embeds is not None:
-            raise NotImplementedError(
-                f"Passing input embeddings is currently not supported for {self.__class__.__name__}"
-            )
-
-        outputs = self.model(
-            input_ids,
-            attention_mask=attention_mask,
-            decoder_input_ids=decoder_input_ids,
-            decoder_attention_mask=decoder_attention_mask,
-            head_mask=head_mask,
-            decoder_head_mask=decoder_head_mask,
-            cross_attn_head_mask=cross_attn_head_mask,
-            encoder_outputs=encoder_outputs,
-            inputs_embeds=inputs_embeds,
-            decoder_inputs_embeds=decoder_inputs_embeds,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
-        hidden_states = outputs[0]  # last hidden state
-
-        eos_mask = input_ids.eq(self.config.eos_token_id).to(
-            hidden_states.device)
-
-        if len(torch.unique_consecutive(eos_mask.sum(1))) > 1:
-            raise ValueError(
-                "All examples must have the same number of <eos> tokens.")
-        sentence_representation = hidden_states[eos_mask, :].view(
-            hidden_states.size(0), -1, hidden_states.size(-1))[
-                                  :, -1, :
-                                  ]
-        logits = self.classification_head(sentence_representation)
-
-        loss = None
-        if labels is not None:
-            if self.config.problem_type is None:
-                if self.config.num_labels == 1:
-                    self.config.problem_type = "regression"
-                elif self.config.num_labels > 1 and (
-                        labels.dtype == torch.long or labels.dtype == torch.int):
-                    self.config.problem_type = "single_label_classification"
-                else:
-                    self.config.problem_type = "multi_label_classification"
-
-            if self.config.problem_type == "regression":
-                loss_fct = MSELoss()
-                if self.config.num_labels == 1:
-                    loss = loss_fct(logits.squeeze(), labels.squeeze())
-                else:
-                    loss = loss_fct(logits, labels)
-            elif self.config.problem_type == "single_label_classification":
-                loss_fct = CrossEntropyLoss()
-                loss = loss_fct(logits.view(-1, self.config.num_labels),
-                                labels.view(-1))
-            elif self.config.problem_type == "multi_label_classification":
-                loss_fct = BCEWithLogitsLoss()
-                loss = loss_fct(logits, labels)
-        if not return_dict:
-            output = (logits,) + outputs[1:]
-            return ((loss,) + output) if loss is not None else output
-
-        return Seq2SeqSequenceClassifierOutput(
-            loss=loss,
-            logits=logits,
-            past_key_values=outputs.past_key_values,
-            decoder_hidden_states=outputs.decoder_hidden_states,
-            decoder_attentions=outputs.decoder_attentions,
-            cross_attentions=outputs.cross_attentions,
-            encoder_last_hidden_state=outputs.encoder_last_hidden_state,
-            encoder_hidden_states=outputs.encoder_hidden_states,
-            encoder_attentions=outputs.encoder_attentions,
-        )
-
-
-class BartForQuestionAnswering(BartPretrainedModel):
-    _keys_to_ignore_on_load_missing = ["encoder.embed_tokens.weight",
-                                       "decoder.embed_tokens.weight"]
-
-    def __init__(self, config):
-        super().__init__(config)
-
-        config.num_labels = 2
-        self.num_labels = config.num_labels
-
-        self.model = BartModel(config)
-        self.qa_outputs = nn.Linear(config.hidden_size, config.num_labels)
-
-        self.model._init_weights(self.qa_outputs)
-
-    def forward(
-            self,
-            input_ids: torch.Tensor = None,
-            attention_mask: Optional[torch.Tensor] = None,
-            decoder_input_ids: Optional[torch.LongTensor] = None,
-            decoder_attention_mask: Optional[torch.LongTensor] = None,
-            head_mask: Optional[torch.Tensor] = None,
-            decoder_head_mask: Optional[torch.Tensor] = None,
-            cross_attn_head_mask: Optional[torch.Tensor] = None,
-            encoder_outputs: Optional[List[torch.FloatTensor]] = None,
-            start_positions: Optional[torch.LongTensor] = None,
-            end_positions: Optional[torch.LongTensor] = None,
-            inputs_embeds: Optional[torch.FloatTensor] = None,
-            decoder_inputs_embeds: Optional[torch.FloatTensor] = None,
-            use_cache: Optional[bool] = None,
-            output_attentions: Optional[bool] = None,
-            output_hidden_states: Optional[bool] = None,
-            return_dict: Optional[bool] = None,
-    ) -> Union[Tuple, Seq2SeqQuestionAnsweringModelOutput]:
-        r"""
-        start_positions (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
-            Labels for position (index) of the start of the labelled span for computing the token classification loss.
-            Positions are clamped to the length of the sequence (*sequence_length*). Position outside of the sequence
-            are not taken into account for computing the loss.
-        end_positions (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
-            Labels for position (index) of the end of the labelled span for computing the token classification loss.
-            Positions are clamped to the length of the sequence (*sequence_length*). Position outside of the sequence
-            are not taken into account for computing the loss.
-        """
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        if start_positions is not None and end_positions is not None:
-            use_cache = False
-
-        outputs = self.model(
-            input_ids,
-            attention_mask=attention_mask,
-            decoder_input_ids=decoder_input_ids,
-            decoder_attention_mask=decoder_attention_mask,
-            head_mask=head_mask,
-            decoder_head_mask=decoder_head_mask,
-            cross_attn_head_mask=cross_attn_head_mask,
-            encoder_outputs=encoder_outputs,
-            inputs_embeds=inputs_embeds,
-            decoder_inputs_embeds=decoder_inputs_embeds,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
-
-        sequence_output = outputs[0]
-
-        logits = self.qa_outputs(sequence_output)
-        start_logits, end_logits = logits.split(1, dim=-1)
-        start_logits = start_logits.squeeze(-1).contiguous()
-        end_logits = end_logits.squeeze(-1).contiguous()
-
-        total_loss = None
-        if start_positions is not None and end_positions is not None:
-            # If we are on multi-GPU, split add a dimension
-            if len(start_positions.size()) > 1:
-                start_positions = start_positions.squeeze(-1)
-            if len(end_positions.size()) > 1:
-                end_positions = end_positions.squeeze(-1)
-            # sometimes the start/end positions are outside our model inputs, we ignore these terms
-            ignored_index = start_logits.size(1)
-            start_positions = start_positions.clamp(0, ignored_index)
-            end_positions = end_positions.clamp(0, ignored_index)
-
-            loss_fct = CrossEntropyLoss(ignore_index=ignored_index)
-            start_loss = loss_fct(start_logits, start_positions)
-            end_loss = loss_fct(end_logits, end_positions)
-            total_loss = (start_loss + end_loss) / 2
-
-        if not return_dict:
-            output = (
-                         start_logits,
-                         end_logits,
-                     ) + outputs[1:]
-            return ((
-                        total_loss,) + output) if total_loss is not None else output
-
-        return Seq2SeqQuestionAnsweringModelOutput(
-            loss=total_loss,
-            start_logits=start_logits,
-            end_logits=end_logits,
-            past_key_values=outputs.past_key_values,
-            decoder_hidden_states=outputs.decoder_hidden_states,
-            decoder_attentions=outputs.decoder_attentions,
-            cross_attentions=outputs.cross_attentions,
-            encoder_last_hidden_state=outputs.encoder_last_hidden_state,
-            encoder_hidden_states=outputs.encoder_hidden_states,
-            encoder_attentions=outputs.encoder_attentions,
-        )
-
-
-class BartDecoderWrapper(BartPretrainedModel):
-    """
-    This wrapper class is a helper class to correctly load pretrained checkpoints when the causal language model is
-    used in combination with the [`EncoderDecoderModel`] framework.
-    """
-
-    def __init__(self, config):
-        super().__init__(config)
-        self.decoder = BartDecoder(config)
-
-    def forward(self, *args, **kwargs):
-        return self.decoder(*args, **kwargs)
-
-
-class BartForCausalLM(BartPretrainedModel):
-    _keys_to_ignore_on_load_missing = ["lm_head.weight"]
-
-    def __init__(self, config):
-        config = copy.deepcopy(config)
-        config.is_decoder = True
-        config.is_encoder_decoder = False
-        super().__init__(config)
-        self.model = BartDecoderWrapper(config)
-
-        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size,
-                                 bias=False)
-
-        # Initialize weights and apply final processing
-        self.post_init()
-
-    def get_input_embeddings(self):
-        return self.model.decoder.embed_tokens
-
-    def set_input_embeddings(self, value):
-        self.model.decoder.embed_tokens = value
-
-    def get_output_embeddings(self):
-        return self.lm_head
-
-    def set_output_embeddings(self, new_embeddings):
-        self.lm_head = new_embeddings
-
-    def set_decoder(self, decoder):
-        self.model.decoder = decoder
-
-    def get_decoder(self):
-        return self.model.decoder
-
-    def forward(
-            self,
-            input_ids: torch.LongTensor = None,
-            attention_mask: Optional[torch.Tensor] = None,
-            encoder_hidden_states: Optional[torch.FloatTensor] = None,
-            encoder_attention_mask: Optional[torch.FloatTensor] = None,
-            head_mask: Optional[torch.Tensor] = None,
-            cross_attn_head_mask: Optional[torch.Tensor] = None,
-            past_key_values: Optional[List[torch.FloatTensor]] = None,
-            inputs_embeds: Optional[torch.FloatTensor] = None,
-            labels: Optional[torch.LongTensor] = None,
-            use_cache: Optional[bool] = None,
-            output_attentions: Optional[bool] = None,
-            output_hidden_states: Optional[bool] = None,
-            return_dict: Optional[bool] = None,
-    ) -> Union[Tuple, CausalLMOutputWithCrossAttentions]:
-
-        # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs = self.model.decoder(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            encoder_hidden_states=encoder_hidden_states,
-            encoder_attention_mask=encoder_attention_mask,
-            head_mask=head_mask,
-            cross_attn_head_mask=cross_attn_head_mask,
-            past_key_values=past_key_values,
-            inputs_embeds=inputs_embeds,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
-
-        logits = self.lm_head(outputs[0])
-
-        loss = None
-        if labels is not None:
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(logits.view(-1, self.config.vocab_size),
-                            labels.view(-1))
-
-        if not return_dict:
-            output = (logits,) + outputs[1:]
-            return (loss,) + output if loss is not None else output
-
-        return CausalLMOutputWithCrossAttentions(
-            loss=loss,
-            logits=logits,
-            past_key_values=outputs.past_key_values,
-            hidden_states=outputs.hidden_states,
-            attentions=outputs.attentions,
-            cross_attentions=outputs.cross_attentions,
-        )
-
-    def prepare_inputs_for_generation(
-            self, input_ids, past_key_values=None, attention_mask=None,
-            use_cache=None, **kwargs
-    ):
-        # if model is used as a decoder in encoder-decoder model, the decoder attention mask is created on the fly
-        if attention_mask is None:
-            attention_mask = input_ids.new_ones(input_ids.shape)
-
-        if past_key_values:
-            input_ids = input_ids[:, -1:]
-        # first step, decoder_cached_states are empty
-        return {
-            "input_ids": input_ids,
-            # encoder_outputs is defined. input_ids not needed
-            "attention_mask": attention_mask,
-            "past_key_values": past_key_values,
-            "use_cache": use_cache,
-        }
-
-    @staticmethod
-    def _reorder_cache(past, beam_idx):
-        reordered_past = ()
-        for layer_past in past:
-            reordered_past += (tuple(
-                past_state.index_select(0, beam_idx) for past_state in
-                layer_past),)
         return reordered_past

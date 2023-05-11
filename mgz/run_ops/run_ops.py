@@ -49,11 +49,12 @@ def run_epoch(
     i: int
     batch: SentenceBatch
     for i, batch in enumerate(data_generator):
-        out = model.forward(
+        print('i: ', i)
+        logits = model.forward(
             src_ids=batch.src, tgt_ids=batch.tgt, src_mask=batch.src_mask,
             tgt_mask=batch.tgt_mask
         )
-        loss, loss_node = loss_compute(out, batch.tgt_y, batch.ntokens)
+        loss, loss_node = loss_compute(logits, batch.tgt_y, batch.ntokens)
         # loss_node = loss_node / accum_iter
         if mode == "train" or mode == "train+log":
             loss_node.backward()

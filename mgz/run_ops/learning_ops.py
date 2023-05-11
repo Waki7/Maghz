@@ -20,6 +20,8 @@ from mgz.ds.sentence_datasets.sentence_datasets import SentenceBatch, \
 from mgz.models.nlp.bert_basic import subsequent_mask, EncoderDecoder, \
     PredictorHead, make_model
 from mgz.typing import *
+
+
 def rate(step, model_size, factor, warmup):
     """
     we have to default the step to 1 for LambdaLR function
@@ -128,13 +130,13 @@ class SimpleLossCompute:
         self.generator = generator
         self.criterion = criterion
 
-    def __call__(self, x: FloatTensorT['B,SrcSeqLen,EmbedLen'],
+    def __call__(self, logits: FloatTensorT['B,SrcSeqLen,OutNClasses'],
                  y: FloatTensorT['B,SrcSeqLen'],
                  norm_by: int):
-        x: FloatTensorT['B,SrcSeqLen,OutNClasses'] = self.generator(x)
         sloss = (
                 self.criterion(
-                    x.contiguous().view(-1, x.size(-1)), y.contiguous().view(-1)
+                    logits.contiguous().view(-1, logits.size(-1)),
+                    y.contiguous().view(-1)
                 )
                 / norm_by
         )
