@@ -40,7 +40,7 @@ class SyntheticMemorization(SentenceDataset):
                                  size=(self.batch_size, self.max_length))
             data[:, 0] = 1  # starting token
             src = data.requires_grad_(False).clone().detach()
-            tgt = data.requires_grad_(False).clone().detach()
+            tgt = data[:, :-1].requires_grad_(False).clone().detach()
             if self.use_cuda:
                 src = src.to(settings.DEVICE)
                 tgt = tgt.to(settings.DEVICE)

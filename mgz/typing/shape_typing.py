@@ -12,6 +12,7 @@ B = TypeVar("Batch")
 NHeads = NewType("NHeads", int)  # something like n attention heads
 SrcSeqLen = NewType("SeqLen", int)  # or input sequence length
 OutSeqLen = NewType("OutSeqLen", int)  # or output sequence length
+OutSeqStep = NewType("OutSeqStep", int)  # or output sequence length
 NClasses = NewType("NClasses", int)  # or output sequence length
 OutNClasses = NewType("OutNClasses", int)  # or output sequence length
 

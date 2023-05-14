@@ -14,7 +14,7 @@ from transformers.utils import (
     logging,
 )
 
-from mgz.models.nlp.base_transformer import BaseTransformer
+from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext
 from mgz.models.nlp.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     CausalLMOutputWithCrossAttentions,
@@ -114,17 +114,16 @@ class BartLearnedPositionalEmbedding(nn.Embedding):
 def _attention(query: FloatTensorT,
                key: FloatTensorT,
                value: FloatTensorT,
-               mask: IntTensorT = None,
+               mask: IntTensorT,
                dropout_p: float = None) -> \
         Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
     "Compute 'Scaled Dot Product Attention'"
     d_k = query.size(-1)
     scores: FloatTensorT['B,OutSeqLen,SrcSeqLen'] = \
         torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
-    if mask is not None:
-        # same mask per head
-        mask = mask.unsqueeze(1)
-        scores = scores.masked_fill(mask == 0, -1e4)
+    # same mask per head
+    mask = mask.unsqueeze(1)
+    scores = scores.masked_fill(mask == 0, -1e4)
     # also called attention weights
     p_attn: torch.Tensor = scores.softmax(dim=-1)
     if dropout_p is not None:
@@ -191,7 +190,8 @@ class MultiHeadedAttention(nn.Module):
             query: FloatTensorT['B,OutSeqLen,EmbedLen'],
             key: FloatTensorT['B,SrcSeqLen,EmbedLen'],
             value: FloatTensorT['B,SrcSeqLen,EmbedLen'],
-            mask: IntTensorT['B,Opt[OutSeqLen],OutSeqLen'] = None
+            mask: IntTensorT['B,Opt[OutSeqLen],OutSeqLen'] = None,
+            additonal_context: TransformerContext = None
     ) -> FloatTensorT['B,SrcSeqLen,EmbedLen']:
         """Input shape: Batch x Time x Channel"""
         "Implements Figure 2"
@@ -200,14 +200,24 @@ class MultiHeadedAttention(nn.Module):
             # Same mask applied to all tgt sequence if not specified
             attention_mask = mask.unsqueeze(1)  # .expand(-1, query.size(1), -1)
         nbatches = attention_mask.size(0)
+
+        def n_head_reshape(tensor):
+            return tensor.view(nbatches, -1, self.n_heads,
+                               self.head_dim).transpose(1, 2)
+
         # here we split the embedding into n_heads
         # 1) Do all the linear projections in batch from d_model => h x d_k
-        query = self.q_proj(query).view(nbatches, -1, self.n_heads,
-                                        self.head_dim).transpose(1, 2)
-        key = self.q_proj(key).view(nbatches, -1, self.n_heads,
-                                    self.head_dim).transpose(1, 2)
-        value = self.q_proj(value).view(nbatches, -1, self.n_heads,
-                                        self.head_dim).transpose(1, 2)
+        query = n_head_reshape(self.q_proj(query))
+        if additonal_context.generation:
+            key = n_head_reshape(self.k_proj(key))
+            value = n_head_reshape(self.v_proj(value))
+        else:
+            key = torch.cat([additonal_context.past_keys,
+                             n_head_reshape(self.k_proj(key[:, -1:, :]))],
+                            dim=2)
+            value = torch.cat([additonal_context.past_values,
+                               n_head_reshape(self.v_proj(key[:, -1:, :]))],
+                              dim=2)
 
         # 2) Apply attention on all the projected vectors in batch.
         x, self.attn = attention(
@@ -569,13 +579,12 @@ class BartDecoder(BartPretrainedModel):
             self,
             tgt_ids: LongTensorT['B,SrcSeqLen'],
             encoder_hidden_states: FloatTensorT['B,SeqLen,EmbedLen'],
-            src_mask: IntTensorT['B,SrcSeqLen'],
-            tgt_mask: IntTensorT['B,SrcSeqLen']
+            src_mask: IntTensorT['B,1,SrcSeqLen'],
+            tgt_mask: IntTensorT['B,OutSeqLen,OutSeqLen']
     ) -> Union[Tuple, BaseModelOutputWithPastAndCrossAttentions]:
         inputs_embeds = self.embed_tokens(tgt_ids) * self.embed_scale
         hidden_states = inputs_embeds
         hidden_states = self.layernorm_embedding(hidden_states)
-
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout,
                                               training=self.training)
 
@@ -643,8 +652,8 @@ class BartModel(BartPretrainedModel):
 
     def decode_train(self,
                      tgt_ids: LongTensorT['B,OutSeqLen'],
-                     src_mask: IntTensorT['B,SrcSeqLen'],
-                     tgt_mask: IntTensorT['B,OutSeqLen'],
+                     src_mask: IntTensorT['B,1|OutSeqLen,SrcSeqLen'],
+                     tgt_mask: IntTensorT['B,OutSeqLen,OutSeqLen'],
                      encoder_memory: FloatTensorT['B,SrcSeqLen,EmbedLen']):
         return self.decoder.forward(
             tgt_ids=tgt_ids,
@@ -668,6 +677,9 @@ class BartModel(BartPretrainedModel):
             encoder_memory=encoder_outputs,
         )
         return decoder_hidden_state
+
+    def generate(self):
+        encoder_outputs = self.encode(src_ids=src_ids, src_mask=src_mask)
 
 
 class BartForConditionalGeneration(BartPretrainedModel):
@@ -759,38 +771,6 @@ class BartForConditionalGeneration(BartPretrainedModel):
         lm_logits = lm_logits + self.final_logits_bias.to(lm_logits.device)
 
         return lm_logits
-
-    def prepare_inputs_for_generation(
-            self,
-            decoder_input_ids,
-            past_key_values=None,
-            attention_mask=None,
-            decoder_attention_mask=None,
-            head_mask=None,
-            decoder_head_mask=None,
-            cross_attn_head_mask=None,
-            use_cache=None,
-            encoder_outputs=None,
-            **kwargs
-    ):
-        # cut decoder_input_ids if past_key_values is used
-        if past_key_values is not None:
-            decoder_input_ids = decoder_input_ids[:, -1:]
-
-        return {
-            "input_ids": None,
-            # encoder_outputs is defined. input_ids not needed
-            "encoder_outputs": encoder_outputs,
-            "past_key_values": past_key_values,
-            "decoder_input_ids": decoder_input_ids,
-            "attention_mask": attention_mask,
-            "decoder_attention_mask": decoder_attention_mask,
-            "head_mask": head_mask,
-            "decoder_head_mask": decoder_head_mask,
-            "cross_attn_head_mask": cross_attn_head_mask,
-            "use_cache": use_cache,
-            # change this to avoid caching (presumably for debugging)
-        }
 
     def prepare_decoder_input_ids_from_labels(self, labels: torch.Tensor):
         return shift_tokens_right(labels, self.config.pad_token_id,

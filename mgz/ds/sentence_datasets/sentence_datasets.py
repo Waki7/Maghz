@@ -7,7 +7,6 @@ import spaces as sp
 from mgz.ds.base_dataset import BaseDataset
 from mgz.typing import *
 
-
 class SentenceBatch:
     """Object for holding a batch of data with mask during training."""
 

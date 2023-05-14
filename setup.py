@@ -80,16 +80,18 @@ setup(
         'datasets',
         'GPUtil',
         'altair',
-        # pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116 -U
-        # pip install -q torchdata==0.3.0 torchtext==0.12 spacy==3.4 -U
-        # pip install torchdata
+        # pip3 install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu116
+        # pip3 uninstall torchdata
+        # pip3 install torch==1.13.1 torchvision==0.14.1 torchaudio==0.13.1 torchtext==0.14.1 fastai==2.7.11
+        # pip3 install tokenizers
+        # pip3 install torchdata==0.5.1
         # python -m spacy download de_core_news_sm
 
-# # Uncomment for colab
-# #
-# !pip install -q torchdata==0.3.0 torchtext==0.12 spacy==3.2 altair GPUtil
-# !python -m spacy download de_core_news_sm
-# !python -m spacy download en_core_web_sm
+        # # Uncomment for colab
+        # #
+        # !pip install -q torchdata==0.3.0 torchtext==0.12 spacy==3.2 altair GPUtil
+        # !python -m spacy download de_core_news_sm
+        # !python -m spacy download en_core_web_sm
     ],
 
     # https://pypi.org/classifiers/

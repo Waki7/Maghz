@@ -1,6 +1,7 @@
 import copy
 import math
 
+import torch
 import torch.nn as nn
 from torch.nn.functional import log_softmax
 
@@ -10,6 +11,13 @@ from mgz.typing import *
 # import altair as alt
 # import GPUtil
 
+class TransformerContext:
+    def __init__(self):
+        self.generation = False
+        self.train = True
+        self.test = False
+        self.past_keys: FloatTensorT['B,OutSeqStep,EmbedLen'] = None
+        self.past_values: FloatTensorT['B,OutSeqStep,EmbedLen'] = None
 
 class BaseTransformer(nn.Module):
 

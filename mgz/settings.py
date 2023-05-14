@@ -25,13 +25,12 @@ if torch.cuda.is_available():
     DEVICE = torch.device('cuda:{}'.format(DEVICE_NUM))
     torch.cuda.set_device(DEVICE)
 else:
-    print('using cpu')
+    print('Settings: using cpu')
     to_device = to_cpu
     DEVICE = torch.device('cpu')
 DEVICE = torch.device('cpu')
-DTYPE_LONG = torch.long
-DTYPE_X = torch.half  # torch.float torch.half
-ARGS = {'device': DEVICE, 'dtype': DTYPE_X}
+DTYPE = torch.half
+ARGS = {'device': DEVICE, 'dtype': DTYPE}
 
 SEED = 23
 torch.manual_seed(SEED)
