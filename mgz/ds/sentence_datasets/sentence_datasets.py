@@ -12,14 +12,14 @@ class SentenceBatch:
 
     def __init__(self, src: LongTensorT['B,SrcSeqLen'],
                  tgt: SentenceT['B,SeqLen - 1'] = None,
-                 pad=2):  # 2 = <blank>
+                 pad_idx=2):  # 2 = <blank>
         self.src: LongTensorT['B,SrcSeqLen'] = src
-        self.src_mask = (src != pad).unsqueeze(-2)
+        self.src_mask = (src != pad_idx).unsqueeze(-2)
         if tgt is not None:
             self.tgt: LongTensorT['B,SeqLen - 1'] = tgt
             self.tgt_y = tgt[:, 1:]
-            self.tgt_mask = self.make_std_mask(self.tgt, pad)
-            self.ntokens = (self.tgt_y != pad).data.sum()
+            self.tgt_mask = self.make_std_mask(self.tgt, pad_idx)
+            self.ntokens = (self.tgt_y != pad_idx).data.sum()
         self.tgt_mask.to(self.tgt.device)
         self.src_mask.to(self.src.device)
 

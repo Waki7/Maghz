@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import Enum
 from functools import partial
 from os.path import exists
 
@@ -17,13 +18,15 @@ from mgz.ds.base_dataset import T
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
     collate_batch
 from mgz.models.nlp.tokenizing import Tokenizer, tokenize, TokenStrings
+from transformers import AutoTokenizer
 from mgz.typing import *
-from enum import Enum
+
 
 class InputSource(Enum):
     LONG = 'summary/long'
     SHORT = 'summary/short'
     TINY = 'summary/tiny'
+
 
 class MultiLexSum(SentenceDataset):
     def __init__(self, max_length: SrcSeqLen):
@@ -32,6 +35,8 @@ class MultiLexSum(SentenceDataset):
         self.max_length = max_length
         self._data: List[Dict[str, Union[SummaryT, List[SourceListT]]]] = []
 
+        # self.tokenizer_src: AutoTokenizer = AutoTokenizer.from_pretrained(
+        #     "spacy/en_core_web_sm")
         self.tokenizer_src = Tokenizer.load_en_web_sm()
         self.tokenizer_tgt = Tokenizer.load_en_web_sm()
         self.vocab_src, self.vocab_tgt = self.load_vocab(self.tokenizer_src,
@@ -102,6 +107,7 @@ class MultiLexSum(SentenceDataset):
 
         def tokenize_tgt(text: SummaryT) -> List[str]:
             return tokenize(text, self.tokenizer_tgt)
+
         return collate_batch(
             batch,
             tokenize_src,
@@ -206,6 +212,7 @@ class MultiLexSum(SentenceDataset):
 
     def tgt_vocab_len(self) -> int:
         return len(self.vocab_tgt)
+
 
 def main():
     # please install HuggingFace ds by pip install ds

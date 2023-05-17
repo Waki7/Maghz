@@ -29,7 +29,7 @@ else:
     to_device = to_cpu
     DEVICE = torch.device('cpu')
 
-DEVICE = torch.device('cpu')
+# DEVICE = torch.device('cpu')
 DTYPE_LONG = torch.long
 DTYPE_X = torch.half  # torch.float torch.half
 ARGS = {'device': DEVICE, 'dtype': DTYPE_X}

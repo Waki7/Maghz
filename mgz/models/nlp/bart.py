@@ -6,7 +6,6 @@ from abc import ABC
 
 import torch.utils.checkpoint
 from torch import nn
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers.activations import ACT2FN
 from transformers.modeling_utils import PreTrainedModel
 from transformers.models.bart.configuration_bart import BartConfig
@@ -14,12 +13,10 @@ from transformers.utils import (
     logging,
 )
 
+from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext
 from mgz.models.nlp.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
-    CausalLMOutputWithCrossAttentions,
-    Seq2SeqQuestionAnsweringModelOutput,
-    Seq2SeqSequenceClassifierOutput,
 )
 from mgz.typing import *
 
@@ -191,7 +188,7 @@ class MultiHeadedAttention(nn.Module):
             key: FloatTensorT['B,SrcSeqLen,EmbedLen'],
             value: FloatTensorT['B,SrcSeqLen,EmbedLen'],
             mask: IntTensorT['B,Opt[OutSeqLen],OutSeqLen'] = None,
-            additonal_context: TransformerContext = None
+            transformer_ctx: TransformerContext = None
     ) -> FloatTensorT['B,SrcSeqLen,EmbedLen']:
         """Input shape: Batch x Time x Channel"""
         "Implements Figure 2"
@@ -208,13 +205,11 @@ class MultiHeadedAttention(nn.Module):
         # here we split the embedding into n_heads
         # 1) Do all the linear projections in batch from d_model => h x d_k
         query = n_head_reshape(self.q_proj(query))
-        if additonal_context is not None and additonal_context.generation:
-            key = torch.cat([additonal_context.past_keys,
-                             n_head_reshape(self.k_proj(key[:, -1:, :]))],
-                            dim=2)
-            value = torch.cat([additonal_context.past_values,
-                               n_head_reshape(self.v_proj(key[:, -1:, :]))],
-                              dim=2)
+        if transformer_ctx is not None and transformer_ctx.in_generation:
+            key = transformer_ctx.add_key(
+                n_head_reshape(self.k_proj(key[:, -1:, :])))
+            value = transformer_ctx.add_key(
+                n_head_reshape(self.v_proj(value[:, -1:, :])))
         else:
             key = n_head_reshape(self.k_proj(key))
             value = n_head_reshape(self.v_proj(value))
@@ -731,7 +726,7 @@ class BartForConditionalGeneration(BartModel):
                    tgt_mask: IntTensorT['B,OutSeqLen,OutSeqLen']
                    ):
         context = TransformerContext()
-        context.generation = True
+        context.in_generation = True
         memory: FloatTensorT['B,OutSeqLen,EmbedLen'] = self.model.forward(
             src_ids=src_ids, src_mask=src_mask,
             tgt_ids=tgt_ids, tgt_mask=tgt_mask)
@@ -741,6 +736,32 @@ class BartForConditionalGeneration(BartModel):
                                                      src_mask=src_mask,
                                                      tgt_mask=tgt_mask,
                                                      transformer_ctx=context)
+
+    def generation_from_scratch(self,
+                                src_ids: LongTensorT['B,SrcSeqLen'],
+                                pad_id: int,
+                                bos_id: int
+                                ):
+        src_mask = (src_ids != pad_id).unsqueeze(-2)
+        tgt_ids = torch.ones((src_ids.shape[0], 1), dtype=torch.long) * bos_id
+        tgt_mask = (tgt_ids != pad_id).unsqueeze(-2)
+        tgt_mask = tgt_mask & subsequent_mask(tgt_ids.size(-1)).type_as(
+            tgt_mask.data
+        )
+
+        context = TransformerContext()
+        context.in_generation = True
+        memory: FloatTensorT[
+            'B,OutSeqLen,EmbedLen'] = self.model.forward(
+            src_ids=src_ids, src_mask=src_mask,
+            tgt_ids=tgt_ids, tgt_mask=tgt_mask)
+        for i in range(0, self.config.max_length):
+            decoder_hidden_state = self.model.decode(
+                encoder_memory=memory,
+                tgt_ids=tgt_ids,
+                src_mask=src_mask,
+                tgt_mask=tgt_mask,
+                transformer_ctx=context)
 
     def prepare_decoder_input_ids_from_labels(self, labels: torch.Tensor):
         return shift_tokens_right(labels, self.config.pad_token_id,

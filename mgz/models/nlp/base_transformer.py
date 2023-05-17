@@ -13,11 +13,27 @@ from mgz.typing import *
 
 class TransformerContext:
     def __init__(self):
-        self.generation = False
-        self.train = True
-        self.test = False
-        self.past_keys: FloatTensorT['B,OutSeqStep,EmbedLen'] = None
-        self.past_values: FloatTensorT['B,OutSeqStep,EmbedLen'] = None
+        self.in_generation = False
+        self.in_train = True
+        self.in_test = False
+        self.past_keys: FloatTensorT[
+            'B,NHeads,OutSeqStep,EmbedLen/NHeads'] = None
+        self.past_values: FloatTensorT[
+            'B,NHeads,OutSeqStep,EmbedLen/NHeads'] = None
+
+    def add_key(self,
+                new_key: FloatTensorT['B,NHeads,OutSeqStep,EmbedLen/NHeads']):
+        if self.past_keys is not None:
+            self.past_keys = torch.cat([self.past_keys, new_key], dim=2)
+
+    def add_value(self,
+                  new_val: FloatTensorT['B,NHeads,OutSeqStep,EmbedLen/NHeads']):
+        if self.past_values is not None:
+            self.past_values = torch.cat([self.past_values, new_val],
+                                         dim=2)
+
+    def reset(self):
+        del self
 
 
 class BaseTransformer(nn.Module):
