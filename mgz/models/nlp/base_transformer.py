@@ -19,27 +19,26 @@ class TransformerContext:
         self.past_keys: FloatTensorT['B,OutSeqStep,EmbedLen'] = None
         self.past_values: FloatTensorT['B,OutSeqStep,EmbedLen'] = None
 
+
 class BaseTransformer(nn.Module):
 
-    def forward(self, src_ids: LongTensorT['B,SrcSeqLen'],
-                tgt_ids: LongTensorT['B,OutSeqLen'],
-                src_mask: IntTensorT['B,SrcSeqLen'],
-                tgt_mask: IntTensorT['B,OutSeqLen']):
-       raise NotImplementedError
-
-    def encode(self, src: LongTensorT['B,SrcSeqLen'],
+    def encode(self, src_ids: LongTensorT['B,SrcSeqLen'],
                src_mask: IntTensorT['B,SrcSeqLen']):
         raise NotImplementedError
 
-    def decode_train(self, memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
-                     src_mask: IntTensorT['B,OutSeqLen'],
-                     tgt: LongTensorT['B,OutSeqLen'], tgt_mask):
+    def decode(self,
+               encoder_memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
+               tgt_ids: LongTensorT['B,OutSeqLen'],
+               src_mask: IntTensorT['B,1|OutSeqLen,SrcSeqLen'],
+               tgt_mask: IntTensorT['B,OutSeqLen,OutSeqLen'],
+               transformer_ctx: TransformerContext):
         raise NotImplementedError
 
-    def decode(self, memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
-               src_mask: IntTensorT['B,OutSeqLen'],
-               tgt: IntTensorT['B,OutSeqLen'],
-               tgt_mask: IntTensorT['1,OutSeqLen']):
+    def forward(
+            self,
+            src_ids: LongTensorT['B,SrcSeqLen'],
+            tgt_ids: LongTensorT['B,OutSeqLen'],
+            src_mask: IntTensorT['B,1|OutSeqLen,SrcSeqLen'],
+            tgt_mask: IntTensorT['B,OutSeqLen,OutSeqLen']
+    ) -> FloatTensorT['B,OutSeqLen,EmbedLen']:
         raise NotImplementedError
-
-

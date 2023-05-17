@@ -16,7 +16,7 @@ def greedy_decode(model: EncoderDecoder, src: IntTensorT['B,SrcSeqLen'],
     ys = torch.zeros(1, 1).fill_(start_symbol).type_as(src.data)
     for i in range(max_len - 1):
         print('subsequent mask ', subsequent_mask(ys.size(1)).shape)
-        out: FloatTensorT['B,ys.size(1),EmbedLen'] = model.decode(
+        out: FloatTensorT['B,ys.size(1),EmbedLen'] = model.decode_infer(
             memory, src_mask, ys, subsequent_mask(ys.size(1)).type_as(src.data)
         )
         # THIS IS NOT THE RIGHT WAY TO DO THIS, ACTUALLY YOU SHOULD BE USING THE LAST TOKEN, AND MASKING PREVIOUS ONES IN THE SELF ATTENTION. SO YOUR QUERY VECTOR IS ONLY 1 IN SEQUENCE DIMENSION, WHILE KEY AND VALUE ARE GONNA GROW EVERY DECODING STEP. THAT WAY

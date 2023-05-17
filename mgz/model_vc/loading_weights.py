@@ -214,7 +214,7 @@ def greedy_decode(model: EncoderDecoder, src: IntTensorT['B,SrcSeqLen'],
     memory: FloatTensorT['B,SrcSeqLen,EmbedLen'] = model.encode(src, src_mask)
     ys = torch.zeros(1, 1).fill_(start_symbol).type_as(src.data)
     for i in range(max_len - 1):
-        out = model.decode(
+        out = model.decode_infer(
             memory, src_mask, ys, subsequent_mask(ys.size(1)).type_as(src.data)
         )
         prob = model.generator(out[:, -1])

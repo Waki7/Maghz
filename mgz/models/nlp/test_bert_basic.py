@@ -123,7 +123,7 @@ class TestBert(unittest.TestCase):
             for i in range(9):
                 self.assertEqual(memory.shape, (1, 10, 512))
                 self.assertEqual(ys.shape, (1, 1 + i))
-                out = test_model.decode(
+                out = test_model.decode_infer(
                     memory, src_mask, ys,
                     subsequent_mask(ys.size(1)).type_as(one_sentence.data)
                 )

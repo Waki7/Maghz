@@ -293,7 +293,7 @@ class EncoderDecoder(BaseTransformer):
                 tgt_mask: IntTensorT['B,OutSeqLen']):
         "Take in and process masked src and target sequences."
         x = self.encode(src, src_mask)
-        x = self.decode(x, src_mask, tgt, tgt_mask)
+        x = self.decode_infer(x, src_mask, tgt, tgt_mask)
         return x
 
     def encode(self, src: LongTensorT['B,SrcSeqLen'],
@@ -302,9 +302,9 @@ class EncoderDecoder(BaseTransformer):
         x: FloatTensorT['B,SrcSeqLen,EmbedLen'] = self.positional_encoder(x)
         return self.encoder(x, src_mask)
 
-    def decode_train(self, memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
-                     src_mask: IntTensorT['B,OutSeqLen'],
-                     tgt: LongTensorT['B,OutSeqLen'], tgt_mask):
+    def decode(self, memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
+               src_mask: IntTensorT['B,OutSeqLen'],
+               tgt: LongTensorT['B,OutSeqLen'], tgt_mask):
         '''
         Executes for one output at a time when doing training
         :param memory:
@@ -317,10 +317,10 @@ class EncoderDecoder(BaseTransformer):
         x = self.positional_encoder(x)
         return self.decoder(x, memory, src_mask, tgt_mask)
 
-    def decode(self, memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
-               src_mask: IntTensorT['B,OutSeqLen'],
-               tgt: IntTensorT['B,OutSeqLen'],
-               tgt_mask: IntTensorT['1,OutSeqLen']):
+    def decode_infer(self, memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
+                     src_mask: IntTensorT['B,OutSeqLen'],
+                     tgt: IntTensorT['B,OutSeqLen'],
+                     tgt_mask: IntTensorT['1,OutSeqLen']):
         '''
         Executes for one output at a time when doing inference
         :param memory:
