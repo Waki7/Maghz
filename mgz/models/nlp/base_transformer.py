@@ -12,25 +12,23 @@ from mgz.typing import *
 # import GPUtil
 
 class TransformerContext:
-    def __init__(self):
+    def __init__(self, b: int, embed_len: int):
         self.in_generation = False
         self.in_train = True
         self.in_test = False
         self.past_keys: FloatTensorT[
-            'B,NHeads,OutSeqStep,EmbedLen/NHeads'] = None
+            'B,OutSeqStep,EmbedLen'] = torch.ones((b, 0, embed_len))
         self.past_values: FloatTensorT[
-            'B,NHeads,OutSeqStep,EmbedLen/NHeads'] = None
+            'B,OutSeqStep,EmbedLen'] = torch.ones((b, 0, embed_len))
 
     def add_key(self,
-                new_key: FloatTensorT['B,NHeads,OutSeqStep,EmbedLen/NHeads']):
-        if self.past_keys is not None:
-            self.past_keys = torch.cat([self.past_keys, new_key], dim=2)
+                new_key: FloatTensorT['B,OutSeqStep,EmbedLen']):
+        self.past_keys = torch.cat([self.past_keys, new_key], dim=2)
 
     def add_value(self,
-                  new_val: FloatTensorT['B,NHeads,OutSeqStep,EmbedLen/NHeads']):
-        if self.past_values is not None:
-            self.past_values = torch.cat([self.past_values, new_val],
-                                         dim=2)
+                  new_val: FloatTensorT['B,OutSeqStep,EmbedLen']):
+        self.past_values = torch.cat([self.past_values, new_val],
+                                     dim=2)
 
     def reset(self):
         del self

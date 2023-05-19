@@ -5,16 +5,18 @@ import os
 import time
 
 import GPUtil
-import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
+from transformers import PreTrainedTokenizerBase
 
+import settings
 from mgz.ds.sentence_datasets.multi_lex_sum import MultiLexSum
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceBatch, \
     SentenceDataset
+from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.models.nlp.bert_basic import make_model
 from mgz.run_ops.learning_ops import LabelSmoothing, DummyOptimizer, \
@@ -29,6 +31,7 @@ class TrainState:
     accum_step: int = 0  # Number of gradient accumulation steps
     samples: int = 0  # total # of examples used
     tokens: int = 0  # total # of tokens processed
+
 
 def run_epoch(
         data_generator: Generator[SentenceBatch, None, None],
@@ -85,6 +88,18 @@ def run_epoch(
         del loss
         del loss_node
     return total_loss / total_tokens, train_state
+
+
+def generate(text: str, tokenizer: PreTrainedTokenizerBase,
+             model: BaseTransformer):
+    batch_encoding = tokenizer(text, return_tensors="pt")
+    src_ids = batch_encoding.input_ids.to(settings.DEVICE)
+    tgt_ids = torch.LongTensor([tokenizer.bos_token_id]).unsqueeze(0).to(
+        settings.DEVICE)
+    src_mask = batch_encoding.attention_mask.to(settings.DEVICE)
+    # don't need tgt_mask because you are generating one token at a time
+    return model.generation(src_ids=src_ids, tgt_ids=tgt_ids,
+                     src_mask=src_mask)
 
 
 def create_dataloaders(train_ds: SentenceDataset, val_ds: SentenceDataset,

@@ -81,8 +81,8 @@ def collate_batch(
         batch,
         src_pipeline: Callable[[SrcStringT], List[str]],  # tokenizer function
         tgt_pipeline: Callable[[TgtStringT], List[str]],  # tokenizer function
-        src_vocab: Vocab,
-        tgt_vocab: Vocab,
+        src_vocab: Dict[str, int],
+        tgt_vocab: Dict[str, int],
         device,
         max_padding=128,
         pad_id=2,

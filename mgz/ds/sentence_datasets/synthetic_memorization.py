@@ -4,7 +4,6 @@ import settings
 import spaces as sp
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
     SentenceBatch
-from mgz.models.nlp.tokenizing import tokenize
 from mgz.typing import *
 
 

@@ -48,11 +48,6 @@ class Tokenizer:
             spacy_de = spacy.load("de_core_news_sm")
         return spacy_de
 
-
-def tokenize(text: str, tokenizer: Language) -> List[str]:
-    return [tok.text for tok in tokenizer.tokenizer(text)]
-
-
 def main():
     from mgz.ds.sentence_datasets.multi_lex_sum import MultiLexSum
 

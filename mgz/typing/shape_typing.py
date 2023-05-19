@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import *
 
 import numpy as np
+from typing import Annotated
 import torch
 
 #######################
@@ -87,13 +88,11 @@ class FloatTensorT(torch.Tensor, Generic[Shape]):
         xy_points: Array['N,2', float]
         nd_mask: Array['...', bool]
     """
-
     def __new__(cls, data, stats, requires_grad=False):
         data = torch.as_tensor(data, dtype=torch.float)
         tensor = torch.Tensor._make_subclass(cls, data, requires_grad)
         tensor.stats = stats
         return tensor
-
 
 class LongTensorT(torch.Tensor, Generic[Shape]):
     """

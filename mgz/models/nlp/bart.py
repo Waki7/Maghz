@@ -13,7 +13,7 @@ from transformers.utils import (
     logging,
 )
 
-from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask
+import settings
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext
 from mgz.models.nlp.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
@@ -96,9 +96,11 @@ class BartLearnedPositionalEmbedding(nn.Embedding):
         self.offset = 2
         super().__init__(num_embeddings + self.offset, embedding_dim)
 
-    def forward(self, input_ids: torch.Tensor, past_key_values_length: int = 0):
+    def forward(self, input_ids: torch.Tensor,
+                transformer_ctx: TransformerContext = None):
         """`input_ids' shape is expected to be [bsz x seqlen]."""
-
+        past_key_values_length = transformer_ctx.past_keys.size(-2) \
+            if transformer_ctx is not None else 0
         bsz, seq_len = input_ids.shape[:2]
         positions = torch.arange(
             past_key_values_length, past_key_values_length + seq_len,
@@ -119,13 +121,16 @@ def _attention(query: FloatTensorT,
     scores: FloatTensorT['B,OutSeqLen,SrcSeqLen'] = \
         torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
     # same mask per head
-    mask = mask.unsqueeze(1)
-    scores = scores.masked_fill(mask == 0, -1e4)
+    if mask is not None:
+        mask = mask.unsqueeze(1)
+        scores = scores.masked_fill(mask == 0, -1e4)
+
     # also called attention weights
     p_attn: torch.Tensor = scores.softmax(dim=-1)
     if dropout_p is not None:
         p_attn = nn.Dropout(dropout_p).forward(p_attn)
     # using the probabilities to pay attention to the value
+    # noinspection PyTypeChecker
     return torch.matmul(p_attn, value), p_attn
 
 
@@ -141,7 +146,7 @@ def attention(query: FloatTensorT['B,NHeads,OutSeqLen,EmbedLen/NHeads'],
 def self_attention(query: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
                    key: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
                    value: FloatTensorT[
-                       'B,NHeadsNHeads,SrcSeqLen,EmbedLen/NHeads'],
+                       'B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
                    mask: IntTensorT['B,1,SrcSeqLen,SrcSeqLen'] = None,
                    dropout=None) -> \
         Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
@@ -192,11 +197,10 @@ class MultiHeadedAttention(nn.Module):
     ) -> FloatTensorT['B,SrcSeqLen,EmbedLen']:
         """Input shape: Batch x Time x Channel"""
         "Implements Figure 2"
-        attention_mask = mask
         if mask is not None and mask.dim() == 2:
             # Same mask applied to all tgt sequence if not specified
-            attention_mask = mask.unsqueeze(1)  # .expand(-1, query.size(1), -1)
-        nbatches = attention_mask.size(0)
+            mask = mask.unsqueeze(1)  # .expand(-1, query.size(1), -1)
+        nbatches = query.size(0)
 
         def n_head_reshape(tensor):
             return tensor.view(nbatches, -1, self.n_heads,
@@ -206,10 +210,10 @@ class MultiHeadedAttention(nn.Module):
         # 1) Do all the linear projections in batch from d_model => h x d_k
         query = n_head_reshape(self.q_proj(query))
         if transformer_ctx is not None and transformer_ctx.in_generation:
-            key = transformer_ctx.add_key(
-                n_head_reshape(self.k_proj(key[:, -1:, :])))
-            value = transformer_ctx.add_key(
-                n_head_reshape(self.v_proj(value[:, -1:, :])))
+            key = n_head_reshape(transformer_ctx.add_key(
+                self.k_proj(key[:, -1:, :])))
+            value = n_head_reshape(transformer_ctx.add_key(
+                self.v_proj(value[:, -1:, :])))
         else:
             key = n_head_reshape(self.k_proj(key))
             value = n_head_reshape(self.v_proj(value))
@@ -559,11 +563,13 @@ class BartDecoder(BartPretrainedModel):
             encoder_hidden_states: FloatTensorT['B,SeqLen,EmbedLen'],
             tgt_ids: LongTensorT['B,SrcSeqLen'],
             src_mask: IntTensorT['B,1,SrcSeqLen'],
-            tgt_mask: IntTensorT['B,OutSeqLen,OutSeqLen'],
+            tgt_mask: IntTensorT['B,OutSeqLen,OutSeqStep'] = None,
             transformer_ctx: TransformerContext = None
     ) -> Union[Tuple, BaseModelOutputWithPastAndCrossAttentions]:
         inputs_embeds = self.embed_tokens(tgt_ids) * self.embed_scale
-        hidden_states = inputs_embeds
+        positions = self.embed_positions(tgt_ids, transformer_ctx)
+        positions = positions.to(inputs_embeds.device)
+        hidden_states = inputs_embeds + positions
         hidden_states = self.layernorm_embedding(hidden_states)
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout,
                                               training=self.training)
@@ -621,14 +627,13 @@ class BartModel(BartPretrainedModel):
                encoder_memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
                tgt_ids: LongTensorT['B,OutSeqLen'],
                src_mask: IntTensorT['B,1|OutSeqLen,SrcSeqLen'],
-               tgt_mask: IntTensorT['B,OutSeqLen,OutSeqLen'],
-               transformer_ctx: TransformerContext):
+               tgt_mask: IntTensorT['B,OutSeqLen,OutSeqLen'] = None,
+               transformer_ctx: TransformerContext = None):
         return self.decoder.forward(
             encoder_hidden_states=encoder_memory,
             tgt_ids=tgt_ids,
             src_mask=src_mask,
             tgt_mask=tgt_mask, transformer_ctx=transformer_ctx
-
         )
 
     def forward(
@@ -636,7 +641,7 @@ class BartModel(BartPretrainedModel):
             src_ids: LongTensorT['B,SrcSeqLen'],
             tgt_ids: LongTensorT['B,OutSeqLen'],
             src_mask: IntTensorT['B,1|OutSeqLen,SrcSeqLen'],
-            tgt_mask: IntTensorT['B,OutSeqLen,OutSeqLen']
+            tgt_mask: IntTensorT['B,OutSeqLen,OutSeqLen'] = None
     ) -> FloatTensorT['B,OutSeqLen,EmbedLen']:
         encoder_outputs = self.encode(src_ids=src_ids, src_mask=src_mask)
         decoder_hidden_state = self.decode(
@@ -648,7 +653,7 @@ class BartModel(BartPretrainedModel):
         return decoder_hidden_state
 
 
-class BartForConditionalGeneration(BartModel):
+class BartForConditionalGeneration(BartPretrainedModel):
     base_model_prefix = "model"
     _keys_to_ignore_on_load_missing = [
         r"final_logits_bias",
@@ -723,45 +728,22 @@ class BartForConditionalGeneration(BartModel):
                    src_ids: LongTensorT['B,SrcSeqLen'],
                    tgt_ids: LongTensorT['B,OutSeqLen'],
                    src_mask: IntTensorT['B,1|OutSeqLen,SrcSeqLen'],
-                   tgt_mask: IntTensorT['B,OutSeqLen,OutSeqLen']
                    ):
-        context = TransformerContext()
+        context = TransformerContext(src_ids.shape[0], self.config.d_model)
         context.in_generation = True
-        memory: FloatTensorT['B,OutSeqLen,EmbedLen'] = self.model.forward(
-            src_ids=src_ids, src_mask=src_mask,
-            tgt_ids=tgt_ids, tgt_mask=tgt_mask)
-        for i in range(0, self.config.max_length):
-            decoder_hidden_state = self.model.decode(encoder_memory=memory,
-                                                     tgt_ids=tgt_ids,
-                                                     src_mask=src_mask,
-                                                     tgt_mask=tgt_mask,
-                                                     transformer_ctx=context)
-
-    def generation_from_scratch(self,
-                                src_ids: LongTensorT['B,SrcSeqLen'],
-                                pad_id: int,
-                                bos_id: int
-                                ):
-        src_mask = (src_ids != pad_id).unsqueeze(-2)
-        tgt_ids = torch.ones((src_ids.shape[0], 1), dtype=torch.long) * bos_id
-        tgt_mask = (tgt_ids != pad_id).unsqueeze(-2)
-        tgt_mask = tgt_mask & subsequent_mask(tgt_ids.size(-1)).type_as(
-            tgt_mask.data
-        )
-
-        context = TransformerContext()
-        context.in_generation = True
-        memory: FloatTensorT[
-            'B,OutSeqLen,EmbedLen'] = self.model.forward(
-            src_ids=src_ids, src_mask=src_mask,
-            tgt_ids=tgt_ids, tgt_mask=tgt_mask)
-        for i in range(0, self.config.max_length):
-            decoder_hidden_state = self.model.decode(
-                encoder_memory=memory,
-                tgt_ids=tgt_ids,
-                src_mask=src_mask,
-                tgt_mask=tgt_mask,
-                transformer_ctx=context)
+        memory: FloatTensorT['B,OutSeqLen,EmbedLen'] = self.model.encode(
+            src_ids=src_ids, src_mask=src_mask)
+        last_token = tgt_ids
+        for i in range(0, 12):
+            decoder_hidden_state: FloatTensorT['B,1,EmbedLen'] = \
+                self.model.decode(encoder_memory=memory,
+                                  tgt_ids=last_token,
+                                  src_mask=src_mask,
+                                  transformer_ctx=context)
+            last_token = torch.softmax(self.lm_head(decoder_hidden_state),
+                                       dim=-1).argmax(dim=-1)
+            tgt_ids = torch.cat([tgt_ids, last_token], dim=-1)
+        return tgt_ids
 
     def prepare_decoder_input_ids_from_labels(self, labels: torch.Tensor):
         return shift_tokens_right(labels, self.config.pad_token_id,

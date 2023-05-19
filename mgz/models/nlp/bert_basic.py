@@ -99,8 +99,6 @@ class MultiHeadedAttention(nn.Module):
         del query
         del key
         del value
-        print('x', x.shape)
-        exit(3)
         return self.linears[-1](x)
 
 
@@ -287,49 +285,49 @@ class EncoderDecoder(BaseTransformer):
         self.generator = generator
         self.positional_encoder = positional_encoder
 
-    def forward(self, src: LongTensorT['B,SrcSeqLen'],
-                tgt: LongTensorT['B,OutSeqLen'],
+    def forward(self, src_ids: LongTensorT['B,SrcSeqLen'],
+                tgt_ids: LongTensorT['B,OutSeqLen'],
                 src_mask: IntTensorT['B,SrcSeqLen'],
                 tgt_mask: IntTensorT['B,OutSeqLen']):
         "Take in and process masked src and target sequences."
-        x = self.encode(src, src_mask)
-        x = self.decode_infer(x, src_mask, tgt, tgt_mask)
-        return x
+        x = self.encode(src_ids, src_mask)
+        x = self.decode_infer(x, src_mask, tgt_ids, tgt_mask)
+        return self.generator.forward(x)
 
-    def encode(self, src: LongTensorT['B,SrcSeqLen'],
+    def encode(self, src_ids: LongTensorT['B,SrcSeqLen'],
                src_mask: IntTensorT['B,SrcSeqLen']):
-        x: FloatTensorT['B,SrcSeqLen,EmbedLen'] = self.src_embed(src)
+        x: FloatTensorT['B,SrcSeqLen,EmbedLen'] = self.src_embed(src_ids)
         x: FloatTensorT['B,SrcSeqLen,EmbedLen'] = self.positional_encoder(x)
         return self.encoder(x, src_mask)
 
     def decode(self, memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
                src_mask: IntTensorT['B,OutSeqLen'],
-               tgt: LongTensorT['B,OutSeqLen'], tgt_mask):
+               tgt_ids: LongTensorT['B,OutSeqLen'], tgt_mask):
         '''
         Executes for one output at a time when doing training
         :param memory:
         :param src_mask:
-        :param tgt:
+        :param tgt_ids:
         :param tgt_mask:
         :return:
         '''
-        x = self.tgt_embed(tgt)
+        x = self.tgt_embed(tgt_ids)
         x = self.positional_encoder(x)
         return self.decoder(x, memory, src_mask, tgt_mask)
 
     def decode_infer(self, memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
                      src_mask: IntTensorT['B,OutSeqLen'],
-                     tgt: IntTensorT['B,OutSeqLen'],
+                     tgt_ids: IntTensorT['B,OutSeqLen'],
                      tgt_mask: IntTensorT['1,OutSeqLen']):
         '''
         Executes for one output at a time when doing inference
         :param memory:
         :param src_mask:
-        :param tgt:
+        :param tgt_ids:
         :param tgt_mask:
         :return:
         '''
-        x = self.tgt_embed(tgt)
+        x = self.tgt_embed(tgt_ids)
         x = self.positional_encoder(x)
         return self.decoder(x, memory, src_mask, tgt_mask)
 

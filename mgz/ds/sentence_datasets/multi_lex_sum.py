@@ -2,23 +2,20 @@ from __future__ import annotations
 
 from enum import Enum
 from functools import partial
-from os.path import exists
 
 from datasets import load_dataset
 from datasets.arrow_dataset import Dataset
 from datasets.dataset_dict import DatasetDict
 from spacy.language import Language
 from torch.utils.data import Dataset
-from torchtext.vocab import build_vocab_from_iterator
-from torchtext.vocab.vocab import Vocab
 from tqdm import tqdm
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 import spaces as sp
 from mgz.ds.base_dataset import T
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
     collate_batch
-from mgz.models.nlp.tokenizing import Tokenizer, tokenize, TokenStrings
-from transformers import AutoTokenizer
+from mgz.models.nlp.tokenizing import Tokenizer, TokenStrings
 from mgz.typing import *
 
 
@@ -35,15 +32,16 @@ class MultiLexSum(SentenceDataset):
         self.max_length = max_length
         self._data: List[Dict[str, Union[SummaryT, List[SourceListT]]]] = []
 
-        # self.tokenizer_src: AutoTokenizer = AutoTokenizer.from_pretrained(
-        #     "spacy/en_core_web_sm")
-        self.tokenizer_src = Tokenizer.load_en_web_sm()
-        self.tokenizer_tgt = Tokenizer.load_en_web_sm()
-        self.vocab_src, self.vocab_tgt = self.load_vocab(self.tokenizer_src,
-                                                         self.tokenizer_tgt)
+        self.tokenizer_src: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
+            "facebook/bart-base")
+        self.tokenizer_tgt: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
+            "facebook/bart-base")
+        self.vocab_src: Dict[str, int] = self.tokenizer_src.get_vocab()
+        self.vocab_tgt: Dict[str, int] = self.tokenizer_src.get_vocab()
 
-        self.input_space = sp.Sentence(len(self.vocab_src), shape=(max_length,))
-        self.target_space = sp.Sentence(len(self.vocab_tgt),
+        self.input_space = sp.Sentence(
+            len((self.vocab_src)), shape=(max_length,))
+        self.target_space = sp.Sentence(len((self.vocab_tgt)),
                                         shape=(max_length,))
 
         # --- Initialization flags ---
@@ -96,7 +94,8 @@ class MultiLexSum(SentenceDataset):
 
         def tokenize_src(sources: SourceListT) -> List[str]:
             tokenized_sources: List[List[str]] = [
-                tokenize(source_text, self.tokenizer_src) for source_text in
+                self.tokenizer_src.tokenize(source_text) for
+                source_text in
                 sources]
             # We are going to flatten the list of lists and join them with a seperator token
             flattened_source_text: List[str] = []
@@ -106,7 +105,7 @@ class MultiLexSum(SentenceDataset):
             return flattened_source_text
 
         def tokenize_tgt(text: SummaryT) -> List[str]:
-            return tokenize(text, self.tokenizer_tgt)
+            return self.tokenizer_tgt.tokenize(text)
 
         return collate_batch(
             batch,
@@ -116,18 +115,12 @@ class MultiLexSum(SentenceDataset):
             self.vocab_tgt,
             device,
             max_padding=self.max_length,
-            pad_id=self.vocab_src.get_stoi()[TokenStrings.BLANK.value],
+            pad_id=self.tokenizer_src.pad_token_id
         )
 
     def get_collate_fn(self, device: Union[int, torch.device]):
         assert self.loaded, "Dataset not loaded"
         return partial(self._collate_fn, device)
-
-    def tokenize_src(self, text) -> List[str]:
-        return tokenize(text, self.tokenizer_src)
-
-    def tokenize_tgt(self, text) -> List[str]:
-        return tokenize(text, self.tokenizer_tgt)
 
     def _load(self, train: bool = False, val: bool = False, test: bool = False):
         iter: DatasetDict
@@ -164,46 +157,6 @@ class MultiLexSum(SentenceDataset):
         self.use_cuda = False
         return self
 
-    @staticmethod
-    def build_vocabulary(tokenizer_src: Language,
-                         tokenizer_tgt: Language) -> (Vocab, Vocab):
-        print("Building English Vocabulary ...")
-        multi_lexsum: DatasetDict = load_dataset("allenai/multi_lexsum",
-                                                 name="v20220616")
-        src: Dataset = multi_lexsum["train"]
-        vocab_src = build_vocab_from_iterator(
-            MultiLexSum.yield_src_tokens(src, tokenizer_src),
-            min_freq=2,
-            specials=["[S]", "[/S]", "[BLANK]", "[UNK]", "[SEP]"],
-        )
-
-        vocab_tgt = build_vocab_from_iterator(
-            MultiLexSum.yield_tgt_tokens(src, tokenizer_tgt),
-            min_freq=2,
-            specials=["[S]", "[/S]", "[BLANK]", "[UNK]", "[SEP]"],
-        )
-
-        vocab_src.set_default_index(vocab_src[TokenStrings.UNK.value])
-        vocab_tgt.set_default_index(vocab_tgt[TokenStrings.UNK.value])
-
-        return vocab_src, vocab_tgt
-
-    @staticmethod
-    def load_vocab(spacy_de: Language, spacy_en: Language) -> (
-            Vocab, Vocab):
-        vocab_path = "C:/Users/ceyer/OneDrive/Documents/Projects/Maghz/" \
-                     "index_dir/vocab_storage/multi_lex_sum_vocab.pt"
-        if not exists(vocab_path):
-            vocab_src, vocab_tgt = MultiLexSum.build_vocabulary(spacy_de,
-                                                                spacy_en)
-            torch.save((vocab_src, vocab_tgt), vocab_path)
-        else:
-            vocab_src, vocab_tgt = torch.load(vocab_path)
-        print("Finished.\nVocabulary sizes:")
-        print('length of vocab src', len(vocab_src))
-        print('length of vocab tgt', len(vocab_tgt))
-        return vocab_src, vocab_tgt
-
     def pad_idx(self) -> int:
         return self.vocab_tgt['<blank>']
 
@@ -216,7 +169,12 @@ class MultiLexSum(SentenceDataset):
 
 def main():
     # please install HuggingFace ds by pip install ds
-
+    ds = MultiLexSum(max_length=128)
+    print(ds.tokenizer_src.tokenize("hello i am a test"))
+    from transformers import BertTokenizer
+    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+    print(tokenizer.tokenize("I have a new GPU!"))
+    exit(9)
     multi_lexsum: DatasetDict = load_dataset("allenai/multi_lexsum",
                                              name="v20220616")
     print(type(multi_lexsum))
