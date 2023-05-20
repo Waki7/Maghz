@@ -90,8 +90,23 @@ def run_epoch(
     return total_loss / total_tokens, train_state
 
 
-def generate(text: str, tokenizer: PreTrainedTokenizerBase,
-             model: BaseTransformer):
+def forward_controller(model: BaseTransformer, text: str,
+             tokenizer: PreTrainedTokenizerBase):
+    batch_encoding = tokenizer(text, return_tensors="pt")
+    src_ids = batch_encoding.input_ids.to(settings.DEVICE)
+    tgt_ids = torch.LongTensor([tokenizer.bos_token_id]).unsqueeze(0).to(
+        settings.DEVICE)
+    src_mask = batch_encoding.attention_mask.to(settings.DEVICE)
+    tgt_mask = (tgt_ids != tokenizer.pad_token_id).unsqueeze(-2)
+    tgt_mask = tgt_mask & subsequent_mask(tgt_ids.size(-1)).type_as(
+        tgt_mask.data
+    )
+    # don't need tgt_mask because you are generating one token at a time
+    return model.forward(src_ids=src_ids, tgt_ids=tgt_ids,
+                            src_mask=src_mask, tgt_mask=tgt_mask)
+def generate_controller(model: BaseTransformer, text: str,
+                        tokenizer: PreTrainedTokenizerBase,
+                        ):
     batch_encoding = tokenizer(text, return_tensors="pt")
     src_ids = batch_encoding.input_ids.to(settings.DEVICE)
     tgt_ids = torch.LongTensor([tokenizer.bos_token_id]).unsqueeze(0).to(
@@ -99,7 +114,7 @@ def generate(text: str, tokenizer: PreTrainedTokenizerBase,
     src_mask = batch_encoding.attention_mask.to(settings.DEVICE)
     # don't need tgt_mask because you are generating one token at a time
     return model.generation(src_ids=src_ids, tgt_ids=tgt_ids,
-                     src_mask=src_mask)
+                            src_mask=src_mask)
 
 
 def create_dataloaders(train_ds: SentenceDataset, val_ds: SentenceDataset,

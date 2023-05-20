@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import *
 
 import numpy as np
-from typing import Annotated
 import torch
 
 #######################
