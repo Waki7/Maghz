@@ -1,5 +1,4 @@
-from mgz.models.base_model import BaseModel
-from mgz.datasets.spaceship_dataset import Spaceship
+from mgz.ds.image_datasets.spaceship_dataset import Spaceship
 from mgz.model_vc.manager import Manager
 from mgz.model_vc.model_node import ModelNode
 from mgz.model_vc.model_index import Indexer

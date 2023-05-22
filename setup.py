@@ -1,6 +1,11 @@
-from distutils.core import setup
-from setuptools import find_packages
 import os
+from distutils.core import setup
+
+from setuptools import find_packages
+
+# Usage
+# in development: pip install -e C:\Users\ceyer\OneDrive\Documents\Projects\Maghz
+# in prod: pip install C:\Users\ceyer\OneDrive\Documents\Projects\Maghz
 
 # User-friendly description from README.md
 current_directory = os.path.dirname(os.path.abspath(__file__))
@@ -47,24 +52,42 @@ setup(
 
     # List of keyword arguments
     keywords=[],
+    python_requires='>3.9',
 
     # List of packages to install with this one
     install_requires=[
         'tensorboard',
         'tensorboardX',
+        'torchtext',
+        'spacy',
         'gym',
         'torchvision',
         'scipy',
         'numpy',
         'tensorflow',
-        'torch==1.9.0',
-        'torchvision==0.10.0',
+        'torch',
+        'torchvision',
+        'transformers',
         'opencv-python',
         'array2gif',
         'Pillow',
         'stable-baselines',
         'pyyaml',
-        # pip install torch==1.9.0+cu111 torchvision==0.10.0+cu111 torchaudio===0.9.0 -f https://download.pytorch.org/whl/torch_stable.html
+        'scikit-image',
+        'pytest',
+        'spacy==3.4',
+        'torchtext',
+        'torchdata',
+        'datasets',
+        'GPUtil',
+        'spacy',
+        'altair',
+        # pip3 install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu116
+        # pip3 install torchdata==0.5.1 torchtext==0.14.1 (use conda if you can)
+
+
+        # python -m spacy download de_core_news_sm
+        # python -m spacy download en_core_web_sm
     ],
 
     # https://pypi.org/classifiers/

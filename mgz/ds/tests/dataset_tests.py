@@ -1,9 +1,7 @@
-from typing import Type
-
 from mgz.typing import *
 import unittest
-from mgz.datasets.spaceship_dataset import Spaceship
-from mgz.datasets.img_dataset import ImageDataset
+from mgz.ds.image_datasets.spaceship_dataset import Spaceship
+from mgz.ds.image_datasets.img_datasets import ImageDataset
 
 
 class TestStringMethods(unittest.TestCase):

@@ -1,7 +1,6 @@
-from mgz.typing import *
 from gym.spaces import Box
-from spaces import Image
-import numpy as np
+
+from mgz.typing import *
 
 __all__ = ['RegressionTarget', 'RegressionTargetT']
 
@@ -21,17 +20,8 @@ class RegressionTarget(Box):
     def contains(self, x):
         if isinstance(x, list):
             x = np.array(x)  # Promote list to array for contains check
-        return x.shape == self.shape and np.all(x >= self.low) and np.all(x <= self.high)
-
-Shape = TypeVar("Shape")
-DType = TypeVar("DType")
+        return x.shape == self.shape and np.all(x >= self.low) and np.all(
+            x <= self.high)
 
 
-class RegressionTargetT(np.ndarray, Generic[Shape, DType]):
-    """
-    Use this to type-annotate numpy arrays, e.g.
-        image: Array['H,W,3', np.uint8]
-        xy_points: Array['N,2', float]
-        nd_mask: Array['...', bool]
-    """
-    pass
+RegressionTargetT = Union[TensorT, torch.Tensor]

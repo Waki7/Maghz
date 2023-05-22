@@ -4,7 +4,6 @@ import typing as typ
 import torch
 import torch.nn as nn
 
-import mgz.settings as settings
 from mgz import utils as model_utils
 from mgz.utils.paths import Networks
 
