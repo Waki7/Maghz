@@ -7,7 +7,7 @@ from mgz.utils.paths import Networks as paths
 import spaces as sp
 import torch
 import torch.nn as nn
-import mgz.settings as settings
+import settings
 
 
 class BaseModel(nn.Module):

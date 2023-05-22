@@ -35,6 +35,9 @@ class TransformerContext:
 
 
 class BaseTransformer(nn.Module):
+    def __init__(self, config):
+        super(BaseTransformer, self).__init__()
+        self.config = config
 
     def encode(self, src_ids: LongTensorT['B,SrcSeqLen'],
                src_mask: IntTensorT['B,SrcSeqLen']):
@@ -56,3 +59,23 @@ class BaseTransformer(nn.Module):
             tgt_mask: IntTensorT['B,OutSeqLen,OutSeqLen']
     ) -> FloatTensorT['B,OutSeqLen,EmbedLen']:
         raise NotImplementedError
+
+    def generate(self,
+                 src_ids: LongTensorT['B,SrcSeqLen'],
+                 tgt_ids: LongTensorT['B,OutSeqLen'],
+                 src_mask: IntTensorT['B,1|OutSeqLen,SrcSeqLen']):
+        context = TransformerContext(src_ids.shape[0], self.config.d_model)
+        context.in_generation = True
+        memory: FloatTensorT['B,OutSeqLen,EmbedLen'] = self.encode(
+            src_ids=src_ids, src_mask=src_mask)
+        last_token = tgt_ids
+        for i in range(0, 12):
+            decoder_hidden_state: FloatTensorT['B,1,EmbedLen'] = \
+                self.decode(encoder_memory=memory,
+                            tgt_ids=last_token,
+                            src_mask=src_mask,
+                            transformer_ctx=context)
+            last_token = torch.softmax(self.lm_head(decoder_hidden_state),
+                                       dim=-1).argmax(dim=-1)
+            tgt_ids = torch.cat([tgt_ids, last_token], dim=-1)
+        return tgt_ids

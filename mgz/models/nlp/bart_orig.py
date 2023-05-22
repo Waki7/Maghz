@@ -129,7 +129,6 @@ class BartLearnedPositionalEmbedding(nn.Embedding):
 
     def forward(self, input_ids: torch.Tensor, past_key_values_length: int = 0):
         """`input_ids' shape is expected to be [bsz x seqlen]."""
-        print('bert learned past_key_values_length', past_key_values_length)
         bsz, seq_len = input_ids.shape[:2]
         positions = torch.arange(
             past_key_values_length, past_key_values_length + seq_len, dtype=torch.long, device=self.weight.device
@@ -228,22 +227,18 @@ class BartAttention(nn.Module):
             past_key_value = (key_states, value_states)
         proj_shape = (bsz * self.num_heads, -1, self.head_dim)
         query_states = self._shape(query_states, tgt_len, bsz).view(*proj_shape)
-        print('query states', query_states.shape)
-        print('value_states', value_states.shape)
-        print('key_states', key_states.shape)
         key_states = key_states.view(*proj_shape)
         value_states = value_states.view(*proj_shape)
 
         src_len = key_states.size(1)
         attn_weights = torch.bmm(query_states, key_states.transpose(1, 2))
-        print('attn_weights', attn_weights.shape)
+
         if attn_weights.size() != (bsz * self.num_heads, tgt_len, src_len):
             raise ValueError(
                 f"Attention weights should be of size {(bsz * self.num_heads, tgt_len, src_len)}, but is"
                 f" {attn_weights.size()}"
             )
         if attention_mask is not None:
-            print('attention_mask', attention_mask.shape)
             if attention_mask.size() != (bsz, 1, tgt_len, src_len):
                 raise ValueError(
                     f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is {attention_mask.size()}"
@@ -271,10 +266,9 @@ class BartAttention(nn.Module):
             attn_weights = attn_weights_reshaped.view(bsz * self.num_heads, tgt_len, src_len)
         else:
             attn_weights_reshaped = None
-
         attn_probs = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
         attn_output = torch.bmm(attn_probs, value_states)
-        print('attn_output', attn_output.shape)
+
         assert (attn_output == torch.matmul(attn_probs, value_states)).all()
         if attn_output.size() != (bsz * self.num_heads, tgt_len, self.head_dim):
             raise ValueError(
@@ -424,7 +418,6 @@ class BartDecoderLayer(nn.Module):
         # decoder uni-directional self-attention cached key/values tuple is at positions 1,2
         self_attn_past_key_value = past_key_value[:2] if past_key_value is not None else None
         # add present self-attn cache to positions 1,2 of present_key_value tuple
-        print('pre self_attn')
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
             past_key_value=self_attn_past_key_value,
@@ -444,7 +437,6 @@ class BartDecoderLayer(nn.Module):
 
             # cross_attn cached key/values tuple is at positions 3,4 of present_key_value tuple
             cross_attn_past_key_value = past_key_value[-2:] if past_key_value is not None else None
-            print('pre encoder attention')
             hidden_states, cross_attn_weights, cross_attn_present_key_value = self.encoder_attn(
                 hidden_states=hidden_states,
                 key_value_states=encoder_hidden_states,
@@ -468,7 +460,6 @@ class BartDecoderLayer(nn.Module):
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
         hidden_states = residual + hidden_states
         hidden_states = self.final_layer_norm(hidden_states)
-        print('decoder hidden_states', hidden_states.shape)
         outputs = (hidden_states,)
 
         if output_attentions:
@@ -1017,6 +1008,8 @@ class BartDecoder(BartPretrainedModel):
             return_dict (`bool`, *optional*):
                 Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
         """
+        # print('origencoder_hidden_states', encoder_hidden_states)
+        # print('originput ids', input_ids)
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -1039,7 +1032,6 @@ class BartDecoder(BartPretrainedModel):
 
         # past_key_values_length
         past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
-        print('past_key_values_length', past_key_values_length)
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input) * self.embed_scale
 
@@ -1053,7 +1045,6 @@ class BartDecoder(BartPretrainedModel):
             encoder_attention_mask = _expand_mask(encoder_attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1])
 
         # embed positions
-        print('decoder input', input)
         positions = self.embed_positions(input, past_key_values_length)
         positions = positions.to(inputs_embeds.device)
 
@@ -1219,8 +1210,6 @@ class BartModel(BartPretrainedModel):
 
         # different to other models, Bart automatically creates decoder_input_ids from
         # input_ids if no decoder_input_ids are provided
-        print('input_ids', input_ids)
-        print('attention_mask', attention_mask)
         if decoder_input_ids is None and decoder_inputs_embeds is None:
             if input_ids is None:
                 raise ValueError(
@@ -1232,7 +1221,6 @@ class BartModel(BartPretrainedModel):
             decoder_input_ids = shift_tokens_right(
                 input_ids, self.config.pad_token_id, self.config.decoder_start_token_id
             )
-
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -1257,7 +1245,6 @@ class BartModel(BartPretrainedModel):
                 hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
                 attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
             )
-
         # decoder outputs consists of (dec_features, past_key_value, dec_hidden, dec_attn)
         decoder_outputs = self.decoder(
             input_ids=decoder_input_ids,

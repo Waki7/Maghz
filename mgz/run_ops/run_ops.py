@@ -113,7 +113,7 @@ def generate_controller(model: BaseTransformer, text: str,
         settings.DEVICE)
     src_mask = batch_encoding.attention_mask.to(settings.DEVICE)
     # don't need tgt_mask because you are generating one token at a time
-    return model.generation(src_ids=src_ids, tgt_ids=tgt_ids,
+    return model.generate(src_ids=src_ids, tgt_ids=tgt_ids,
                             src_mask=src_mask)
 
 

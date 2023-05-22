@@ -17,7 +17,10 @@ def to_cpu(tensor):
     return tensor.cpu()
 
 
-if torch.cuda.is_available():
+_debug_use_cpu = False
+_debug_use_cpu = True
+
+if torch.cuda.is_available() and not _debug_use_cpu:
     DEVICE_NUM = 0
     to_device = to_cuda
     print('{} gpus available, will be using gpu {}'.format(
@@ -29,7 +32,6 @@ else:
     to_device = to_cpu
     DEVICE = torch.device('cpu')
 
-DEVICE = torch.device('cpu')
 DTYPE_LONG = torch.long
 DTYPE_X = torch.half  # torch.float torch.half
 ARGS = {'device': DEVICE, 'dtype': DTYPE_X}
@@ -38,6 +40,7 @@ SEED = 23
 torch.manual_seed(SEED)
 np.random.seed(SEED)
 random.seed(SEED)
+
 
 def print_gpu_usage():
     print("torch.cuda.memory_allocated: %f GB" % (
