@@ -78,7 +78,7 @@ class BartLearnedPositionalEmbedding(nn.Embedding):
     def forward(self, input_ids: torch.Tensor,
                 transformer_ctx: TransformerContext = None):
         """`input_ids' shape is expected to be [bsz x seqlen]."""
-        past_key_values_length = transformer_ctx.past_keys.size(-2) \
+        past_key_values_length = transformer_ctx.get_seq_len_so_far() \
             if transformer_ctx is not None else 0
         bsz, seq_len = input_ids.shape[:2]
         positions = torch.arange(
@@ -142,12 +142,14 @@ class MultiHeadedAttention(nn.Module):
             self,
             embed_dim: int,
             num_heads: int,
+            decoder_attention: bool = False,
             dropout: ProbT = 0.0,
             bias: bool = True,
     ):
         super().__init__()
         self.embed_dim = embed_dim
         self.n_heads = num_heads
+        self.decoder_attention = decoder_attention
         self.dropout = dropout
         self.head_dim = embed_dim // num_heads
 
@@ -190,11 +192,12 @@ class MultiHeadedAttention(nn.Module):
         # here we split the embedding into n_heads
         # 1) Do all the linear projections in batch from d_model => h x d_k
         query = n_head_reshape(self.q_proj(query)) * self.scaling
-        if transformer_ctx is not None and transformer_ctx.in_generation:
+        if self.decoder_attention and transformer_ctx is not None and transformer_ctx.in_generation:
             key = n_head_reshape(transformer_ctx.add_key(
-                self.k_proj(key[:, -1:, :])))
-            value = n_head_reshape(transformer_ctx.add_key(
-                self.v_proj(value[:, -1:, :])))
+                self.k_proj(key)))
+            value = n_head_reshape(transformer_ctx.add_value(
+                self.v_proj(value)))
+
         else:
             key = n_head_reshape(self.k_proj(key))
             value = n_head_reshape(self.v_proj(value))
@@ -278,6 +281,7 @@ class BartDecoderLayer(nn.Module):
 
         self.self_attn = MultiHeadedAttention(
             embed_dim=self.embed_dim,
+            decoder_attention=True,
             num_heads=config.decoder_attention_heads,
             dropout=config.attention_dropout if self.training else None,
         )
@@ -287,8 +291,8 @@ class BartDecoderLayer(nn.Module):
 
         self.self_attn_layer_norm = nn.LayerNorm(self.embed_dim)
         self.encoder_attn = MultiHeadedAttention(
-            self.embed_dim,
-            config.decoder_attention_heads,
+            embed_dim=self.embed_dim,
+            num_heads=config.decoder_attention_heads,
             dropout=config.attention_dropout if self.training else None,
         )
         self.encoder_attn_layer_norm = nn.LayerNorm(self.embed_dim)
@@ -301,14 +305,14 @@ class BartDecoderLayer(nn.Module):
             hidden_states: FloatTensorT['B,SrcSeqLen,EmbedLen'],
             encoder_hidden_states: FloatTensorT['B,SrcSeqLen,EmbedLen'],
             src_mask: IntTensorT['B,SrcSeqLen,OutSeqLen'],
-            tgt_mask: IntTensorT['B,SrcSeqLen,SrcSeqLen']
+            tgt_mask: IntTensorT['B,SrcSeqLen,SrcSeqLen'], transformer_ctx=None
     ) -> FloatTensorT['B,OutSeqLen|1,EmbedLen']:
         residual = hidden_states
         hidden_states = \
             self.self_attn.forward(
                 query=hidden_states, key=hidden_states,
                 value=hidden_states,
-                mask=tgt_mask
+                mask=tgt_mask, transformer_ctx=transformer_ctx
             )
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout,
                                               training=self.training)
@@ -321,7 +325,7 @@ class BartDecoderLayer(nn.Module):
             self.encoder_attn.forward(
                 query=hidden_states, key=encoder_hidden_states,
                 value=encoder_hidden_states,
-                mask=src_mask
+                mask=src_mask, transformer_ctx=transformer_ctx
             )
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout,
                                               training=self.training)
@@ -503,16 +507,17 @@ class BartDecoder(nn.Module):
             tgt_mask: IntTensorT['B,OutSeqLen,OutSeqStep'] = None,
             transformer_ctx: TransformerContext = None
     ) -> FloatTensorT['B,OutSeqLen,EmbedLen']:
-        # print('encoder_hidden_states', encoder_hidden_states)
-        # print('input ids', tgt_ids)
-        inputs_embeds = self.embed_tokens(tgt_ids) * self.embed_scale
+        inputs_embeds: FloatTensorT['B,1,EmbedLen'] = self.embed_tokens(
+            tgt_ids) * self.embed_scale
+        print('input_ids', tgt_ids)
+        # if transformer_ctx is not None and transformer_ctx.in_generation:
+        #     inputs_embeds = transformer_ctx.add_input_embeddings(inputs_embeds)
         positions = self.embed_positions(tgt_ids, transformer_ctx)
         positions = positions.to(inputs_embeds.device)
         hidden_states = inputs_embeds + positions
         hidden_states = self.layernorm_embedding(hidden_states)
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout,
                                               training=self.training)
-
         # decoder layers
         decoder_layer: BartDecoderLayer
         for idx, decoder_layer in enumerate(self.layers):
@@ -524,10 +529,10 @@ class BartDecoder(nn.Module):
                 hidden_states=hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 src_mask=src_mask,
-                tgt_mask=tgt_mask
+                tgt_mask=tgt_mask,
+                transformer_ctx=transformer_ctx.for_layer(idx)
             )
             hidden_states = layer_outputs
-
         return hidden_states
 
 
@@ -666,7 +671,6 @@ class BartForConditionalGeneration(BartPretrainedModel):
 
         lm_logits = self.lm_head(output)
         lm_logits = lm_logits + self.final_logits_bias.to(lm_logits.device)
-
         return lm_logits
 
     def encode(self, src_ids: LongTensorT['B,SrcSeqLen'],
@@ -682,12 +686,15 @@ class BartForConditionalGeneration(BartPretrainedModel):
                src_mask: IntTensorT['B,1|OutSeqLen,SrcSeqLen'],
                tgt_mask: IntTensorT['B,OutSeqLen,OutSeqLen'] = None,
                transformer_ctx: TransformerContext = None):
-        return self.model.decoder.forward(
+        output = self.model.decoder.forward(
             encoder_hidden_states=encoder_memory,
             tgt_ids=tgt_ids,
             src_mask=src_mask,
             tgt_mask=tgt_mask, transformer_ctx=transformer_ctx
         )
+        lm_logits = self.lm_head(output)
+        lm_logits = lm_logits + self.final_logits_bias.to(lm_logits.device)
+        return lm_logits
 
     def prepare_decoder_input_ids_from_labels(self, labels: torch.Tensor):
         return shift_tokens_right(labels, self.config.pad_token_id,

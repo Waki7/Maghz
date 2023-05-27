@@ -91,7 +91,7 @@ def run_epoch(
 
 
 def forward_controller(model: BaseTransformer, text: str,
-             tokenizer: PreTrainedTokenizerBase):
+                       tokenizer: PreTrainedTokenizerBase):
     batch_encoding = tokenizer(text, return_tensors="pt")
     src_ids = batch_encoding.input_ids.to(settings.DEVICE)
     tgt_ids = torch.LongTensor([tokenizer.bos_token_id]).unsqueeze(0).to(
@@ -103,18 +103,22 @@ def forward_controller(model: BaseTransformer, text: str,
     )
     # don't need tgt_mask because you are generating one token at a time
     return model.forward(src_ids=src_ids, tgt_ids=tgt_ids,
-                            src_mask=src_mask, tgt_mask=tgt_mask)
+                         src_mask=src_mask, tgt_mask=tgt_mask)
+
+
 def generate_controller(model: BaseTransformer, text: str,
                         tokenizer: PreTrainedTokenizerBase,
                         ):
     batch_encoding = tokenizer(text, return_tensors="pt")
     src_ids = batch_encoding.input_ids.to(settings.DEVICE)
-    tgt_ids = torch.LongTensor([tokenizer.bos_token_id]).unsqueeze(0).to(
+    # bart for summarization uses sep token for the first token in the decoder,
+    # I'm not sure this is true for all models
+    tgt_ids = torch.LongTensor([tokenizer.sep_token_id]).unsqueeze(0).to(
         settings.DEVICE)
     src_mask = batch_encoding.attention_mask.to(settings.DEVICE)
     # don't need tgt_mask because you are generating one token at a time
     return model.generate(src_ids=src_ids, tgt_ids=tgt_ids,
-                            src_mask=src_mask)
+                          src_mask=src_mask)
 
 
 def create_dataloaders(train_ds: SentenceDataset, val_ds: SentenceDataset,

@@ -14,6 +14,8 @@ SrcSeqLen = NewType("SeqLen", int)  # or input sequence length
 OutSeqLen = NewType("OutSeqLen", int)  # or output sequence length
 OutSeqStep = NewType("OutSeqStep", int)  # or output sequence length
 NClasses = NewType("NClasses", int)  # or output sequence length
+NBeams = NewType("NBeams", int)  # or output sequence length
+VocabSize = NewType("NClasses", int)  # or output sequence length
 OutNClasses = NewType("OutNClasses", int)  # or output sequence length
 
 C = NewType("Channel", int)

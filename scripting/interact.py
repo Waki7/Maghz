@@ -8,15 +8,15 @@ from mgz.typing import *
 import mgz.models.nlp.bart_orig as hug
 
 use_mgz = True
-use_hug = False
-use_generation = False
+use_hug = True
+use_generation = True
 use_encode = False
 
 text = 'startval'
 # model_name = 'facebook/bart-large'
-# model_name = 'facebook/bart-large-xsum'  # has a bug where it doesn't have 'mask' in its embedding table, or something like that
+model_name = 'facebook/bart-large-xsum'  # has a bug where it doesn't have 'mask' in its embedding table, or something like that
+# model_name = 'facebook/bart-base'
 
-model_name = 'facebook/bart-base'
 tokenizer = BartTokenizer.from_pretrained(model_name)
 print(tokenizer.special_tokens_map)
 model_mgz: BartForConditionalGeneration = BartForConditionalGeneration.from_pretrained(
@@ -40,7 +40,7 @@ while (not text.isdigit()):
             print('encoding', encoding.logits)
         if use_generation:
             generated_ids = model_hug.generate(input_ids)
-            print(generated_ids)
+            print('generated_ids', generated_ids)
             print('hug decoded',
                   tokenizer.batch_decode(generated_ids,
                                          skip_special_tokens=True))
@@ -51,9 +51,11 @@ while (not text.isdigit()):
                                         tokenizer=tokenizer)
             print('encoding', logits)
         if use_generation:
+            model_mgz.eval()
             response = generate_controller(model=model_mgz, text=text,
                                            tokenizer=tokenizer)
             print(response)
+            print('generated_ids', response)
             print('mgz decoded',
                   tokenizer.batch_decode(response, skip_special_tokens=True))
     exit(3)
