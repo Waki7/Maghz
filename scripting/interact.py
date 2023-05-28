@@ -13,8 +13,8 @@ use_generation = True
 use_encode = False
 
 text = 'startval'
-# model_name = 'facebook/bart-large'
-model_name = 'facebook/bart-large-xsum'  # has a bug where it doesn't have 'mask' in its embedding table, or something like that
+model_name = 'facebook/bart-large'
+# model_name = 'facebook/bart-large-xsum'  # has a bug where it doesn't have 'mask' in its embedding table, or something like that
 # model_name = 'facebook/bart-base'
 
 tokenizer = BartTokenizer.from_pretrained(model_name)

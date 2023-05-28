@@ -209,8 +209,11 @@ class BartAttention(nn.Module):
             # reuse k, v, self_attention
             key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
             value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
+            print('key_statespre', key_states.shape)
             key_states = torch.cat([past_key_value[0], key_states], dim=2)
             value_states = torch.cat([past_key_value[1], value_states], dim=2)
+            print('key_states', key_states.shape)
+            print('query_states', query_states.shape)
 
         else:
             # self_attention
@@ -1008,7 +1011,6 @@ class BartDecoder(BartPretrainedModel):
             return_dict (`bool`, *optional*):
                 Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
         """
-        print('input_ids', input_ids)
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -1132,6 +1134,7 @@ class BartDecoder(BartPretrainedModel):
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
 
+        print('hidden_states', hidden_states.shape)
         next_cache = next_decoder_cache if use_cache else None
         if not return_dict:
             return tuple(
