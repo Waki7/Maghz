@@ -82,6 +82,10 @@ setup(
         'GPUtil',
         'spacy',
         'altair',
+        'evaluate',
+        'scikit-learn',
+        'sklearn',
+        'accelerate',
         # pip3 install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu116
         # pip3 install torchdata==0.5.1 torchtext==0.14.1 (use conda if you can)
 

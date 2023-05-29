@@ -34,7 +34,7 @@ def compute_metrics(eval_pred):
     return metric.compute(predictions=predictions, references=labels)
 from transformers import TrainingArguments, Trainer
 
-training_args = TrainingArguments(output_dir="test_trainer", evaluation_strategy="epoch")
+training_args = TrainingArguments(output_dir="test_trainer", evaluation_strategy="epoch", use_mps_device=True, per_device_train_batch_size=16)
 trainer = Trainer(
     model=model,
     args=training_args,
