@@ -192,15 +192,17 @@ class MultiHeadedAttention(nn.Module):
         # here we split the embedding into n_heads
         # 1) Do all the linear projections in batch from d_model => h x d_k
         query = n_head_reshape(self.q_proj(query)) * self.scaling
-        if self.decoder_attention and transformer_ctx is not None and transformer_ctx.in_generation:
-            key = n_head_reshape(transformer_ctx.add_key(
-                self.k_proj(key)))
-            value = n_head_reshape(transformer_ctx.add_value(
-                self.v_proj(value)))
-
-        else:
-            key = n_head_reshape(self.k_proj(key))
-            value = n_head_reshape(self.v_proj(value))
+        # if self.decoder_attention and transformer_ctx is not None and transformer_ctx.in_generation:
+        #     key = n_head_reshape(transformer_ctx.add_key(
+        #         self.k_proj(key)))
+        #     value = n_head_reshape(transformer_ctx.add_value(
+        #         self.v_proj(value)))
+        #     print('key_states', key.shape)
+        #     print('query_states', query.shape)
+        #
+        # else:
+        key = n_head_reshape(self.k_proj(key))
+        value = n_head_reshape(self.v_proj(value))
 
         # 2) Apply attention on all the projected vectors in batch.
         x, self.attn = attention(
@@ -509,7 +511,6 @@ class BartDecoder(nn.Module):
     ) -> FloatTensorT['B,OutSeqLen,EmbedLen']:
         inputs_embeds: FloatTensorT['B,1,EmbedLen'] = self.embed_tokens(
             tgt_ids) * self.embed_scale
-        print('input_ids', tgt_ids)
         # if transformer_ctx is not None and transformer_ctx.in_generation:
         #     inputs_embeds = transformer_ctx.add_input_embeddings(inputs_embeds)
         positions = self.embed_positions(tgt_ids, transformer_ctx)
@@ -533,6 +534,7 @@ class BartDecoder(nn.Module):
                 transformer_ctx=transformer_ctx.for_layer(idx)
             )
             hidden_states = layer_outputs
+        print('hidden_states', hidden_states.shape)
         return hidden_states
 
 

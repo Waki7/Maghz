@@ -17,8 +17,8 @@ def to_cpu(tensor):
     return tensor.cpu()
 
 
-_debug_use_cpu = False
-# _debug_use_cpu = True
+# _debug_use_cpu = False
+_debug_use_cpu = True
 
 if torch.cuda.is_available() and not _debug_use_cpu:
     DEVICE_NUM = 0

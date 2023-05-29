@@ -74,6 +74,7 @@ class BeamSearchContext:
         # if first step then we want to avoid resampling the same tokens from different beams, so set to neg inf
         if len(self.best_probs) == 0:
             probs_reshape[:, 1:, :] = -1e9
+
         probs_reshape = probs_reshape.view(-1,
                                            self.n_beams * vocab_size)
         best_probs, best_indices = \
@@ -88,10 +89,6 @@ class BeamSearchContext:
             best_indices.permute(1, 0)
         vocab_idx = best_indices % vocab_size
         beam_idx = best_indices // vocab_size
-
-        print('beam_idx', vocab_idx)
-        print('beam scores', best_probs.shape)
-        print('beam scores', best_probs)
 
         self.pred_tokens.append(vocab_idx)
         self.beam_indices.append(beam_idx)
@@ -188,9 +185,15 @@ class BaseTransformer(nn.Module):
                 self.decode(encoder_memory=memory,
                             tgt_ids=new_ids,
                             src_mask=src_mask,
-                            transformer_ctx=context)
+                            transformer_ctx=context)[:,-1,:]
             logits = logits_rule.__call__(beam_ctx=beam_search,
                                           new_logits=logits)
             probs = torch.log_softmax(logits, dim=-1)
-            new_ids = beam_search.select_ids_from_probs(probs=probs)
+            # print('probs mgz', probs.shape)
+            # print('probs mgz', probs)
+            new_ids = torch.cat(
+                [new_ids, beam_search.select_ids_from_probs(probs=probs)],
+                dim=-1)
+            # print('tokens', new_ids.shape)
+            # print('tokens', new_ids)
         return beam_search.get_best_sequence()
