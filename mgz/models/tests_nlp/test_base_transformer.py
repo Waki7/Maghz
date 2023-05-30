@@ -9,6 +9,7 @@ import torch.nn as nn
 from mgz.models.nlp.base_transformer import BaseTransformer, BeamSearchContext, \
     LogitsRuleEnforce
 from mgz.typing import *
+from settings import DEVICE
 
 import transformers as hug
 
@@ -49,7 +50,7 @@ class TestBert(unittest.TestCase):
         logits = torch.Tensor([
             [[0.1, 0.2, 0.3, 0.4]],
             [[0.1, 0.2, 0.3, 0.4]],
-        ])
+        ]).to(DEVICE)
         self.assertEqual(logits.shape, (2, 1, 4))
         batch_size = 1
         beam_size = int(logits.shape[0] / batch_size)  # 2
@@ -64,7 +65,7 @@ class TestBert(unittest.TestCase):
         expected = torch.Tensor([
             [0.1, -float('inf'), 0.3, -float('inf')],
             [-float('inf'), -float('inf'), 0.3, 0.4],
-        ])
+        ]).to(DEVICE)
         filtered_logits = logits_rules.__call__(beam_ctx=beam_ctx,
                                                 new_logits=logits)
         print(filtered_logits)
@@ -72,25 +73,35 @@ class TestBert(unittest.TestCase):
                         'filtered logits \n{}\n not equal to expected \n{}\n'.format(
                             filtered_logits, expected))
 
+    def test_gather(self):  # mps bug
+        # t = torch.LongTensor([[0, 0], [1, 1], [2, 2]]).to(DEVICE)
+        # print(t.shape)
+        # indices = torch.LongTensor([[0, 0], [2, 2], [1, 1]]).to(DEVICE)
+        # print(indices.shape)
+        t = torch.LongTensor([0, 1, 2]).view(-1, 1, 1).to(DEVICE)
+        indices = torch.LongTensor([0, 1, 2]).view(-1, 1, 1).to(DEVICE)
+        gathered = t.gather(0, indices)
+        print(gathered)
+
     def test_beam_select_best(self):
         indices = [
-            torch.LongTensor([0, 0, 0]).unsqueeze(-1),
-            torch.LongTensor([1, 2, 0]).unsqueeze(-1),
-            torch.LongTensor([2, 0, 1]).unsqueeze(-1),
+            torch.LongTensor([0, 0, 0]).unsqueeze(-1).to(DEVICE),
+            torch.LongTensor([1, 2, 0]).unsqueeze(-1).to(DEVICE),
+            torch.LongTensor([2, 0, 1]).unsqueeze(-1).to(DEVICE),
         ]
         tokens = [
-            torch.LongTensor([7, 4, 5]).unsqueeze(-1),
-            torch.LongTensor([4, 3, 2]).unsqueeze(-1),
-            torch.LongTensor([3, 5, 2]).unsqueeze(-1),
+            torch.LongTensor([7, 4, 5]).unsqueeze(-1).to(DEVICE),
+            torch.LongTensor([4, 3, 2]).unsqueeze(-1).to(DEVICE),
+            torch.LongTensor([3, 5, 2]).unsqueeze(-1).to(DEVICE),
         ]
         scores = [
-            torch.Tensor([.15, .2, .8]).unsqueeze(-1),
-            torch.Tensor([.1, .4, 0.3]).unsqueeze(-1),
-            torch.Tensor([.3, .8, .5]).unsqueeze(-1),
+            torch.Tensor([.15, .2, .8]).unsqueeze(-1).to(DEVICE),
+            torch.Tensor([.1, .4, 0.3]).unsqueeze(-1).to(DEVICE),
+            torch.Tensor([.3, .8, .5]).unsqueeze(-1).to(DEVICE),
         ]
 
-        expected = torch.Tensor([5, 3, 2])
-
+        expected = torch.Tensor([5, 3, 2]).to(DEVICE)
+        print('batch size is', indices[0].shape[-1])
         beam_ctx = BeamSearchContext(3)
         beam_ctx.pred_tokens = tokens
         beam_ctx.best_probs = scores

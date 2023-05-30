@@ -8,13 +8,13 @@ from mgz.typing import *
 import mgz.models.nlp.bart_orig as hug
 
 use_mgz = True
-use_hug = True
+use_hug = False
 use_generation = True
 use_encode = False
 
 text = 'startval'
-model_name = 'facebook/bart-large'
-# model_name = 'facebook/bart-large-xsum'  # has a bug where it doesn't have 'mask' in its embedding table, or something like that
+# model_name = 'facebook/bart-large'
+model_name = 'facebook/bart-large-xsum'  # has a bug where it doesn't have 'mask' in its embedding table, or something like that
 # model_name = 'facebook/bart-base'
 
 tokenizer = BartTokenizer.from_pretrained(model_name)
@@ -22,7 +22,6 @@ print(tokenizer.special_tokens_map)
 model_mgz: BartForConditionalGeneration = BartForConditionalGeneration.from_pretrained(
     model_name).to(settings.DEVICE)
 print('vocab size', tokenizer.vocab_size)
-
 model_hug = hug.BartForConditionalGeneration.from_pretrained(
     model_name).to(settings.DEVICE)
 

@@ -209,11 +209,8 @@ class BartAttention(nn.Module):
             # reuse k, v, self_attention
             key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
             value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
-            print('key_statespre', key_states.shape)
             key_states = torch.cat([past_key_value[0], key_states], dim=2)
             value_states = torch.cat([past_key_value[1], value_states], dim=2)
-            print('key_states', key_states.shape)
-            print('query_states', query_states.shape)
 
         else:
             # self_attention
@@ -1133,8 +1130,9 @@ class BartDecoder(BartPretrainedModel):
         # add hidden states from the last decoder layer
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
-
-        print('hidden_states', hidden_states.shape)
+        # print('iput ids', input_ids)
+        # print('hidden_states', hidden_states.shape)
+        # print('hidden_states', hidden_states)
         next_cache = next_decoder_cache if use_cache else None
         if not return_dict:
             return tuple(

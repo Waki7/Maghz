@@ -17,10 +17,19 @@ def to_cpu(tensor):
     return tensor.cpu()
 
 
-# _debug_use_cpu = False
-_debug_use_cpu = True
+def to_mps(tensor):
+    return tensor.to(torch.device("mps"))
 
-if torch.cuda.is_available() and not _debug_use_cpu:
+
+_debug_use_cpu = False
+# _debug_use_cpu = True
+
+if torch.backends.mps.is_available() and not _debug_use_cpu:
+    to_device = to_mps
+    print('MPS available, will be running on apple GPU')
+    torch.backends.mps.is_available()
+    DEVICE = torch.device("mps")
+elif torch.cuda.is_available() and not _debug_use_cpu:
     DEVICE_NUM = 0
     to_device = to_cuda
     print('{} gpus available, will be using gpu {}'.format(

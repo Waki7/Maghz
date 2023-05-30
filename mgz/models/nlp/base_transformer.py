@@ -65,22 +65,31 @@ class BeamSearchContext:
         self.beam_indices: List[LongTensorT['NBeams,B']] = []
 
     def select_ids_from_probs(self,
-                              probs: FloatTensorT['NBeams*B,1,VocabSize']) -> \
+                              log_probs: FloatTensorT[
+                                  'NBeams*B,1,VocabSize']) -> \
             LongTensorT['NBeams*B,1']:
-        probs = probs.squeeze(1)
-        vocab_size = probs.shape[-1]
-        probs_reshape: FloatTensorT['B,NBeams,VocabSize'] = probs.view(
-            self.n_beams, -1, vocab_size).permute(1, 0, 2)
+        vocab_size = log_probs.shape[-1]
+        # since it's a probability conditional on the previous ones, and we
+        # took the log prob, we can just add the previous probabilities to get
+        # the joint probability
+        log_probs = log_probs.squeeze(1).view(
+            self.n_beams, -1, vocab_size)
+        if len(self.best_probs) > 0:
+            log_probs += self.best_probs[-1].unsqueeze(-1).expand_as(log_probs)
+
+        log_probs: FloatTensorT['B,NBeams,VocabSize'] = \
+            log_probs.permute(1, 0, 2)
         # if first step then we want to avoid resampling the same tokens from different beams, so set to neg inf
         if len(self.best_probs) == 0:
-            probs_reshape[:, 1:, :] = -1e9
+            log_probs[:, 1:, :] = -1e9
 
-        probs_reshape = probs_reshape.view(-1,
-                                           self.n_beams * vocab_size)
+        log_probs = log_probs.view(-1,
+                                   self.n_beams * vocab_size)
         best_probs, best_indices = \
-            torch.topk(probs_reshape, k=self.n_beams, dim=-1,
+            torch.topk(log_probs, k=self.n_beams, dim=-1, largest=True,
                        sorted=True)
-
+        # print('best_probs ', best_probs)
+        # print('best_indices ', best_indices)
         best_probs: FloatTensorT['NBeams,B'] = \
             best_probs.permute(1, 0)
         self.best_probs.append(best_probs)
@@ -96,6 +105,7 @@ class BeamSearchContext:
         # view 1 at the end so that it can be concatenated into sequence
         return vocab_idx.view(-1, 1)
 
+    # TODO: is this finding the max prob redundant? because of log probs summing
     def get_best_sequence(self):
         seq_len = len(self.pred_tokens)
         b = self.pred_tokens[0].shape[1]
@@ -104,14 +114,21 @@ class BeamSearchContext:
             self.best_probs[0].device)
         total_probs += self.best_probs[-1]
         sequence_per_beam[:, :, -1] = self.pred_tokens[-1]
+
+        # TODO: remove this workaround when pytorch/mps fixes gather bug
+        def mps_gather_bug_workaround(_input, _dim, _index):
+            return torch.gather(_input.unsqueeze(-1), _dim,
+                                _index.unsqueeze(-1)).squeeze(-1)
+
         for i in range(len(self.pred_tokens) - 2, -1, -1):
-            total_probs += torch.gather(self.best_probs[i], 0,
-                                        self.beam_indices[i + 1])
-            sequence_per_beam[:, :, i] = torch.gather(
+            total_probs += mps_gather_bug_workaround(self.best_probs[i], 0,
+                                                     self.beam_indices[i + 1])
+            sequence_per_beam[:, :, i] = mps_gather_bug_workaround(
                 self.pred_tokens[i], 0,
                 self.beam_indices[i + 1])
-            self.beam_indices[i] = torch.gather(self.beam_indices[i], 0,
-                                                self.beam_indices[i + 1])
+            self.beam_indices[i] = mps_gather_bug_workaround(
+                self.beam_indices[i], 0,
+                self.beam_indices[i + 1])
         return sequence_per_beam[total_probs.argmax(dim=0).item(), :, :]
 
 
@@ -180,20 +197,14 @@ class BaseTransformer(nn.Module):
             n_beams, 1, 1)
         new_ids: LongTensorT['n_beams*B,1'] = tgt_ids.repeat(n_beams,
                                                              1)
-        for i in range(0, 36):
+        for i in range(0, 14):
             logits: FloatTensorT['n_beams*B,1,VocabSize'] = \
                 self.decode(encoder_memory=memory,
                             tgt_ids=new_ids,
                             src_mask=src_mask,
-                            transformer_ctx=context)[:,-1,:]
+                            transformer_ctx=context)
             logits = logits_rule.__call__(beam_ctx=beam_search,
                                           new_logits=logits)
             probs = torch.log_softmax(logits, dim=-1)
-            # print('probs mgz', probs.shape)
-            # print('probs mgz', probs)
-            new_ids = torch.cat(
-                [new_ids, beam_search.select_ids_from_probs(probs=probs)],
-                dim=-1)
-            # print('tokens', new_ids.shape)
-            # print('tokens', new_ids)
+            new_ids = beam_search.select_ids_from_probs(log_probs=probs)
         return beam_search.get_best_sequence()
