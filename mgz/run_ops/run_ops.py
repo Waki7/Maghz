@@ -106,15 +106,17 @@ def forward_controller(model: BaseTransformer, text: str,
                          src_mask=src_mask, tgt_mask=tgt_mask)
 
 
-def generate_controller(model: BaseTransformer, text: str,
+def generate_controller(model: BaseTransformer, text: List[str],
                         tokenizer: PreTrainedTokenizerBase,
                         ):
+    batch_size = len(text)
     batch_encoding = tokenizer(text, return_tensors="pt")
-    src_ids = batch_encoding.input_ids.to(settings.DEVICE)
+    src_ids: LongTensorT['B,SrcSeqLen'] = batch_encoding.input_ids.to(
+        settings.DEVICE)
     # bart for summarization uses sep token for the first token in the decoder,
     # I'm not sure this is true for all models
     tgt_ids = torch.LongTensor([tokenizer.sep_token_id]).unsqueeze(0).to(
-        settings.DEVICE)
+        settings.DEVICE).repeat(batch_size, 1)
     src_mask = batch_encoding.attention_mask.to(settings.DEVICE)
     # don't need tgt_mask because you are generating one token at a time
     return model.generate(src_ids=src_ids, tgt_ids=tgt_ids,
@@ -269,7 +271,6 @@ def load_trained_model(config):
     #     train_model(config)
 
     ds = MultiLexSum(config["max_padding"])
-    exit(4)
     model = make_model(len(ds.vocab_src), len(ds.vocab_tgt), N=6)
     print(model)
     model.load_state_dict(torch.load(model_path))

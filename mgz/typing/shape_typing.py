@@ -9,12 +9,14 @@ import torch
 # Named Shape Types
 #######################
 B = TypeVar("Batch")
+N = TypeVar("N") # arbitrary count
 NHeads = NewType("NHeads", int)  # something like n attention heads
 SrcSeqLen = NewType("SeqLen", int)  # or input sequence length
 OutSeqLen = NewType("OutSeqLen", int)  # or output sequence length
 OutSeqStep = NewType("OutSeqStep", int)  # or output sequence length
 NClasses = NewType("NClasses", int)  # or output sequence length
 NBeams = NewType("NBeams", int)  # or output sequence length
+NDim = NewType("NDim", int)  # or output sequence length
 VocabSize = NewType("NClasses", int)  # or output sequence length
 OutNClasses = NewType("OutNClasses", int)  # or output sequence length
 

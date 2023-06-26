@@ -3,9 +3,10 @@ import copy
 import math
 import random
 from abc import ABC
-
+from mgz.model_vc.model_index import CACHED_INDEXER
 import torch.utils.checkpoint
 from torch import nn
+import json
 from transformers.activations import ACT2FN
 from transformers.modeling_utils import PreTrainedModel
 from transformers.models.bart.configuration_bart import BartConfig
@@ -98,14 +99,16 @@ def _attention(query: FloatTensorT,
     "Compute 'Scaled Dot Product Attention'"
     scores: FloatTensorT['B,OutSeqLen,SrcSeqLen'] = \
         torch.matmul(query, key.transpose(-2, -1))
-
     # same mask per head
     if mask is not None:
+        assert mask.shape[0] == scores.shape[
+            0], 'make sure mask aligns score shape {} vs mask shape {} '.format(
+            scores.shape, mask.shape)
         mask = mask.unsqueeze(1)
         scores = scores.masked_fill(mask == 0, -1e4)
+
     # also called attention weights
     p_attn: torch.Tensor = scores.softmax(dim=-1)
-
     # if not in training, None will be passed
     if dropout_p is not None:
         p_attn = nn.functional.dropout(p_attn, p=dropout_p)
@@ -116,23 +119,23 @@ def _attention(query: FloatTensorT,
     return attn_out, p_attn
 
 
-def attention(query: FloatTensorT['B,NHeads,OutSeqLen,EmbedLen/NHeads'],
-              key: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
-              value: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
-              mask: IntTensorT['B,1,OutSeqLen,SrcSeqLen'] = None,
-              dropout: ProbT = None) -> \
+def attention(query: FloatTensorT['B*NHeads,OutSeqLen,EmbedLen/NHeads'],
+              key: FloatTensorT['B*NHeads,SrcSeqLen,EmbedLen/NHeads'],
+              value: FloatTensorT['B*NHeads,SrcSeqLen,EmbedLen/NHeads'],
+              mask: IntTensorT['B*NHeads,OutSeqLen,SrcSeqLen'] = None,
+              dropout_p: ProbT = None) -> \
         Tuple[FloatTensorT['B,OutSeqLen,EmbedLen'], torch.Tensor]:
-    return _attention(query, key, value, mask, dropout)
+    return _attention(query, key, value, mask, dropout_p)
 
 
-def self_attention(query: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
-                   key: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
+def self_attention(query: FloatTensorT['B*NHeads,SrcSeqLen,EmbedLen/NHeads'],
+                   key: FloatTensorT['B*NHeads,SrcSeqLen,EmbedLen/NHeads'],
                    value: FloatTensorT[
-                       'B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
-                   mask: IntTensorT['B,1,SrcSeqLen,SrcSeqLen'] = None,
-                   dropout=None) -> \
+                       'B*NHeads,SrcSeqLen,EmbedLen/NHeads'],
+                   mask: IntTensorT['B*NHeads,SrcSeqLen,SrcSeqLen'] = None,
+                   dropout_p=None) -> \
         Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
-    return _attention(query, key, value, mask, dropout)
+    return _attention(query, key, value, mask, dropout_p)
 
 
 class MultiHeadedAttention(nn.Module):
@@ -182,29 +185,35 @@ class MultiHeadedAttention(nn.Module):
         "Implements Figure 2"
         if mask is not None and mask.dim() == 2:
             # Same mask applied to all tgt sequence if not specified
-            mask = mask.unsqueeze(1)  # .expand(-1, query.size(1), -1)
+            mask = mask.unsqueeze(1)
         nbatches = query.size(0)
 
         def n_head_reshape(tensor):
             return tensor.view(nbatches, -1, self.n_heads,
-                               self.head_dim).transpose(1, 2)
+                               self.head_dim).transpose(
+                1, 2).contiguous()
 
         # here we split the embedding into n_heads
         # 1) Do all the linear projections in batch from d_model => h x d_k
-        query = n_head_reshape(self.q_proj(query)) * self.scaling
+        query_st = n_head_reshape(self.q_proj(query)) * self.scaling
         if self.decoder_attention and transformer_ctx is not None and transformer_ctx.in_generation:
-            key = n_head_reshape(transformer_ctx.add_key(
-                self.k_proj(key)))
-            value = n_head_reshape(transformer_ctx.add_value(
+            key_st = transformer_ctx.add_key(
+                n_head_reshape(self.k_proj(key)))
+            value_st = transformer_ctx.add_value(n_head_reshape(
                 self.v_proj(value)))
         else:
-            key = n_head_reshape(self.k_proj(key))
-            value = n_head_reshape(self.v_proj(value))
+            key_st = n_head_reshape(self.k_proj(key))
+            value_st = n_head_reshape(self.v_proj(value))
+
+        proj_shape = (nbatches, self.n_heads, -1, self.head_dim)
+        query_st = query_st.view(*proj_shape)
+        key_st = key_st.view(*proj_shape)
+        value_st = value_st.view(*proj_shape)
 
         # 2) Apply attention on all the projected vectors in batch.
-        x, self.attn = attention(
-            query, key, value, mask=mask,
-            dropout=self.dropout if self.training else None
+        x, self.attn = _attention(
+            query_st, key_st, value_st, mask=mask,
+            dropout_p=self.dropout if self.training else None,
         )
 
         # 3) "Concat" using a view and apply a final linear.
@@ -508,8 +517,6 @@ class BartDecoder(nn.Module):
     ) -> FloatTensorT['B,OutSeqLen,EmbedLen']:
         inputs_embeds: FloatTensorT['B,1,EmbedLen'] = self.embed_tokens(
             tgt_ids) * self.embed_scale
-        # if transformer_ctx is not None and transformer_ctx.in_generation:
-        #     inputs_embeds = transformer_ctx.add_input_embeddings(inputs_embeds)
         positions = self.embed_positions(tgt_ids, transformer_ctx)
         positions = positions.to(inputs_embeds.device)
         hidden_states = inputs_embeds + positions
@@ -528,12 +535,10 @@ class BartDecoder(nn.Module):
                 encoder_hidden_states=encoder_hidden_states,
                 src_mask=src_mask,
                 tgt_mask=tgt_mask,
-                transformer_ctx=transformer_ctx.for_layer(idx)
+                transformer_ctx=transformer_ctx.for_layer(
+                    idx) if transformer_ctx else None
             )
             hidden_states = layer_outputs
-        # print('iput ids', tgt_ids)
-        # print('hidden_states', hidden_states.shape)
-        # print('hidden_states', hidden_states)
         return hidden_states
 
 
@@ -605,11 +610,21 @@ class BartModel(BartPretrainedModel):
 class BartForConditionalGeneration(BartPretrainedModel):
     @classmethod
     def from_pretrained(cls, name="facebook/bart-base"):
-        model_hug = hug.BartForConditionalGeneration.from_pretrained(
-            name).to(settings.DEVICE)
-        model = BartForConditionalGeneration(model_hug.config)
-        model.load_state_dict(
-            model_hug.state_dict())
+        def loader(path: str):
+            with open(path, 'r') as f:
+                config = json.load(f)
+            model = BartForConditionalGeneration(config)
+            model.load_state_dict(torch.load(path))
+            return model
+
+        def init_save(path: str):
+            model_hug = hug.BartForConditionalGeneration.from_pretrained(
+                name).to(settings.DEVICE)
+            with open(path, 'w') as f:
+                json.dump(model_hug.config, f)
+            torch.save(model.state_dict(), path)
+
+        model = CACHED_INDEXER.lookup(name, loader=loader, init_save=init_save)
         model.eval()
         return model
 
@@ -693,6 +708,7 @@ class BartForConditionalGeneration(BartPretrainedModel):
             src_mask=src_mask,
             tgt_mask=tgt_mask, transformer_ctx=transformer_ctx
         )
+
         lm_logits = self.lm_head(output)
         lm_logits = lm_logits + self.final_logits_bias.to(lm_logits.device)
         return lm_logits

@@ -6,24 +6,63 @@ import spaces as sp
 from mgz.models.base_model import BaseModel
 from mgz.models.mobile_net import MobileNetV2
 import json
+from json import JSONDecoder, JSONEncoder
+import os
+from mgz.model_vc.model_node import ModelNode
 
+# DEFAULTS
 ROOT_INDEX = {
     'MobileNetV2': MobileNetV2,
 }
 
-class Indexer:
-    def __init__(self, dir: DirPath ):
-        self.root_path = dir
-        self.roots: List[str] = [MobileNetV2.__name__]
 
-    def to_json(self) -> Dict:
+class Indexer:
+    def __init__(self, dir: DirPath):
+        self.root_path = dir
+        self.roots: Dict[str, List[str]] = {}
+
+    def to_json(self) -> str:
         obj_dict = {}
         for k, v in sorted(self.__dict__.items()):
             obj_dict[k] = v
+        return json.dumps(obj_dict, indent=4, separators=(',', ': '))
 
-        return json.dumps(obj_dict, indent=4)
+    def save_as_json(self):
+        with open(os.path.join(self.root_path, 'indexer.json'), 'w') as f:
+            f.write(self.to_json())
 
-    def from_json(self, dict: Dict):
-        obj_dict = {}
-        for k, v in sorted(dict):
-            obj_dict[k] = v
+    @staticmethod
+    def load_from_json(path='../../index_dir/indexer.json'):
+        # obj_dict = {}
+        # for k, v in sorted(dict):
+        #     obj_dict[k] = v
+        with open(path) as file_object:
+            # store file data in object
+            data = json.load(file_object)
+        idxer = Indexer(data['root_path'])
+        for k, v in sorted(data.items()):
+            idxer.__dict__[k] = v
+        return idxer
+
+    def full_path(self, name):
+        return os.path.join(self.root_path, name)
+
+    def find_parent_child(self, model: str) -> Tuple[str, str]:
+        pass
+
+    def lookup(self, model: str,
+               loader: Callable[[str], BaseDataset],
+               init_save: Callable[[str], None]) -> ModelNode:
+        # root_path, child_path = find_parent_child(model)
+        # so this relationship, you have a root and you have a child, there is a relationship between the two, you can define the child by the parent somehow. In our case because we hacky we just using this to distinguish the model vs the weights. model is parent, weights is child.
+        if model in self.roots:
+            model = loader(self.full_path(model))
+        else:
+            try:
+                init_save(self.full_path(model))
+                model = loader(self.full_path(model))
+            except OSError as e:  # model has not been created yet and does not exist
+                pass
+
+
+CACHED_INDEXER = Indexer.load_from_json()  # what's currently cached when the script is running

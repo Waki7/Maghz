@@ -23,22 +23,6 @@ from mgz.run_ops.run_ops import create_dataloaders
 
 def main2():
     from transformers import BartTokenizer
-    # tokenizer = BartTokenizer.from_pretrained("facebook/bart-base")
-    # print(tokenizer.special_tokens_map)
-    # print(tokenizer.__call__(" Hello world"))
-    # print(tokenizer.__call__(" Tell world"))
-    # print(tokenizer.__call__("Hello world"))
-    # print(tokenizer.__call__("Tell world"))
-    #
-    # print(tokenizer.tokenize("Hello world </s>"))
-    # print(tokenizer.__call__("Hello world </s>"))
-    # print(tokenizer.__call__("Hello world asdf"))
-    # print(tokenizer.__call__("Hello world <pad>>"))
-    #
-    # input_ids = tokenizer("Hello world </s>",
-    #                       return_tensors="pt").input_ids  # Batch size 1
-    # exit(3)
-
 
     use_mgz = True
     # Initializing a BART facebook/bart-large style configuration
@@ -80,13 +64,15 @@ def main2():
             )
             pad_idx = train_ds.pad_idx()
 
-            cfg.vocab_size = max(train_ds.src_vocab_len(), train_ds.tgt_vocab_len())
+            cfg.vocab_size = max(train_ds.src_vocab_len(),
+                                 train_ds.tgt_vocab_len())
             model = BartForConditionalGeneration(cfg)
             model.to(settings.DEVICE)
             model.train()
             train_state = TrainState()
             criterion = LabelSmoothing(
-                n_cls=train_ds.tgt_vocab_len(), padding_idx=pad_idx, smoothing=0.1
+                n_cls=train_ds.tgt_vocab_len(), padding_idx=pad_idx,
+                smoothing=0.1
             )
             # criterion.cuda()
             optimizer = torch.optim.Adam(
@@ -118,7 +104,6 @@ def main2():
             # import torchtext
             # from torchtext.data import get_tokenizer
             # tokenizer: Language = get_tokenizer("basic_english")
-
 
             # print(model.forward(input_ids))
 

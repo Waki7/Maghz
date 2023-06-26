@@ -174,7 +174,6 @@ def main():
     from transformers import BertTokenizer
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
     print(tokenizer.tokenize("I have a new GPU!"))
-    exit(9)
     multi_lexsum: DatasetDict = load_dataset("allenai/multi_lexsum",
                                              name="v20220616")
     print(type(multi_lexsum))
