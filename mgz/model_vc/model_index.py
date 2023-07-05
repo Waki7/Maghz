@@ -11,9 +11,7 @@ import os
 from mgz.model_vc.model_node import ModelNode
 
 # DEFAULTS
-ROOT_INDEX = {
-    'MobileNetV2': MobileNetV2,
-}
+DEFAULT_ROOTS = {}
 
 
 class Indexer:
@@ -32,10 +30,13 @@ class Indexer:
             f.write(self.to_json())
 
     @staticmethod
-    def load_from_json(path='../../index_dir/indexer.json'):
+    def load_from_json(path='../../../index_dir/main/indexer.json'):
         # obj_dict = {}
         # for k, v in sorted(dict):
         #     obj_dict[k] = v
+        if not os.path.exists(path):
+            raise OSError(
+                f'Indexer json file {os.path.abspath(path)} does not exist.')
         with open(path) as file_object:
             # store file data in object
             data = json.load(file_object)
@@ -50,19 +51,35 @@ class Indexer:
     def find_parent_child(self, model: str) -> Tuple[str, str]:
         pass
 
-    def lookup(self, model: str,
+    def check_state(self):
+        if not os.path.exists(self.root_path):
+            raise OSError(
+                f'Indexer root path {os.path.abspath(self.root_path)} does not exist, check if the indexer moved.')
+
+    def add_root(self, model: str):
+        self.roots[model] = []
+        self.roots = dict(sorted(self.roots.items()))
+        self.save_as_json()
+
+    def lookup(self, model_id: str,
                loader: Callable[[str], BaseDataset],
                init_save: Callable[[str], None]) -> ModelNode:
+        self.check_state()
         # root_path, child_path = find_parent_child(model)
         # so this relationship, you have a root and you have a child, there is a relationship between the two, you can define the child by the parent somehow. In our case because we hacky we just using this to distinguish the model vs the weights. model is parent, weights is child.
-        if model in self.roots:
-            model = loader(self.full_path(model))
+        if model_id in self.roots:
+            model = loader(self.full_path(model_id))
         else:
             try:
-                init_save(self.full_path(model))
-                model = loader(self.full_path(model))
+                init_save(self.full_path(model_id))
+                self.add_root(model_id)
+                model = loader(self.full_path(model_id))
             except OSError as e:  # model has not been created yet and does not exist
-                pass
+                raise e
+        return model
 
 
 CACHED_INDEXER = Indexer.load_from_json()  # what's currently cached when the script is running
+if len(CACHED_INDEXER.roots) == 0:
+    CACHED_INDEXER.roots = DEFAULT_ROOTS
+    CACHED_INDEXER.save_as_json()

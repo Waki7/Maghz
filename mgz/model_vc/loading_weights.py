@@ -40,9 +40,6 @@ def main():
     model_mgz: BartForConditionalGeneration = BartForConditionalGeneration.from_pretrained(
         model_name).to(settings.DEVICE)
 
-    idxer = Indexer('../../../index_dir/')
-    idxer.save_as_json()
-
     idxer2 = Indexer.load_from_json()
     print(idxer2.to_json())
 

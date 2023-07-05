@@ -44,6 +44,8 @@ TgtStringT = Union[SourceListT, GermanT, EnglishT]
 Opt = Optional
 
 
+StateDictT = Dict[str, torch.Tensor]
+
 class NDArray(np.ndarray, Generic[Shape, DType]):
     """
     Use this to type-annotate numpy arrays, e.g.

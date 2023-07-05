@@ -13,6 +13,7 @@ from transformers.models.bart.configuration_bart import BartConfig
 from transformers.utils import (
     logging,
 )
+import os
 
 import settings
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext
@@ -116,7 +117,14 @@ def _attention(query: FloatTensorT,
     # using the probabilities to pay attention to the value
     # noinspection PyTypeChecker
     attn_out = torch.matmul(p_attn, value)
-    return attn_out, p_attn
+    print(attn_out.shape)
+    print(p_attn.shape)
+    del mask
+    del scores
+    del p_attn
+    torch.mps.empty_cache()
+    torch.cuda.empty_cache()
+    return attn_out
 
 
 def attention(query: FloatTensorT['B*NHeads,OutSeqLen,EmbedLen/NHeads'],
@@ -211,7 +219,7 @@ class MultiHeadedAttention(nn.Module):
         value_st = value_st.view(*proj_shape)
 
         # 2) Apply attention on all the projected vectors in batch.
-        x, self.attn = _attention(
+        x = _attention(
             query_st, key_st, value_st, mask=mask,
             dropout_p=self.dropout if self.training else None,
         )
@@ -225,6 +233,8 @@ class MultiHeadedAttention(nn.Module):
         del query
         del key
         del value
+        torch.mps.empty_cache()
+        torch.cuda.empty_cache()
         return self.out_proj(x)
 
 
@@ -251,10 +261,16 @@ class BartEncoderLayer(nn.Module):
             src_mask: IntTensorT['B,SrcSeqLen'],
     ) -> FloatTensorT['B,SrcSeqLen,EmbedLen']:
         residual = hidden_states
+
+        print('pre self', torch.mps.current_allocated_memory() / 1e9,
+              'gb')
         hidden_states = self.self_attn.forward(
             query=hidden_states, key=hidden_states, value=hidden_states,
             mask=src_mask
         )
+
+        print('post self', torch.mps.current_allocated_memory() / 1e9,
+              'gb')
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout,
                                               training=self.training)
         hidden_states = residual + hidden_states
@@ -278,6 +294,9 @@ class BartEncoderLayer(nn.Module):
             clamp_value = torch.finfo(hidden_states.dtype).max - 1000
             hidden_states = torch.clamp(hidden_states, min=-clamp_value,
                                         max=clamp_value)
+
+        print('end encode', torch.mps.current_allocated_memory() / 1e9,
+              'gb')
         return hidden_states
 
 
@@ -464,6 +483,7 @@ class BartEncoder(nn.Module):
                     hidden_states=hidden_states,
                     src_mask=src_mask
                 )
+
             hidden_states = layer_outputs
         return hidden_states
 
@@ -597,34 +617,41 @@ class BartModel(BartPretrainedModel):
             src_mask: IntTensorT['B,1|OutSeqLen,SrcSeqLen'],
             tgt_mask: IntTensorT['B,OutSeqLen,OutSeqLen'] = None
     ) -> FloatTensorT['B,OutSeqLen,EmbedLen']:
+        print('pre encode', torch.mps.current_allocated_memory() / 1e9, 'gb')
         encoder_outputs = self.encode(src_ids=src_ids, src_mask=src_mask)
+        print('post encode', torch.mps.current_allocated_memory() / 1e9, 'gb')
         decoder_hidden_state = self.decode(
             tgt_ids=tgt_ids,
             src_mask=src_mask,
             tgt_mask=tgt_mask,
             encoder_memory=encoder_outputs,
         )
+        print('post decode', torch.mps.current_allocated_memory() / 1e9, 'gb')
         return decoder_hidden_state
 
 
 class BartForConditionalGeneration(BartPretrainedModel):
     @classmethod
-    def from_pretrained(cls, name="facebook/bart-base"):
+    def from_pretrained(cls, model_id="facebook/bart-base"):
         def loader(path: str):
-            with open(path, 'r') as f:
+            with open(os.path.join(path, 'config.json'), 'r') as f:
                 config = json.load(f)
-            model = BartForConditionalGeneration(config)
-            model.load_state_dict(torch.load(path))
+            model = BartForConditionalGeneration(BartConfig.from_dict(config))
+            model.load_state_dict(torch.load(os.path.join(path, 'weights.bin')))
             return model
 
         def init_save(path: str):
+            if not os.path.exists(path):
+                os.makedirs(path)
             model_hug = hug.BartForConditionalGeneration.from_pretrained(
-                name).to(settings.DEVICE)
-            with open(path, 'w') as f:
-                json.dump(model_hug.config, f)
-            torch.save(model.state_dict(), path)
+                model_id).to(settings.DEVICE)
+            with open(os.path.join(path, 'config.json'), 'w') as f:
+                json.dump(model_hug.config.to_dict(), f)
+            torch.save(model_hug.state_dict(),
+                       os.path.join(path, 'weights.bin'))
 
-        model = CACHED_INDEXER.lookup(name, loader=loader, init_save=init_save)
+        model = CACHED_INDEXER.lookup(model_id, loader=loader,
+                                      init_save=init_save)
         model.eval()
         return model
 

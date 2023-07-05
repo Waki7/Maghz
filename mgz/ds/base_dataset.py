@@ -11,9 +11,17 @@ from mgz.typing import *
 
 import torchvision.io as torch_io
 import torchvision.transforms.functional as torch_f
+from enum import Enum
+from torch.utils.data import DataLoader
 
 LabelType = []
 T = TypeVar("T")
+
+
+class DataSplit(Enum):
+    TRAIN = 'train'
+    VAL = 'val'
+    TEST = 'test'
 
 
 class BaseDataset(Dataset):
@@ -26,6 +34,7 @@ class BaseDataset(Dataset):
 
     def __add__(self, other: 'Dataset[T_co]') -> 'ConcatDataset[T_co]':
         raise NotImplementedError
+
     def __len__(self):
         'Denotes the total number of samples'
         return len(self.img_index)
@@ -37,8 +46,15 @@ class BaseDataset(Dataset):
         'Generates one sample of data'
         raise NotImplementedError
 
+    def create_dataloaders(self,
+                           device: Union[torch.device, int],
+                           batch_size: int = 12000,
+                           is_distributed: bool = True,
+                           ) -> (DataLoader, DataLoader):
+        raise NotImplementedError
+
     def pad_idx(self) -> int:
-       raise NotImplementedError
+        raise NotImplementedError
     # class _MapStyleDataset(torch.utils.data.Dataset):
 
     # def __init__(self, iter_data) -> None:

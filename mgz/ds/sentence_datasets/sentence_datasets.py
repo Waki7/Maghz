@@ -4,8 +4,23 @@ from torch.nn.functional import pad
 from torchtext.vocab.vocab import Vocab
 
 import spaces as sp
-from mgz.ds.base_dataset import BaseDataset
+from mgz.ds.base_dataset import BaseDataset, DataSplit
 from mgz.typing import *
+from torch.utils.data.distributed import DistributedSampler
+from torch.utils.data import DataLoader
+
+from enum import Enum
+
+
+class SampleType(Enum):
+    INPUT_TEXT = 'input_text'
+    SUMMARY_TINY = 'summary_tiny'
+    SUMMARY_SHORT = 'summary_short'
+    SUMMARY_LONG = 'summary_long'
+
+    CATCHPHRASES = 'catchphrase'
+    NAME = 'name'
+
 
 class SentenceBatch:
     """Object for holding a batch of data with mask during training."""
@@ -67,6 +82,23 @@ class SentenceDataset(BaseDataset):
         assert self.loaded, "Dataset not loaded"
         return partial(self._collate_fn, device)
 
+    def create_dataloaders(self,
+                           device: Union[torch.device, int],
+                           batch_size: int = 12000,
+                           is_distributed: bool = True,
+                           ) -> (DataLoader, DataLoader):
+        valid_sampler = (
+            DistributedSampler(self) if is_distributed else None
+        )
+        dataloader = DataLoader(
+            self,
+            batch_size=batch_size,
+            shuffle=(valid_sampler is None),
+            sampler=valid_sampler,
+            collate_fn=self.get_collate_fn(device)
+        )
+        return dataloader
+
 
 def subsequent_mask(size: SrcSeqLen):
     "Mask out subsequent positions."
@@ -79,10 +111,10 @@ def subsequent_mask(size: SrcSeqLen):
 
 def collate_batch(
         batch,
-        src_pipeline: Callable[[SrcStringT], List[str]],  # tokenizer function
-        tgt_pipeline: Callable[[TgtStringT], List[str]],  # tokenizer function
-        src_vocab: Dict[str, int],
-        tgt_vocab: Dict[str, int],
+        src_tokenizer_pipeline: Callable[[SrcStringT], List[str]],
+        tgt_tokenizer_pipeline: Callable[[TgtStringT], List[str]],
+        src_vocab_pipeline: Callable[List[str], List[int]],
+        tgt_vocab_pipeline: Callable[List[str], List[int]],
         device,
         max_padding=128,
         pad_id=2,
@@ -91,12 +123,14 @@ def collate_batch(
     bs_id = torch.tensor([0], device=device, dtype=dtype)  # <s> token id
     eos_id = torch.tensor([1], device=device, dtype=dtype)  # </s> token id
     src_list, tgt_list = [], []
+    _src: SrcStringT
+    _tgt: TgtStringT
     for (_src, _tgt) in batch:
         processed_src = torch.cat(
             [
                 bs_id,
                 torch.tensor(
-                    src_vocab.forward(src_pipeline(_src)),
+                    src_vocab_pipeline((src_tokenizer_pipeline(_src))),
                     dtype=dtype,
                     device=device,
                 ),
@@ -108,7 +142,7 @@ def collate_batch(
             [
                 bs_id,
                 torch.tensor(
-                    tgt_vocab.forward(tgt_pipeline(_tgt)),
+                    tgt_vocab_pipeline((tgt_tokenizer_pipeline(_tgt))),
                     dtype=dtype,
                     device=device,
                 ),

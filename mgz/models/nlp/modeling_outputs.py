@@ -1102,7 +1102,7 @@ class SemanticSegmenterOutput(ModelOutput):
 
             The logits returned do not necessarily have the same size as the `pixel_values` passed as inputs. This is
             to avoid doing two interpolations and lose some quality when a user needs to resize the logits to the
-            original image size as post-processing. You should always check your logits shape and resize as needed.
+            main image size as post-processing. You should always check your logits shape and resize as needed.
 
             </Tip>
 

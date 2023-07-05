@@ -121,7 +121,7 @@ class BeamInference:
         return vocab_idx.flatten()
 
     # TODO: is this finding the max prob redundant? because of log probs summing
-    def get_best_sequence(self):
+    def get_best_sequence(self) -> LongTensorT['OutSeqLen']:
         def backtrack_beam(batch_idx, beam_num, beam_end):
             tokens: List[int] = []
             next_beam_num = beam_num
@@ -264,8 +264,13 @@ class BaseTransformer(nn.Module):
     #
     def generate(self,
                  src_ids: LongTensorT['B,SrcSeqLen'],
-                 tgt_ids: LongTensorT['B,OutSeqLen'],
-                 src_mask: IntTensorT['B,1|OutSeqLen,SrcSeqLen']):
+                 src_mask: IntTensorT['B,1|OutSeqLen,SrcSeqLen'],
+                 tgt_ids: LongTensorT['B,OutSeqLen'] = None
+                 ) -> \
+            LongTensorT['OutSeqLen']:
+        if tgt_ids is None:
+            tgt_ids = torch.LongTensor([config.sep_token_id]).unsqueeze(0).to(
+                settings.DEVICE).repeat(src_ids.shape[0], 1)
         n_beams = self.config.num_beams
         max_len = self.config.max_length
         eos_token_id = self.config.eos_token_id

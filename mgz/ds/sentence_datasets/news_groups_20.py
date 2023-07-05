@@ -13,10 +13,8 @@ from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 import spaces as sp
 from mgz.ds.base_dataset import T
-from transformers import PreTrainedTokenizer
-
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
-    collate_batch, DataSplit, SampleType
+    collate_batch
 from mgz.models.nlp.tokenizing import Tokenizer, TokenStrings
 from mgz.typing import *
 
@@ -26,25 +24,22 @@ class InputSource(Enum):
     SHORT = 'summary/short'
     TINY = 'summary/tiny'
 
+PATH = '../../../,,./datasets/corpus'
+
 
 class MultiLexSum(SentenceDataset):
-    def __init__(self, tokenizer: PreTrainedTokenizer, max_length: SrcSeqLen):
+    def __init__(self, max_length: SrcSeqLen):
         super(MultiLexSum, self).__init__()
 
         self.max_length = max_length
-        self.split = None
+        self._data: List[Dict[str, Union[SummaryT, List[SourceListT]]]] = []
 
-        ## main dataset information
-        self._data: List[
-            Dict[str, Union[SummaryT, List[SourceListT]]]] = []
-
-        self.dataset_keys: List[str] = []
-        self.entry_keys: List[str] = []
-
-        self.tokenizer_src: PreTrainedTokenizerBase = tokenizer
-        self.tokenizer_tgt: PreTrainedTokenizerBase = tokenizer
+        self.tokenizer_src: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
+            "facebook/bart-base")
+        self.tokenizer_tgt: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
+            "facebook/bart-base")
         self.vocab_src: Dict[str, int] = self.tokenizer_src.get_vocab()
-        self.vocab_tgt: Dict[str, int] = self.tokenizer_tgt.get_vocab()
+        self.vocab_tgt: Dict[str, int] = self.tokenizer_src.get_vocab()
 
         self.input_space = sp.Sentence(
             len((self.vocab_src)), shape=(max_length,))
@@ -60,8 +55,7 @@ class MultiLexSum(SentenceDataset):
         return len(self._data)
 
     def __getitem__(self, idx) -> (SourceListT, SummaryT):
-        return self._data[idx]['sources'], self._data[idx][
-            InputSource.LONG.value]
+        return self._data[idx]['sources'], self._data[idx]['summary/long']
 
     @property
     def in_space(self) -> sp.Sentence:
@@ -77,6 +71,25 @@ class MultiLexSum(SentenceDataset):
     def gen(self) -> Generator[T, None, None]:
         raise NotImplementedError
 
+    @staticmethod
+    def yield_src_tokens(data_iter: Dataset,
+                         tokenizer: Language) -> Generator[List[SourceListT]]:
+        from_to_tuple: Dict[str, Union[str, List[str]]]
+        for from_to_tuple in tqdm(data_iter):
+            input_text: List[str] = from_to_tuple['sources']
+            for text in input_text:
+                yield tokenize(text, tokenizer)
+
+    @staticmethod
+    def yield_tgt_tokens(data_iter: Dataset,
+                         tokenizer: Language) -> Generator[List[SummaryT]]:
+        from_to_tuple: Dict[str, Union[str, List[str]]]
+        for from_to_tuple in tqdm(data_iter):
+            for key in ['summary/long', 'summary/short', 'summary/tiny']:
+                tgt_text: str = from_to_tuple[key]
+                if tgt_text is not None:
+                    yield tokenize(tgt_text, tokenizer)
+
     def _collate_fn(self, device: Union[int, torch.device],
                     batch: List[Tuple[SourceListT, SummaryT]]):
         assert self.loaded, "Dataset not loaded"
@@ -90,24 +103,18 @@ class MultiLexSum(SentenceDataset):
             flattened_source_text: List[str] = []
             for tokenized_source in tokenized_sources:
                 flattened_source_text.extend(tokenized_source)
-                flattened_source_text.append(self.tokenizer_src.sep_token)
+                flattened_source_text.append(TokenStrings.SEP.value)
             return flattened_source_text
 
         def tokenize_tgt(text: SummaryT) -> List[str]:
             return self.tokenizer_tgt.tokenize(text)
 
-        def vocab_src(tokens: List[str]) -> List[int]:
-            return [self.vocab_src[token] for token in tokens]
-
-        def vocab_tgt(tokens: List[str]) -> List[int]:
-            return [self.vocab_tgt[token] for token in tokens]
-
         return collate_batch(
             batch,
             tokenize_src,
             tokenize_tgt,
-            vocab_src,
-            vocab_tgt,
+            self.vocab_src,
+            self.vocab_tgt,
             device,
             max_padding=self.max_length,
             pad_id=self.tokenizer_src.pad_token_id
@@ -120,20 +127,15 @@ class MultiLexSum(SentenceDataset):
     def _load(self, train: bool = False, val: bool = False, test: bool = False):
         iter: DatasetDict
         multi_lexsum = load_dataset("allenai/multi_lexsum", name="v20220616")
-        self.dataset_keys = list(multi_lexsum.keys())
-        self.entry_keys = multi_lexsum['train'][0].keys()
         # ['train', 'validation', 'test']
         # ['id', 'sources', 'summary/long', 'summary/short', 'summary/tiny']
         example: List[Dict[str, Union[SummaryT, SourceListT]]] = []
         if train:
             example: Dataset = multi_lexsum["train"]
-            self.split = DataSplit.TRAIN
         elif val:
             example: Dataset = multi_lexsum["validation"]
-            self.split = DataSplit.VAL
         elif test:
             example: Dataset = multi_lexsum["test"]
-            self.split = DataSplit.TEST
         self._data = example
         self.loaded = True
 
@@ -158,7 +160,7 @@ class MultiLexSum(SentenceDataset):
         return self
 
     def pad_idx(self) -> int:
-        return self.vocab_tgt[self.tokenizer_tgt.pad_token]
+        return self.vocab_tgt['<blank>']
 
     def src_vocab_len(self) -> int:
         return len(self.vocab_src)
@@ -167,33 +169,21 @@ class MultiLexSum(SentenceDataset):
         return len(self.vocab_tgt)
 
 
-def count_per_summary(ds: MultiLexSum):
-    counts = {InputSource.LONG.value: 0, InputSource.SHORT.value: 0,
-              InputSource.TINY.value: 0}
-    for (entry) in tqdm(ds._data):
-        if entry.get(InputSource.LONG.value) is not None:
-            counts[InputSource.LONG.value] += 1
-        if entry.get(InputSource.SHORT.value) is not None:
-            counts[InputSource.SHORT.value] += 1
-        if entry.get(InputSource.TINY.value) is not None:
-            counts[InputSource.TINY.value] += 1
-    print(counts)
-
-
 def main():
     # please install HuggingFace ds by pip install ds
-    ds = MultiLexSum(max_length=128).load_training_data()
+    ds = MultiLexSum(max_length=128)
     print(ds.tokenizer_src.tokenize("hello i am a test"))
     from transformers import BertTokenizer
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
     print(tokenizer.tokenize("I have a new GPU!"))
+    multi_lexsum: DatasetDict = load_dataset("allenai/multi_lexsum",
+                                             name="v20220616")
 
     example: Dict = \
-        ds._data[4]  # The first instance of the dev set
-    print('dataset keys are: ', ds.dataset_keys)
-    print('entry_keys keys are: ', ds.entry_keys)
-
+        multi_lexsum["validation"][4]  # The first instance of the dev set
+    print(list(multi_lexsum.keys()))
     # keys are ['id', 'sources', 'summary/long', 'summary/short', 'summary/tiny']
+    print(list(example.keys()))
     print('sources: \n', example['sources'], '\n')
 
     # for item in example['sources']:
@@ -208,7 +198,7 @@ def main():
                 print(a, ": ", type(b), " length of  ", len(b))
         else:
             print(a, ": ", type(b), ".... ", b)
-    count_per_summary(ds)
+
     # for sum_len in ["long", "short", "tiny"]:
     #     print(example["summary/" + sum_len])  # Summaries of three lengths
 

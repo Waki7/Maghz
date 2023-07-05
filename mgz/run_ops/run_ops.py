@@ -43,6 +43,7 @@ def run_epoch(
         accum_iter=1,
         train_state=TrainState(),
 ) -> (torch.Tensor, TrainState):
+    print('begining', torch.mps.current_allocated_memory() / 1e9, 'gb')
     """Train a single epoch"""
     start = time.time()
     total_tokens = 0
@@ -52,10 +53,13 @@ def run_epoch(
     i: int
     batch: SentenceBatch
     for i, batch in enumerate(data_generator):
+        print('pre', torch.mps.current_allocated_memory() / 1e9, 'gb')
         logits = model.forward(
             src_ids=batch.src, tgt_ids=batch.tgt, src_mask=batch.src_mask,
             tgt_mask=batch.tgt_mask
         )
+        print('post', torch.mps.current_allocated_memory() / 1e9, 'gb')
+
         loss, loss_node = loss_compute(logits, batch.tgt_y, batch.ntokens)
         # loss_node = loss_node / accum_iter
         if mode == "train" or mode == "train+log":
@@ -88,6 +92,36 @@ def run_epoch(
         del loss
         del loss_node
     return total_loss / total_tokens, train_state
+
+
+def val_model(
+        val_data: Generator[SentenceBatch, None, None],
+        model: BaseTransformer,
+        loss_compute,
+        optimizer,
+        scheduler,
+        train_state=TrainState(),
+) -> (torch.Tensor, TrainState):
+    started_training = model.training
+    model.eval()
+
+    if started_training:
+        model.train()
+
+    """Train a single epoch"""
+    start = time.time()
+    total_tokens = 0
+    total_loss = 0
+    tokens = 0
+    n_accum = 0
+    i: int
+    batch: SentenceBatch
+    for i, batch in enumerate(val_data):
+        predictions: LongTensorT['OutSeqLen'] = model.generate(
+            src_ids=batch.src, src_mask=batch.src_mask)
+        print(predictions)
+        print(batch.tgt_y)
+        exit(3)
 
 
 def forward_controller(model: BaseTransformer, text: str,
@@ -123,34 +157,6 @@ def generate_controller(model: BaseTransformer, text: List[str],
                           src_mask=src_mask)
 
 
-def create_dataloaders(train_ds: SentenceDataset, val_ds: SentenceDataset,
-                       device: Union[torch.device, int],
-                       batch_size: int = 12000,
-                       is_distributed: bool = True,
-                       ) -> (DataLoader, DataLoader):
-    train_sampler = (
-        DistributedSampler(train_ds) if is_distributed else None
-    )
-    train_dataloader = DataLoader(
-        train_ds,
-        batch_size=batch_size,
-        shuffle=(train_sampler is None),
-        sampler=train_sampler,
-        collate_fn=train_ds.get_collate_fn(device)
-    )
-    valid_sampler = (
-        DistributedSampler(val_ds) if is_distributed else None
-    )
-    valid_dataloader = DataLoader(
-        val_ds,
-        batch_size=batch_size,
-        shuffle=(valid_sampler is None),
-        sampler=valid_sampler,
-        collate_fn=val_ds.get_collate_fn(device)
-    )
-    return train_dataloader, valid_dataloader
-
-
 def train_worker(
         gpu: Union[torch.device, int],
         ngpus_per_node,
@@ -162,11 +168,11 @@ def train_worker(
 
     train_ds = MultiLexSum(config["max_padding"]).load_training_data()
     valid_ds = MultiLexSum(config["max_padding"]).load_validation_data()
-    train_dataloader, valid_dataloader = create_dataloaders(
-        train_ds, valid_ds, gpu,
-        batch_size=config["batch_size"] // ngpus_per_node,
-        is_distributed=is_distributed,
-    )
+
+    train_dataloader = train_ds.create_dataloaders(gpu, config[
+        "batch_size"] // ngpus_per_node, is_distributed)
+    valid_dataloader = valid_ds.create_dataloaders(gpu, config[
+        "batch_size"] // ngpus_per_node, is_distributed)
 
     pad_idx = train_ds.vocab_tgt["<blank>"]
     d_model = 512
