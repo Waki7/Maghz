@@ -111,7 +111,6 @@ class LabelSmoothing(nn.Module):
 
     def forward(self, x: FloatTensorT['B*SrcSeqLen,OutNClasses'],
                 target: FloatTensorT['B*SrcSeqLen']):
-        print('x', x.size())
         assert x.size(1) == self.n_cls
         true_dist: FloatTensorT['B*SrcSeqLen,OutNClasses'] = torch.ones_like(x)
         true_dist *= (self.smoothing / (self.n_cls - 2))

@@ -9,6 +9,7 @@ import json
 from json import JSONDecoder, JSONEncoder
 import os
 from mgz.model_vc.model_node import ModelNode
+import logging
 
 # DEFAULTS
 DEFAULT_ROOTS = {}
@@ -26,7 +27,11 @@ class Indexer:
         return json.dumps(obj_dict, indent=4, separators=(',', ': '))
 
     def save_as_json(self):
-        with open(os.path.join(self.root_path, 'indexer.json'), 'w') as f:
+        if not os.path.exists(self.root_path):
+            os.makedirs(self.root_path)
+        with open(
+                os.path.join(self.root_path, 'indexer.json').replace("\\", "/"),
+                'w') as f:
             f.write(self.to_json())
 
     @staticmethod
@@ -35,8 +40,11 @@ class Indexer:
         # for k, v in sorted(dict):
         #     obj_dict[k] = v
         if not os.path.exists(path):
-            raise OSError(
-                f'Indexer json file {os.path.abspath(path)} does not exist.')
+            logging.warning(
+                'Indexer json file does not exist at {}, creating new one.'.format(
+                    os.path.abspath(path)))
+            idxer = Indexer(os.path.dirname(path))
+            idxer.save_as_json()
         with open(path) as file_object:
             # store file data in object
             data = json.load(file_object)
@@ -46,10 +54,14 @@ class Indexer:
         return idxer
 
     def full_path(self, name):
-        return os.path.join(self.root_path, name)
+        return os.path.join(self.root_path, name).replace("\\", "/")
 
-    def find_parent_child(self, model: str) -> Tuple[str, str]:
-        pass
+    def find_parent_child(self, model_id: str) -> Tuple[str, str]:
+        names = model_id.split('/')
+        parent = '/'.join(names[:2])
+        child = '/'.join(names[2:])
+        return parent, child
+
 
     def check_state(self):
         if not os.path.exists(self.root_path):

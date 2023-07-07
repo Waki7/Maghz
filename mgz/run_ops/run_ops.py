@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import os
+
+import torch.utils.data
+from tqdm import tqdm
 import time
 
 import GPUtil
@@ -34,16 +37,18 @@ class TrainState:
 
 
 def run_epoch(
-        data_generator: Generator[SentenceBatch, None, None],
+        data_loader: torch.utils.data.DataLoader[SentenceBatch],
+        val_data_loader: torch.utils.data.DataLoader[SentenceBatch],
         model: BaseTransformer,
+        tokenizer: PreTrainedTokenizerBase,
         loss_compute,
         optimizer,
-        scheduler,
-        mode="train",
+        scheduler=None,
         accum_iter=1,
         train_state=TrainState(),
+        log_interval=40,
+        accuracy_interval=120,
 ) -> (torch.Tensor, TrainState):
-    print('begining', torch.mps.current_allocated_memory() / 1e9, 'gb')
     """Train a single epoch"""
     start = time.time()
     total_tokens = 0
@@ -52,32 +57,32 @@ def run_epoch(
     n_accum = 0
     i: int
     batch: SentenceBatch
-    for i, batch in enumerate(data_generator):
-        print('pre', torch.mps.current_allocated_memory() / 1e9, 'gb')
+    with torch.no_grad():
+        val_model(val_data_loader, model, tokenizer)
+
+    for i, batch in tqdm(enumerate(data_loader)):
         logits = model.forward(
             src_ids=batch.src, tgt_ids=batch.tgt, src_mask=batch.src_mask,
             tgt_mask=batch.tgt_mask
         )
-        print('post', torch.mps.current_allocated_memory() / 1e9, 'gb')
 
         loss, loss_node = loss_compute(logits, batch.tgt_y, batch.ntokens)
         # loss_node = loss_node / accum_iter
-        if mode == "train" or mode == "train+log":
-            loss_node.backward()
-            train_state.step += 1
-            train_state.samples += batch.src.shape[0]
-            train_state.tokens += batch.ntokens
-            if i % accum_iter == 0:
-                optimizer.step()
-                optimizer.zero_grad(set_to_none=True)
-                n_accum += 1
-                train_state.accum_step += 1
-            scheduler.step()
+        loss_node.backward()
+        train_state.step += 1
+        train_state.samples += batch.src.shape[0]
+        train_state.tokens += batch.ntokens
+        if i % accum_iter == 0:
+            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+            n_accum += 1
+            train_state.accum_step += 1
+        if scheduler is not None: scheduler.step()
 
         total_loss += loss
         total_tokens += batch.ntokens
         tokens += batch.ntokens
-        if i % 40 == 1 and (mode == "train" or mode == "train+log"):
+        if i % log_interval == 1:
             lr = optimizer.param_groups[0]["lr"]
             elapsed = time.time() - start
             print(
@@ -89,39 +94,36 @@ def run_epoch(
             )
             start = time.time()
             tokens = 0
-        del loss
-        del loss_node
+        if i % accuracy_interval == 1:
+            with torch.no_grad():
+                settings.empty_cache()
+                val_model(val_data_loader, model, tokenizer)
+                exit(3)
+
     return total_loss / total_tokens, train_state
 
 
 def val_model(
-        val_data: Generator[SentenceBatch, None, None],
+        val_data_loader: torch.utils.data.DataLoader[SentenceBatch],
         model: BaseTransformer,
-        loss_compute,
-        optimizer,
-        scheduler,
-        train_state=TrainState(),
+        tokenizer: PreTrainedTokenizerBase
 ) -> (torch.Tensor, TrainState):
     started_training = model.training
     model.eval()
 
     if started_training:
         model.train()
-
-    """Train a single epoch"""
-    start = time.time()
-    total_tokens = 0
-    total_loss = 0
-    tokens = 0
-    n_accum = 0
     i: int
     batch: SentenceBatch
-    for i, batch in enumerate(val_data):
-        predictions: LongTensorT['OutSeqLen'] = model.generate(
+    for i, batch in enumerate(val_data_loader):
+        predictions: LongTensorT['TgtSeqLen'] = model.generate(
             src_ids=batch.src, src_mask=batch.src_mask)
         print(predictions)
-        print(batch.tgt_y)
-        exit(3)
+        print(tokenizer.batch_decode(predictions, skip_special_tokens=True))
+        print(tokenizer.batch_decode(batch.tgt, skip_special_tokens=True))
+        print('tgt x', batch.src.shape)
+        print('tgt y', batch.tgt.shape)
+        break
 
 
 def forward_controller(model: BaseTransformer, text: str,

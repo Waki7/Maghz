@@ -22,16 +22,22 @@ from mgz.typing import *
 
 
 class InputSource(Enum):
+    SOURCES = 'sources'
     LONG = 'summary/long'
     SHORT = 'summary/short'
     TINY = 'summary/tiny'
 
 
+# class MultiLexSumLongToTiny(MultiLexSum):
+#     def __init__(self, tokenizer: PreTrainedTokenizer, max_src_len: SrcSeqLen, max_tgt_len: TgtSeqLen):
+#         super(MultiLexSumLongToTiny, self).__init__(tokenizer, max_src_len, max_tgt_len)
 class MultiLexSum(SentenceDataset):
-    def __init__(self, tokenizer: PreTrainedTokenizer, max_length: SrcSeqLen):
+    def __init__(self, tokenizer: PreTrainedTokenizer, max_src_len: SrcSeqLen,
+                 max_tgt_len: TgtSeqLen):
         super(MultiLexSum, self).__init__()
 
-        self.max_length = max_length
+        self.max_src_len = max_src_len
+        self.max_tgt_len = max_tgt_len
         self.split = None
 
         ## main dataset information
@@ -47,9 +53,9 @@ class MultiLexSum(SentenceDataset):
         self.vocab_tgt: Dict[str, int] = self.tokenizer_tgt.get_vocab()
 
         self.input_space = sp.Sentence(
-            len((self.vocab_src)), shape=(max_length,))
+            len((self.vocab_src)), shape=(max_src_len,))
         self.target_space = sp.Sentence(len((self.vocab_tgt)),
-                                        shape=(max_length,))
+                                        shape=(max_tgt_len,))
 
         # --- Initialization flags ---
         self.use_cuda = False
@@ -60,8 +66,10 @@ class MultiLexSum(SentenceDataset):
         return len(self._data)
 
     def __getitem__(self, idx) -> (SourceListT, SummaryT):
-        return self._data[idx]['sources'], self._data[idx][
-            InputSource.LONG.value]
+        # return self._data[idx]['sources'], self._data[idx][
+        #     InputSource.LONG.value]
+        return self._data[idx][InputSource.LONG.value], self._data[idx][
+            InputSource.TINY.value]
 
     @property
     def in_space(self) -> sp.Sentence:
@@ -103,14 +111,15 @@ class MultiLexSum(SentenceDataset):
             return [self.vocab_tgt[token] for token in tokens]
 
         return collate_batch(
-            batch,
-            tokenize_src,
-            tokenize_tgt,
-            vocab_src,
-            vocab_tgt,
-            device,
-            max_padding=self.max_length,
-            pad_id=self.tokenizer_src.pad_token_id
+            batch=batch,
+            src_tokenizer_pipeline=tokenize_src,
+            tgt_tokenizer_pipeline=tokenize_tgt,
+            src_vocab_pipeline=vocab_src,
+            tgt_vocab_pipeline=vocab_tgt,
+            device=device,
+            pad_id=self.tokenizer_src.pad_token_id,
+            max_src_len=self.max_src_len,
+            max_tgt_len=self.max_tgt_len
         )
 
     def get_collate_fn(self, device: Union[int, torch.device]):
@@ -182,7 +191,7 @@ def count_per_summary(ds: MultiLexSum):
 
 def main():
     # please install HuggingFace ds by pip install ds
-    ds = MultiLexSum(max_length=128).load_training_data()
+    ds = MultiLexSum(max_src_len=128).load_training_data()
     print(ds.tokenizer_src.tokenize("hello i am a test"))
     from transformers import BertTokenizer
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")

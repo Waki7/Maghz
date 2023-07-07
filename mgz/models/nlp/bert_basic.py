@@ -33,7 +33,7 @@ def _attention(query: TensorT,
         # Same mask applied to all nheads.
         mask = mask.unsqueeze(1)
     d_k = query.size(-1)
-    scores: FloatTensorT['B,NHeads,SrcSeqLen,OutSeqLen'] = \
+    scores: FloatTensorT['B,NHeads,SrcSeqLen,TgtSeqLen'] = \
         torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
     if mask is not None:
         scores = scores.masked_fill(mask == 0, -1e4)
@@ -77,7 +77,7 @@ class MultiHeadedAttention(nn.Module):
     def forward(self, query: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
                 key: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
                 value: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
-                mask: IntTensorT['B,OutSeqLen'] = None):
+                mask: IntTensorT['B,TgtSeqLen'] = None):
         nbatches = query.size(0)
         # 1) Do all the linear projections in batch from d_model => h x d_k
         query, key, value = [
@@ -113,7 +113,7 @@ class MultiHeadedSelfAttention(MultiHeadedAttention):
               key: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
               value: FloatTensorT[
                   'B,NHeadsNHeads,SrcSeqLen,EmbedLen/NHeads'],
-              mask: IntTensorT['B,Opt[OutSeqLen],SrcSeqLen'] = None,
+              mask: IntTensorT['B,Opt[TgtSeqLen],SrcSeqLen'] = None,
               dropout_p=None) -> \
             Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
         return _attention(query, key, value, mask, dropout_p)
@@ -126,9 +126,9 @@ class MultiHeadedCrossAttention(MultiHeadedAttention):
 
     def _attn(self,
               query: FloatTensorT['B,NHeads,SrcSeqLen,EmbedLen/NHeads'],
-              key: FloatTensorT['B,NHeads,OutSeqLen,EmbedLen/NHeads'],
-              value: FloatTensorT['B,NHeads,OutSeqLen,EmbedLen/NHeads'],
-              mask: IntTensorT['B,Opt[OutSeqLen],OutSeqLen'] = None,
+              key: FloatTensorT['B,NHeads,TgtSeqLen,EmbedLen/NHeads'],
+              value: FloatTensorT['B,NHeads,TgtSeqLen,EmbedLen/NHeads'],
+              mask: IntTensorT['B,Opt[TgtSeqLen],TgtSeqLen'] = None,
               dropout_p=None) -> \
             Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
         return _attention(query, key, value, mask, dropout_p)
@@ -189,8 +189,8 @@ class DecoderLayer(nn.Module):
         self.feed_forward = feed_forward
         self.sublayer = clones(SublayerConnection(size, dropout), 3)
 
-    def forward(self, x, memory, src_mask: IntTensorT['B,OutSeqLen'],
-                tgt_mask: IntTensorT['B,OutSeqLen']):
+    def forward(self, x, memory, src_mask: IntTensorT['B,TgtSeqLen'],
+                tgt_mask: IntTensorT['B,TgtSeqLen']):
         """
         :param x:
         :param memory:
@@ -219,10 +219,10 @@ class Decoder(nn.Module):
         self.layers = clones(layer, N)
         self.norm = LayerNorm(layer.size)
 
-    def forward(self, x: FloatTensorT['B,OutSeqLen,EmbedLen'],
+    def forward(self, x: FloatTensorT['B,TgtSeqLen,EmbedLen'],
                 memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
                 src_mask: IntTensorT['B,SrcSeqLen'],
-                tgt_mask: IntTensorT['B,OutSeqLen']):
+                tgt_mask: IntTensorT['B,TgtSeqLen']):
         for layer in self.layers:
             x = layer(x, memory, src_mask, tgt_mask)
         return self.norm(x)
@@ -286,9 +286,9 @@ class EncoderDecoder(BaseTransformer):
         self.positional_encoder = positional_encoder
 
     def forward(self, src_ids: LongTensorT['B,SrcSeqLen'],
-                tgt_ids: LongTensorT['B,OutSeqLen'],
+                tgt_ids: LongTensorT['B,TgtSeqLen'],
                 src_mask: IntTensorT['B,SrcSeqLen'],
-                tgt_mask: IntTensorT['B,OutSeqLen']):
+                tgt_mask: IntTensorT['B,TgtSeqLen']):
         "Take in and process masked src and target sequences."
         x = self.encode(src_ids, src_mask)
         x = self.decode_infer(x, src_mask, tgt_ids, tgt_mask)
@@ -301,8 +301,8 @@ class EncoderDecoder(BaseTransformer):
         return self.encoder(x, src_mask)
 
     def decode(self, memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
-               src_mask: IntTensorT['B,OutSeqLen'],
-               tgt_ids: LongTensorT['B,OutSeqLen'], tgt_mask):
+               src_mask: IntTensorT['B,TgtSeqLen'],
+               tgt_ids: LongTensorT['B,TgtSeqLen'], tgt_mask):
         '''
         Executes for one output at a time when doing training
         :param memory:
@@ -316,9 +316,9 @@ class EncoderDecoder(BaseTransformer):
         return self.decoder(x, memory, src_mask, tgt_mask)
 
     def decode_infer(self, memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
-                     src_mask: IntTensorT['B,OutSeqLen'],
-                     tgt_ids: IntTensorT['B,OutSeqLen'],
-                     tgt_mask: IntTensorT['1,OutSeqLen']):
+                     src_mask: IntTensorT['B,TgtSeqLen'],
+                     tgt_ids: IntTensorT['B,TgtSeqLen'],
+                     tgt_mask: IntTensorT['1,TgtSeqLen']):
         '''
         Executes for one output at a time when doing inference
         :param memory:
@@ -368,7 +368,7 @@ class SublayerConnection(nn.Module):
         return x + nn.Dropout(self.dropout_p)(sublayer(self.norm(x)))
 
 
-def subsequent_mask(size: SrcSeqLen) -> IntTensorT['1,OutSeqLen,OutSeqLen']:
+def subsequent_mask(size: SrcSeqLen) -> IntTensorT['1,TgtSeqLen,TgtSeqLen']:
     "Mask out subsequent positions."
     attn_shape = (1, size, size)
     subsequent_mask = torch.triu(torch.ones(attn_shape), diagonal=1).type(

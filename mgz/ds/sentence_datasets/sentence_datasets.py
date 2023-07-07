@@ -26,10 +26,10 @@ class SentenceBatch:
     """Object for holding a batch of data with mask during training."""
 
     def __init__(self, src: LongTensorT['B,SrcSeqLen'],
-                 tgt: SentenceT['B,SeqLen - 1'] = None,
+                 tgt: LongTensorT['B,TgtSeqLen'] = None,
                  pad_idx=2):  # 2 = <blank>
         self.src: LongTensorT['B,SrcSeqLen'] = src
-        self.src_mask = (src != pad_idx).unsqueeze(-2)
+        self.src_mask = (src != pad_idx)
         if tgt is not None:
             self.tgt: LongTensorT['B,SeqLen - 1'] = tgt
             self.tgt_y = tgt[:, 1:]
@@ -86,6 +86,7 @@ class SentenceDataset(BaseDataset):
                            device: Union[torch.device, int],
                            batch_size: int = 12000,
                            is_distributed: bool = True,
+                           turn_off_shuffle=False,
                            ) -> (DataLoader, DataLoader):
         valid_sampler = (
             DistributedSampler(self) if is_distributed else None
@@ -93,7 +94,7 @@ class SentenceDataset(BaseDataset):
         dataloader = DataLoader(
             self,
             batch_size=batch_size,
-            shuffle=(valid_sampler is None),
+            shuffle=not turn_off_shuffle and (valid_sampler is None),
             sampler=valid_sampler,
             collate_fn=self.get_collate_fn(device)
         )
@@ -116,9 +117,11 @@ def collate_batch(
         src_vocab_pipeline: Callable[List[str], List[int]],
         tgt_vocab_pipeline: Callable[List[str], List[int]],
         device,
-        max_padding=128,
-        pad_id=2,
-) -> Tuple[LongTensorT['B,SrcSeqLen'], LongTensorT['B,OutSeqLen']]:
+        pad_id: int,
+        max_src_len=128,
+        max_tgt_len=128
+) -> SentenceBatch:
+    # ) -> Tuple[LongTensorT['B,SrcSeqLen'], LongTensorT['B,OutSeqLen']]:
     dtype = torch.int32
     bs_id = torch.tensor([0], device=device, dtype=dtype)  # <s> token id
     eos_id = torch.tensor([1], device=device, dtype=dtype)  # </s> token id
@@ -156,7 +159,7 @@ def collate_batch(
                 processed_src,
                 (
                     0,
-                    max_padding - len(processed_src),
+                    max_src_len - len(processed_src),
                 ),
                 value=pad_id,
             )
@@ -164,11 +167,11 @@ def collate_batch(
         tgt_list.append(
             pad(
                 processed_tgt,
-                (0, max_padding - len(processed_tgt)),
+                (0, max_tgt_len - len(processed_tgt)),
                 value=pad_id,
             )
         )
 
-    src = torch.stack(src_list)
-    tgt = torch.stack(tgt_list)
-    return (src, tgt)
+    src: LongTensorT['B,SrcSeqLen'] = torch.stack(src_list)
+    tgt: LongTensorT['B,TgtSeqLen'] = torch.stack(tgt_list)
+    return SentenceBatch(src, tgt, pad_idx=pad_id)

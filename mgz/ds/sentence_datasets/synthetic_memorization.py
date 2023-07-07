@@ -58,7 +58,7 @@ class SyntheticMemorization(SentenceDataset):
 
     def _collate_fn(self, device: Union[int, torch.device],
                     batch: List[SentenceBatch]) -> Tuple[
-        LongTensorT['B,SrcSeqLen'], LongTensorT['B,OutSeqLen']]:
+        LongTensorT['B,SrcSeqLen'], LongTensorT['B,TgtSeqLen']]:
         assert self.loaded, "Dataset not loaded"
         func = torch.cat if len(batch[0].src.shape) == 2 else torch.stack
         src = func([b.src for b in batch])

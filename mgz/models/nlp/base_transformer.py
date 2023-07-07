@@ -7,6 +7,7 @@ import settings
 from mgz.typing import *
 
 import heapq
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 
 # import altair as alt
@@ -121,7 +122,7 @@ class BeamInference:
         return vocab_idx.flatten()
 
     # TODO: is this finding the max prob redundant? because of log probs summing
-    def get_best_sequence(self) -> LongTensorT['OutSeqLen']:
+    def get_best_sequence(self) -> List[LongTensorT['TgtSeqLen']]:
         def backtrack_beam(batch_idx, beam_num, beam_end):
             tokens: List[int] = []
             next_beam_num = beam_num
@@ -133,7 +134,7 @@ class BeamInference:
                     batch_idx, next_beam_num].item()
             return torch.LongTensor(tokens)
 
-        sequence_per_batch: List[LongTensorT['OutSeqLen']] = []
+        sequence_per_batch: List[LongTensorT['TgtSeqLen']] = []
 
         for batch_idx, batch_beam_num in enumerate(self.done_beams):
             batch_beam_end = self.beam_end[batch_idx]
@@ -161,8 +162,8 @@ class TransformerContext:
 
         self.encoder_key: FloatTensorT['B,SrcSeqLen,EmbedLen'] = None
         self.encoder_value: FloatTensorT['B,SrcSeqLen,EmbedLen'] = None
-        self.all_past_keys: List[FloatTensorT['B,OutSeqStep,EmbedLen']] = []
-        self.all_past_values: List[FloatTensorT['B,OutSeqStep,EmbedLen']] = []
+        self.all_past_keys: List[FloatTensorT['B,TgtSeqStep,EmbedLen']] = []
+        self.all_past_values: List[FloatTensorT['B,TgtSeqStep,EmbedLen']] = []
         for _ in range(n_layers):
             self.all_past_keys.append(
                 torch.ones((b, n_heads, 0, embed_len // n_heads)).to(
@@ -174,14 +175,14 @@ class TransformerContext:
         #     'B,OutSeqStep,EmbedLen'] = torch.ones((b, 0, embed_len))
 
     def add_key(self,
-                new_key: FloatTensorT['B,OutSeqStep,EmbedLen']):
+                new_key: FloatTensorT['B,TgtSeqStep,EmbedLen']):
         assert self.curr_layer > -1, 'call context for a specific layer number'
         self.all_past_keys[self.curr_layer] = torch.cat(
             [self.all_past_keys[self.curr_layer], new_key], dim=-2)
         return self.all_past_keys[self.curr_layer]
 
     def add_value(self,
-                  new_val: FloatTensorT['B,OutSeqStep,EmbedLen']):
+                  new_val: FloatTensorT['B,TgtSeqStep,EmbedLen']):
         assert self.curr_layer > -1, 'call context for a specific layer number'
         self.all_past_values[self.curr_layer] = torch.cat(
             [self.all_past_values[self.curr_layer], new_val], dim=-2)
@@ -224,14 +225,14 @@ class LogitsRuleEnforce:
         self.max_length = max_length
         self.no_repeat_ngram_size = no_repeat_ngram_size
 
-    def __call__(self, input_ids: LongTensorT['B,OutSeqLen'],
+    def __call__(self, input_ids: LongTensorT['B,TgtSeqLen'],
                  new_logits: FloatTensorT['n_beams*B,VocabSize'], seq_len: int):
         # new_logits[:, self.eos_token_id] = -float("inf")
         if seq_len > 0:
             prev_tokens: LongTensorT['NBeams,B'] = input_ids
             new_logits.scatter_(-1, prev_tokens, -float("inf"))
         if seq_len == (self.max_length - 1):
-            new_logits[:, self.eos_token_id] = 1e9
+            new_logits[:, self.eos_token_id] = 1e4
         return new_logits
 
 
@@ -240,37 +241,58 @@ class BaseTransformer(nn.Module):
         super(BaseTransformer, self).__init__()
         self.config: hug.PretrainedConfig = config
 
+    def verify_tokenizer(self, tokenizer: PreTrainedTokenizerBase):
+        def validate_field(field_name):
+            assert hasattr(tokenizer, field_name), "tokenizer missing {} field"
+            field_value = getattr(tokenizer, field_name)
+            if not hasattr(self.config, field_name) or getattr(self.config,
+                                                               field_name) is None:
+                setattr(self.config, field_name, field_value)
+            else:
+                assert getattr(self.config, field_name) == field_value, \
+                    "config {} vs tokenizer {}".format(
+                        getattr(self.config, field_name), field_value)
+
+        validate_field('pad_token_id')
+        validate_field('bos_token_id')
+        validate_field('eos_token_id')
+        validate_field('sep_token_id')
+        validate_field('cls_token_id')
+        validate_field('mask_token_id')
+        validate_field('vocab_size')
+
     def encode(self, src_ids: LongTensorT['B,SrcSeqLen'],
                src_mask: IntTensorT['B,SrcSeqLen']):
         raise NotImplementedError
 
     def decode(self,
                encoder_memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
-               tgt_ids: LongTensorT['B,OutSeqLen'],
-               src_mask: IntTensorT['B,1|OutSeqLen,SrcSeqLen'],
+               tgt_ids: LongTensorT['B,TgtSeqLen'],
+               src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
                transformer_ctx: TransformerContext,
-               tgt_mask: IntTensorT['B,OutSeqLen,OutSeqLen'] = None):
+               tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen'] = None):
         raise NotImplementedError
 
     def forward(
             self,
             src_ids: LongTensorT['B,SrcSeqLen'],
-            tgt_ids: LongTensorT['B,OutSeqLen'],
-            src_mask: IntTensorT['B,1|OutSeqLen,SrcSeqLen'],
-            tgt_mask: IntTensorT['B,OutSeqLen,OutSeqLen']
-    ) -> FloatTensorT['B,OutSeqLen,EmbedLen']:
+            tgt_ids: LongTensorT['B,TgtSeqLen'],
+            src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
+            tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen']
+    ) -> FloatTensorT['B,TgtSeqLen,EmbedLen']:
         raise NotImplementedError
 
     #
     def generate(self,
                  src_ids: LongTensorT['B,SrcSeqLen'],
-                 src_mask: IntTensorT['B,1|OutSeqLen,SrcSeqLen'],
-                 tgt_ids: LongTensorT['B,OutSeqLen'] = None
+                 src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
+                 tgt_ids: LongTensorT['B,TgtSeqLen'] = None
                  ) -> \
-            LongTensorT['OutSeqLen']:
+            List[LongTensorT['TgtSeqLen']]:
         if tgt_ids is None:
-            tgt_ids = torch.LongTensor([config.sep_token_id]).unsqueeze(0).to(
-                settings.DEVICE).repeat(src_ids.shape[0], 1)
+            # todo@ceyer don't like using config for sep token id
+            tgt_ids = torch.LongTensor([self.config.sep_token_id]).unsqueeze(
+                0).to(settings.DEVICE).repeat(src_ids.shape[0], 1)
         n_beams = self.config.num_beams
         max_len = self.config.max_length
         eos_token_id = self.config.eos_token_id
@@ -293,7 +315,6 @@ class BaseTransformer(nn.Module):
         new_ids: LongTensorT['n_beams*B,1'] = tgt_ids.repeat(n_beams,
                                                              1)
         src_mask = src_mask.repeat(n_beams, 1)
-
         for i in range(0, max_len):
             logits: FloatTensorT['n_beams*B,VocabSize'] = \
                 self.decode(encoder_memory=memory,

@@ -17,12 +17,10 @@ import os
 
 import settings
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext
-from mgz.models.nlp.modeling_outputs import (
-    BaseModelOutputWithPastAndCrossAttentions,
-)
 from mgz.typing import *
 
 import transformers as hug
+from transformers import BartTokenizer, PreTrainedTokenizer
 
 
 def clones(module, N: int) -> nn.ModuleList:
@@ -98,7 +96,7 @@ def _attention(query: FloatTensorT,
                dropout_p: float = None) -> \
         Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
     "Compute 'Scaled Dot Product Attention'"
-    scores: FloatTensorT['B,OutSeqLen,SrcSeqLen'] = \
+    scores: FloatTensorT['B,TgtSeqLen,SrcSeqLen'] = \
         torch.matmul(query, key.transpose(-2, -1))
     # same mask per head
     if mask is not None:
@@ -117,22 +115,19 @@ def _attention(query: FloatTensorT,
     # using the probabilities to pay attention to the value
     # noinspection PyTypeChecker
     attn_out = torch.matmul(p_attn, value)
-    print(attn_out.shape)
-    print(p_attn.shape)
     del mask
     del scores
     del p_attn
-    torch.mps.empty_cache()
-    torch.cuda.empty_cache()
+    settings.empty_cache()
     return attn_out
 
 
-def attention(query: FloatTensorT['B*NHeads,OutSeqLen,EmbedLen/NHeads'],
+def attention(query: FloatTensorT['B*NHeads,TgtSeqLen,EmbedLen/NHeads'],
               key: FloatTensorT['B*NHeads,SrcSeqLen,EmbedLen/NHeads'],
               value: FloatTensorT['B*NHeads,SrcSeqLen,EmbedLen/NHeads'],
-              mask: IntTensorT['B*NHeads,OutSeqLen,SrcSeqLen'] = None,
+              mask: IntTensorT['B*NHeads,TgtSeqLen,SrcSeqLen'] = None,
               dropout_p: ProbT = None) -> \
-        Tuple[FloatTensorT['B,OutSeqLen,EmbedLen'], torch.Tensor]:
+        Tuple[FloatTensorT['B,TgtSeqLen,EmbedLen'], torch.Tensor]:
     return _attention(query, key, value, mask, dropout_p)
 
 
@@ -183,10 +178,10 @@ class MultiHeadedAttention(nn.Module):
     def forward(
             self,
             # Embed Length must be divisible by num_heads
-            query: FloatTensorT['B,OutSeqLen,EmbedLen'],
+            query: FloatTensorT['B,TgtSeqLen,EmbedLen'],
             key: FloatTensorT['B,SrcSeqLen,EmbedLen'],
             value: FloatTensorT['B,SrcSeqLen,EmbedLen'],
-            mask: IntTensorT['B,Opt[OutSeqLen],OutSeqLen'] = None,
+            mask: IntTensorT['B,Opt[TgtSeqLen],TgtSeqLen'] = None,
             transformer_ctx: TransformerContext = None
     ) -> FloatTensorT['B,SrcSeqLen,EmbedLen']:
         """Input shape: Batch x Time x Channel"""
@@ -233,8 +228,7 @@ class MultiHeadedAttention(nn.Module):
         del query
         del key
         del value
-        torch.mps.empty_cache()
-        torch.cuda.empty_cache()
+        settings.empty_cache()
         return self.out_proj(x)
 
 
@@ -262,15 +256,10 @@ class BartEncoderLayer(nn.Module):
     ) -> FloatTensorT['B,SrcSeqLen,EmbedLen']:
         residual = hidden_states
 
-        print('pre self', torch.mps.current_allocated_memory() / 1e9,
-              'gb')
         hidden_states = self.self_attn.forward(
             query=hidden_states, key=hidden_states, value=hidden_states,
             mask=src_mask
         )
-
-        print('post self', torch.mps.current_allocated_memory() / 1e9,
-              'gb')
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout,
                                               training=self.training)
         hidden_states = residual + hidden_states
@@ -294,9 +283,6 @@ class BartEncoderLayer(nn.Module):
             clamp_value = torch.finfo(hidden_states.dtype).max - 1000
             hidden_states = torch.clamp(hidden_states, min=-clamp_value,
                                         max=clamp_value)
-
-        print('end encode', torch.mps.current_allocated_memory() / 1e9,
-              'gb')
         return hidden_states
 
 
@@ -331,9 +317,9 @@ class BartDecoderLayer(nn.Module):
             self,
             hidden_states: FloatTensorT['B,SrcSeqLen,EmbedLen'],
             encoder_hidden_states: FloatTensorT['B,SrcSeqLen,EmbedLen'],
-            src_mask: IntTensorT['B,SrcSeqLen,OutSeqLen'],
+            src_mask: IntTensorT['B,SrcSeqLen,TgtSeqLen'],
             tgt_mask: IntTensorT['B,SrcSeqLen,SrcSeqLen'], transformer_ctx=None
-    ) -> FloatTensorT['B,OutSeqLen|1,EmbedLen']:
+    ) -> FloatTensorT['B,TgtSeqLen|1,EmbedLen']:
         residual = hidden_states
         hidden_states = \
             self.self_attn.forward(
@@ -532,9 +518,9 @@ class BartDecoder(nn.Module):
             encoder_hidden_states: FloatTensorT['B,SeqLen,EmbedLen'],
             tgt_ids: LongTensorT['B,SrcSeqLen'],
             src_mask: IntTensorT['B,1,SrcSeqLen'],
-            tgt_mask: IntTensorT['B,OutSeqLen,OutSeqStep'] = None,
+            tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqStep'] = None,
             transformer_ctx: TransformerContext = None
-    ) -> FloatTensorT['B,OutSeqLen,EmbedLen']:
+    ) -> FloatTensorT['B,TgtSeqLen,EmbedLen']:
         inputs_embeds: FloatTensorT['B,1,EmbedLen'] = self.embed_tokens(
             tgt_ids) * self.embed_scale
         positions = self.embed_positions(tgt_ids, transformer_ctx)
@@ -599,9 +585,9 @@ class BartModel(BartPretrainedModel):
 
     def decode(self,
                encoder_memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
-               tgt_ids: LongTensorT['B,OutSeqLen'],
-               src_mask: IntTensorT['B,1|OutSeqLen,SrcSeqLen'],
-               tgt_mask: IntTensorT['B,OutSeqLen,OutSeqLen'] = None,
+               tgt_ids: LongTensorT['B,TgtSeqLen'],
+               src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
+               tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen'] = None,
                transformer_ctx: TransformerContext = None):
         return self.decoder.forward(
             encoder_hidden_states=encoder_memory,
@@ -613,26 +599,23 @@ class BartModel(BartPretrainedModel):
     def forward(
             self,
             src_ids: LongTensorT['B,SrcSeqLen'],
-            tgt_ids: LongTensorT['B,OutSeqLen'],
-            src_mask: IntTensorT['B,1|OutSeqLen,SrcSeqLen'],
-            tgt_mask: IntTensorT['B,OutSeqLen,OutSeqLen'] = None
-    ) -> FloatTensorT['B,OutSeqLen,EmbedLen']:
-        print('pre encode', torch.mps.current_allocated_memory() / 1e9, 'gb')
+            tgt_ids: LongTensorT['B,TgtSeqLen'],
+            src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
+            tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen'] = None
+    ) -> FloatTensorT['B,TgtSeqLen,EmbedLen']:
         encoder_outputs = self.encode(src_ids=src_ids, src_mask=src_mask)
-        print('post encode', torch.mps.current_allocated_memory() / 1e9, 'gb')
         decoder_hidden_state = self.decode(
             tgt_ids=tgt_ids,
             src_mask=src_mask,
             tgt_mask=tgt_mask,
             encoder_memory=encoder_outputs,
         )
-        print('post decode', torch.mps.current_allocated_memory() / 1e9, 'gb')
         return decoder_hidden_state
 
 
 class BartForConditionalGeneration(BartPretrainedModel):
     @classmethod
-    def from_pretrained(cls, model_id="facebook/bart-base"):
+    def from_pretrained(cls, model_id, tokenizer_id):
         def loader(path: str):
             with open(os.path.join(path, 'config.json'), 'r') as f:
                 config = json.load(f)
@@ -650,10 +633,12 @@ class BartForConditionalGeneration(BartPretrainedModel):
             torch.save(model_hug.state_dict(),
                        os.path.join(path, 'weights.bin'))
 
-        model = CACHED_INDEXER.lookup(model_id, loader=loader,
-                                      init_save=init_save)
+        model: BartForConditionalGeneration = \
+            CACHED_INDEXER.lookup(model_id, loader=loader, init_save=init_save)
         model.eval()
-        return model
+        tokenizer = BartTokenizer.from_pretrained(tokenizer_id)
+        model.verify_tokenizer(tokenizer)
+        return model, tokenizer
 
     def __init__(self, config: BartConfig):
         super().__init__(config)
@@ -696,10 +681,10 @@ class BartForConditionalGeneration(BartPretrainedModel):
     def forward(
             self,
             src_ids: LongTensorT['B,SrcSeqLen'],
-            tgt_ids: LongTensorT['B,OutSeqLen'],
-            src_mask: IntTensorT['B,1|OutSeqLen,SrcSeqLen'],
-            tgt_mask: IntTensorT['B,OutSeqLen,OutSeqLen']
-    ) -> FloatTensorT['B,OutSeqLen,OutNClasses']:
+            tgt_ids: LongTensorT['B,TgtSeqLen'],
+            src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
+            tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen']
+    ) -> FloatTensorT['B,TgtSeqLen,OutNClasses']:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
             Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
@@ -708,7 +693,7 @@ class BartForConditionalGeneration(BartPretrainedModel):
 
         Returns:
         """
-        output: FloatTensorT['B,OutSeqLen,EmbedLen'] = self.model.forward(
+        output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.model.forward(
             src_ids=src_ids, src_mask=src_mask,
             tgt_ids=tgt_ids, tgt_mask=tgt_mask)
 
@@ -725,9 +710,9 @@ class BartForConditionalGeneration(BartPretrainedModel):
 
     def decode(self,
                encoder_memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
-               tgt_ids: LongTensorT['B,OutSeqLen'],
-               src_mask: IntTensorT['B,1|OutSeqLen,SrcSeqLen'],
-               tgt_mask: IntTensorT['B,OutSeqLen,OutSeqLen'] = None,
+               tgt_ids: LongTensorT['B,TgtSeqLen'],
+               src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
+               tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen'] = None,
                transformer_ctx: TransformerContext = None):
         output = self.model.decoder.forward(
             encoder_hidden_states=encoder_memory,

@@ -7,7 +7,7 @@ from mgz.typing import *
 
 class Sentence(Box):
     def __init__(self, vocab_size: int,
-                 shape: Tuple[SrcSeqLen],
+                 shape: Tuple[Union[SrcSeqLen, TgtSeqLen]],
                  dtype=torch.IntType):
         self.vocab_size = vocab_size
         self.dim_names: List[str] = [str(SrcSeqLen)]

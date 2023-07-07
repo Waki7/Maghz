@@ -23,12 +23,15 @@ def to_mps(tensor):
 
 _debug_use_cpu = False
 # _debug_use_cpu = True
+TORCH_BACKEND_MODULE = torch.cuda
+DEVICE = torch.device('cpu')
 
 if torch.backends.mps.is_available() and not _debug_use_cpu:
     to_device = to_mps
     print('MPS available, will be running on apple GPU')
     torch.backends.mps.is_available()
     DEVICE = torch.device("mps")
+    TORCH_BACKEND_MODULE = torch.mps
 elif torch.cuda.is_available() and not _debug_use_cpu:
     DEVICE_NUM = 0
     to_device = to_cuda
@@ -51,10 +54,28 @@ np.random.seed(SEED)
 random.seed(SEED)
 
 
-def print_gpu_usage():
-    print("torch.cuda.memory_allocated: %f GB" % (
-            torch.cuda.memory_allocated(0) / 1024 / 1024 / 1024))
-    print("torch.cuda.memory_reserved: %f GB" % (
-            torch.cuda.memory_reserved(0) / 1024 / 1024 / 1024))
-    print("torch.cuda.max_memory_reserved: %f GB" % (
-            torch.cuda.max_memory_reserved(0) / 1024 / 1024 / 1024))
+def empty_cache():
+    if DEVICE == torch.device('cpu'):
+        return
+    elif DEVICE == torch.device('mps'):
+        torch.mps.reset_peak_memory_stats()
+        torch.mps.reset_accumulated_memory_stats()
+        torch.mps.clear_cache()
+    elif torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
+def print_gpu_usage(print_tag=''):
+    if DEVICE == torch.device('cpu'):
+        print('using cpu, no gpu usage')
+    elif DEVICE == torch.device('mps'):
+        print(print_tag,
+              torch.mps.current_allocated_memory() / 1e9,
+              'gb')
+    elif torch.cuda.is_available():
+        print(print_tag, "torch.cuda.memory_allocated: %f GB" % (
+                torch.cuda.memory_allocated(0) / 1024 / 1024 / 1024))
+        print(print_tag, "torch.cuda.memory_reserved: %f GB" % (
+                torch.cuda.memory_reserved(0) / 1024 / 1024 / 1024))
+        print(print_tag, "torch.cuda.max_memory_reserved: %f GB" % (
+                torch.cuda.max_memory_reserved(0) / 1024 / 1024 / 1024))

@@ -18,10 +18,10 @@ text = 'startval'
 # model_name = 'facebook/bart-large-xsum'  # has a bug where it doesn't have 'mask' in its embedding table, or something like that
 # model_name = 'facebook/bart-base'
 model_name = 'allenai/bart-large-multi_lexsum-long-short'
-
-tokenizer = BartTokenizer.from_pretrained(model_name)
-model_mgz: BartForConditionalGeneration = BartForConditionalGeneration.from_pretrained(
-    model_name).to(settings.DEVICE)
+model_mgz: BartForConditionalGeneration
+model_mgz, tokenizer = BartForConditionalGeneration.from_pretrained(
+    model_name, model_name)
+model_mgz.to(settings.DEVICE)
 model_hug = hug.BartForConditionalGeneration.from_pretrained(
     model_name).to(settings.DEVICE)
 
