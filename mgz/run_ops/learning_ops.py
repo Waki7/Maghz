@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import os
+
+os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 import time
 
 import GPUtil
@@ -109,9 +111,10 @@ class LabelSmoothing(nn.Module):
         self.n_cls = n_cls
         self.true_dist = None
 
-    def forward(self, x: FloatTensorT['B*SrcSeqLen,OutNClasses'],
+    def forward(self, x: FloatTensorT['B*TgtSeqStep,OutNClasses'],
                 target: FloatTensorT['B*SrcSeqLen']):
         assert x.size(1) == self.n_cls
+        assert x.size(0) <= target.size(0), f'{x.size(0)} <= {target.size(0)}'
         true_dist: FloatTensorT['B*SrcSeqLen,OutNClasses'] = torch.ones_like(x)
         true_dist *= (self.smoothing / (self.n_cls - 2))
         true_dist.scatter_(1, target.data.unsqueeze(1).long(), self.confidence)

@@ -34,7 +34,7 @@ class SentenceBatch:
             self.tgt: LongTensorT['B,SeqLen - 1'] = tgt
             self.tgt_y = tgt[:, 1:]
             self.tgt_mask = self.make_std_mask(self.tgt, pad_idx)
-            self.ntokens = (self.tgt_y != pad_idx).data.sum()
+            self.ntokens = (self.tgt != pad_idx).data.sum()
         self.tgt_mask.to(self.tgt.device)
         self.src_mask.to(self.src.device)
 

@@ -1,14 +1,18 @@
 # from mgz.models.nlp.bart_interface import BARTHubInterface
+import os
+
+os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 import torch
 from torch.optim.lr_scheduler import LambdaLR
 from transformers import BartConfig
-
 import settings
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceBatch
 from mgz.ds.sentence_datasets.synthetic_memorization import \
     SyntheticMemorization
+from mgz.models.nlp.bart import BartForConditionalGeneration
+import logging
 from mgz.ds.sentence_datasets.multi_lex_sum import \
-    MultiLexSum
+    MultiLexSumLongToTiny
 from mgz.run_ops.learning_ops import LabelSmoothing, SimpleLossCompute, rate
 from mgz.run_ops.run_ops import TrainState
 from mgz.run_ops.run_ops import run_epoch
@@ -29,15 +33,15 @@ def dataset_memorization():
 
 def dataset_legal_summary(tokenizer: PreTrainedTokenizer,
                           max_position_embeddings):
-    return MultiLexSum(tokenizer,
-                       max_position_embeddings, 128).load_training_data(), MultiLexSum(
-        tokenizer,
-        max_position_embeddings, 128).load_validation_data()
+    return MultiLexSumLongToTiny(tokenizer,
+                                 max_position_embeddings).load_training_data(), \
+        MultiLexSumLongToTiny(tokenizer,
+                              max_position_embeddings).load_validation_data()
 
 
 def main2():
-    from mgz.models.nlp.bart import BartForConditionalGeneration
-    batch_size = 8
+    logging.basicConfig(level=logging.INFO)
+    batch_size = 4
     # Initializing a BART facebook/bart-large style configuration
     # model_name = "facebook/bart-base"
     model_name = 'allenai/bart-large-multi_lexsum-long-tiny'
@@ -46,10 +50,8 @@ def main2():
         model, tokenizer = BartForConditionalGeneration.from_pretrained(
             model_name,
             model_name)
-        model.to(settings.DEVICE).half()
+        model.to(settings.DEVICE)
         cfg: BartConfig = model.config
-        print(cfg)
-        exit(3)
         print('max position embeddings: ', cfg.max_position_embeddings)
         print('vocab size: ', cfg.vocab_size)
         print('d_moel: ', cfg.d_model)

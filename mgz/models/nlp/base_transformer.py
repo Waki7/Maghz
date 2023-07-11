@@ -15,7 +15,8 @@ from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 
 class BeamInference:
-    def __init__(self, n_beams: int, eos_token_id: int, max_seq_len: int):
+    def __init__(self, n_beams: int, eos_token_id: int, max_seq_len: int,
+                 length_penalty=1):
         self.n_beams: int = n_beams
         self._kill_val = -1e9
         self.best_probs: List[FloatTensorT['B,NBeams']] = []
@@ -32,7 +33,7 @@ class BeamInference:
             torch.ones(self.n_beams).to(settings.DEVICE) * torch.nan
 
         self.is_done = False
-        self.length_penalty = 1
+        self.length_penalty = length_penalty
 
     def _all_beams_finished(self):
         return all(
@@ -307,7 +308,8 @@ class BaseTransformer(nn.Module):
         # prepare for beam searcher
         beam_search = BeamInference(n_beams=n_beams,
                                     eos_token_id=eos_token_id,
-                                    max_seq_len=max_len)
+                                    max_seq_len=max_len,
+                                    length_penalty=self.config.length_penalty)
         logits_rule = LogitsRuleEnforce(max_length=max_len,
                                         eos_token_id=eos_token_id)
         memory: FloatTensorT['n_beams*B,SrcSeqLen,EmbedLen'] = memory.repeat(

@@ -6,11 +6,13 @@ from functools import partial
 from datasets import load_dataset
 from datasets.arrow_dataset import Dataset
 from datasets.dataset_dict import DatasetDict
+from mgz.ds.base_dataset import BaseDataset, DataSplit
+
 from spacy.language import Language
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
-
+import logging
 import spaces as sp
 from mgz.ds.base_dataset import T
 from transformers import PreTrainedTokenizer
@@ -22,15 +24,13 @@ from mgz.typing import *
 
 
 class InputSource(Enum):
+    # keyed by this string in the dataset
     SOURCES = 'sources'
     LONG = 'summary/long'
     SHORT = 'summary/short'
     TINY = 'summary/tiny'
 
 
-# class MultiLexSumLongToTiny(MultiLexSum):
-#     def __init__(self, tokenizer: PreTrainedTokenizer, max_src_len: SrcSeqLen, max_tgt_len: TgtSeqLen):
-#         super(MultiLexSumLongToTiny, self).__init__(tokenizer, max_src_len, max_tgt_len)
 class MultiLexSum(SentenceDataset):
     def __init__(self, tokenizer: PreTrainedTokenizer, max_src_len: SrcSeqLen,
                  max_tgt_len: TgtSeqLen):
@@ -66,10 +66,10 @@ class MultiLexSum(SentenceDataset):
         return len(self._data)
 
     def __getitem__(self, idx) -> (SourceListT, SummaryT):
-        # return self._data[idx]['sources'], self._data[idx][
-        #     InputSource.LONG.value]
-        return self._data[idx][InputSource.LONG.value], self._data[idx][
-            InputSource.TINY.value]
+        raise NotImplementedError
+
+    def _get_source_types(self) -> Tuple[InputSource, InputSource]:
+        raise NotImplementedError
 
     @property
     def in_space(self) -> sp.Sentence:
@@ -133,17 +133,24 @@ class MultiLexSum(SentenceDataset):
         self.entry_keys = multi_lexsum['train'][0].keys()
         # ['train', 'validation', 'test']
         # ['id', 'sources', 'summary/long', 'summary/short', 'summary/tiny']
-        example: List[Dict[str, Union[SummaryT, SourceListT]]] = []
+        examples: List[Dict[str, Union[SummaryT, SourceListT]]] = []
         if train:
-            example: Dataset = multi_lexsum["train"]
+            examples: Dataset = multi_lexsum["train"]
             self.split = DataSplit.TRAIN
         elif val:
-            example: Dataset = multi_lexsum["validation"]
+            examples: Dataset = multi_lexsum["validation"]
             self.split = DataSplit.VAL
         elif test:
-            example: Dataset = multi_lexsum["test"]
+            examples: Dataset = multi_lexsum["test"]
             self.split = DataSplit.TEST
-        self._data = example
+
+        src_type, tgt_type = self._get_source_types()
+        sample: Dict[str, Union[SummaryT, SourceListT]]
+        for sample in tqdm(examples):
+            if sample[src_type.value] is None or sample[tgt_type.value] is None:
+                continue
+            self._data.append(sample)
+        logging.info('Loaded {} examples'.format(len(self._data)))
         self.loaded = True
 
     def load_training_data(self):
@@ -187,6 +194,56 @@ def count_per_summary(ds: MultiLexSum):
         if entry.get(InputSource.TINY.value) is not None:
             counts[InputSource.TINY.value] += 1
     print(counts)
+
+
+# table for these stats: https://github.com/multilexsum/dataset
+
+class MultiLexSumLongToTiny(MultiLexSum):
+    def __init__(self, tokenizer: PreTrainedTokenizer,
+                 max_position_embeddings: int):
+        assert max_position_embeddings >= 1024
+        super(MultiLexSumLongToTiny, self).__init__(tokenizer, 1024,
+                                                    256)
+
+    def _get_source_types(self) -> Tuple[InputSource, InputSource]:
+        return InputSource.LONG, InputSource.TINY
+
+    @overrides(MultiLexSum)
+    def __getitem__(self, idx) -> (SourceListT, SummaryT):
+        entry = self._data[idx]
+        return entry[InputSource.LONG.value], entry[InputSource.TINY.value]
+
+
+class MultiLexSumLongToShort(MultiLexSum):
+    def __init__(self, tokenizer: PreTrainedTokenizer,
+                 max_position_embeddings: int):
+        assert max_position_embeddings >= 1024
+        super(MultiLexSumLongToShort, self).__init__(tokenizer, 1024,
+                                                     256)
+
+    def _get_source_types(self) -> Tuple[InputSource, InputSource]:
+        return InputSource.LONG, InputSource.SHORT
+
+    @overrides(MultiLexSum)
+    def __getitem__(self, idx) -> (SourceListT, SummaryT):
+        entry = self._data[idx]
+        return entry[InputSource.LONG.value], entry[InputSource.SHORT.value]
+
+
+class MultiLexSumShortToTiny(MultiLexSum):
+    def __init__(self, tokenizer: PreTrainedTokenizer,
+                 max_position_embeddings: int):
+        assert max_position_embeddings >= 1024
+        super(MultiLexSumShortToTiny, self).__init__(tokenizer, 1024,
+                                                     128)
+
+    def _get_source_types(self) -> Tuple[InputSource, InputSource]:
+        return InputSource.SHORT, InputSource.TINY
+
+    @overrides(MultiLexSum)
+    def __getitem__(self, idx) -> (SourceListT, SummaryT):
+        entry = self._data[idx]
+        return entry[InputSource.LONG.value], entry[InputSource.SHORT.value]
 
 
 def main():

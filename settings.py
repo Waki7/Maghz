@@ -1,7 +1,11 @@
 import random
 
 import numpy as np
+import os
+
+os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 import torch
+import os
 
 
 # torch.autograd.set_detect_anomaly(True)
@@ -23,7 +27,6 @@ def to_mps(tensor):
 
 _debug_use_cpu = False
 # _debug_use_cpu = True
-TORCH_BACKEND_MODULE = torch.cuda
 DEVICE = torch.device('cpu')
 
 if torch.backends.mps.is_available() and not _debug_use_cpu:
@@ -31,7 +34,6 @@ if torch.backends.mps.is_available() and not _debug_use_cpu:
     print('MPS available, will be running on apple GPU')
     torch.backends.mps.is_available()
     DEVICE = torch.device("mps")
-    TORCH_BACKEND_MODULE = torch.mps
 elif torch.cuda.is_available() and not _debug_use_cpu:
     DEVICE_NUM = 0
     to_device = to_cuda
@@ -58,9 +60,7 @@ def empty_cache():
     if DEVICE == torch.device('cpu'):
         return
     elif DEVICE == torch.device('mps'):
-        torch.mps.reset_peak_memory_stats()
-        torch.mps.reset_accumulated_memory_stats()
-        torch.mps.clear_cache()
+        torch.mps.empty_cache()
     elif torch.cuda.is_available():
         torch.cuda.empty_cache()
 

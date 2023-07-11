@@ -66,7 +66,7 @@ def run_epoch(
             tgt_mask=batch.tgt_mask
         )
 
-        loss, loss_node = loss_compute(logits, batch.tgt_y, batch.ntokens)
+        loss, loss_node = loss_compute(logits, batch.tgt, batch.ntokens)
         # loss_node = loss_node / accum_iter
         loss_node.backward()
         train_state.step += 1
@@ -98,8 +98,9 @@ def run_epoch(
             with torch.no_grad():
                 settings.empty_cache()
                 val_model(val_data_loader, model, tokenizer)
-                exit(3)
-
+        # cuda / mps / gpu usage and managing
+        settings.empty_cache()
+        settings.print_gpu_usage()
     return total_loss / total_tokens, train_state
 
 
