@@ -12,7 +12,7 @@ from mgz.ds.sentence_datasets.synthetic_memorization import \
 from mgz.models.nlp.bart import BartForConditionalGeneration
 import logging
 from mgz.ds.sentence_datasets.multi_lex_sum import \
-    MultiLexSumLongToTiny
+    MultiLexSumLongToTiny, MultiLexSumLongToShort
 from mgz.run_ops.learning_ops import LabelSmoothing, SimpleLossCompute, rate
 from mgz.run_ops.run_ops import TrainState
 from mgz.run_ops.run_ops import run_epoch
@@ -33,9 +33,9 @@ def dataset_memorization():
 
 def dataset_legal_summary(tokenizer: PreTrainedTokenizer,
                           max_position_embeddings):
-    return MultiLexSumLongToTiny(tokenizer,
+    return MultiLexSumLongToShort(tokenizer,
                                  max_position_embeddings).load_training_data(), \
-        MultiLexSumLongToTiny(tokenizer,
+        MultiLexSumLongToShort(tokenizer,
                               max_position_embeddings).load_validation_data()
 
 
@@ -44,7 +44,8 @@ def main2():
     batch_size = 4
     # Initializing a BART facebook/bart-large style configuration
     # model_name = "facebook/bart-base"
-    model_name = 'allenai/bart-large-multi_lexsum-long-tiny'
+    # model_name = 'allenai/bart-large-multi_lexsum-long-tiny'
+    model_name = 'allenai/bart-large-multi_lexsum-long-short'
     print('... loading model and tokenizer')
     with torch.cuda.amp.autocast():
         model, tokenizer = BartForConditionalGeneration.from_pretrained(

@@ -617,7 +617,8 @@ class BartForConditionalGeneration(BartPretrainedModel):
     @classmethod
     def from_pretrained(cls, model_id, tokenizer_id):
         def loader(path: str):
-            with open(os.path.join(path, 'config.json'), 'r') as f:
+            with open(os.path.normpath(os.path.join(path, 'config.json')),
+                      'r') as f:
                 config = json.load(f)
             model = BartForConditionalGeneration(BartConfig.from_dict(config))
             model.load_state_dict(torch.load(os.path.join(path, 'weights.bin')))
@@ -628,10 +629,11 @@ class BartForConditionalGeneration(BartPretrainedModel):
                 os.makedirs(path)
             model_hug = hug.BartForConditionalGeneration.from_pretrained(
                 model_id).to(settings.DEVICE)
-            with open(os.path.join(path, 'config.json'), 'w') as f:
+            with open(os.path.normpath(os.path.join(path, 'config.json')),
+                      'w') as f:
                 json.dump(model_hug.config.to_dict(), f)
             torch.save(model_hug.state_dict(),
-                       os.path.join(path, 'weights.bin'))
+                       os.path.normpath(os.path.join(path, 'weights.bin')))
 
         model: BartForConditionalGeneration = \
             CACHED_INDEXER.lookup(model_id, loader=loader, init_save=init_save)

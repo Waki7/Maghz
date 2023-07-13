@@ -62,7 +62,6 @@ class Indexer:
         child = '/'.join(names[2:])
         return parent, child
 
-
     def check_state(self):
         if not os.path.exists(self.root_path):
             raise OSError(
@@ -77,11 +76,16 @@ class Indexer:
                loader: Callable[[str], BaseDataset],
                init_save: Callable[[str], None]) -> ModelNode:
         self.check_state()
+        loaded_successfully = False
         # root_path, child_path = find_parent_child(model)
         # so this relationship, you have a root and you have a child, there is a relationship between the two, you can define the child by the parent somehow. In our case because we hacky we just using this to distinguish the model vs the weights. model is parent, weights is child.
         if model_id in self.roots:
-            model = loader(self.full_path(model_id))
-        else:
+            try:
+                model = loader(self.full_path(model_id))
+                loaded_successfully = True
+            except FileNotFoundError as e:  # model has not been created yet and does not exist
+                pass
+        if not loaded_successfully:
             try:
                 init_save(self.full_path(model_id))
                 self.add_root(model_id)

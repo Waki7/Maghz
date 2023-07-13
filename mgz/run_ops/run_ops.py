@@ -122,6 +122,7 @@ def val_model(
         print(predictions)
         print(tokenizer.batch_decode(predictions, skip_special_tokens=True))
         print(tokenizer.batch_decode(batch.tgt, skip_special_tokens=True))
+        print(tokenizer.batch_decode(batch.src, skip_special_tokens=True))
         print('tgt x', batch.src.shape)
         print('tgt y', batch.tgt.shape)
         break

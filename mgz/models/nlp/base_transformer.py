@@ -8,13 +8,17 @@ from mgz.typing import *
 
 import heapq
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
+from transformers.generation.utils import GenerationMixin, \
+    MinLengthLogitsProcessor, ForcedEOSTokenLogitsProcessor, \
+    NoRepeatNGramLogitsProcessor, LogitsProcessorList, MaxLengthCriteria, \
+    BeamSearchScorer
 
 
 # import altair as alt
 # import GPUtil
 
 
-class BeamInference:
+class BeamInference2:
     def __init__(self, n_beams: int, eos_token_id: int, max_seq_len: int,
                  length_penalty=1):
         self.n_beams: int = n_beams
@@ -119,6 +123,7 @@ class BeamInference:
         self.best_probs.append(topk_probs)
         self.pred_tokens.append(vocab_idx)
         self.beam_indices.append(beam_idx)
+
         # view 1 at the end so that it can be concatenated into sequence
         return vocab_idx.flatten()
 
@@ -196,19 +201,6 @@ class TransformerContext:
         self.curr_layer = layer
         return self
 
-    def reorder(self, beam_searcher: BeamInference):
-        for i in range(0, len(self.all_past_keys)):
-            # B = NBeams * B in this case
-            beam_indices: LongTensorT['NBeams,B'] = \
-                beam_searcher.beam_indices[-1]
-
-            self.all_past_keys[i] = \
-                self.all_past_keys[i].index_select(0,
-                                                   beam_indices.flatten())
-            self.all_past_values[i] = \
-                self.all_past_values[i].index_select(0,
-                                                     beam_indices.flatten())
-
     # def add_input_embeddings(self,
     #                          new_val: FloatTensorT['B,OutSeqStep,EmbedLen']):
     #     self.past_input_embeds = torch.cat([self.past_input_embeds, new_val],
@@ -217,6 +209,112 @@ class TransformerContext:
 
     def reset(self):
         del self
+
+
+class BeamInference:
+    def __init__(self, n_beams: int, batch_size: int, eos_token_id: int,
+                 pad_token_id: int, max_seq_len: int,
+                 no_repeat_ngram_size: int = 3, min_length: int = 11,
+                 length_penalty=1):
+        self.n_beams: int = n_beams
+        self.beam_scorer = BeamSearchScorer(
+            batch_size=batch_size,
+            num_beams=n_beams,
+            device=settings.DEVICE,
+        )
+        self.beam_scores = torch.zeros((batch_size, self.n_beams),
+                                       dtype=torch.float,
+                                       device=settings.DEVICE)
+        self.beam_scores[:, 1:] = -1e9
+        self.beam_scores = self.beam_scores.view(
+            (batch_size * self.n_beams,))
+
+        self.eos_token_id: int = eos_token_id
+        self.pad_token_id: int = pad_token_id
+        self.max_seq_len: int = max_seq_len
+
+        # these will be initialized for every new inference
+        self.is_done = False
+        self.beam_idx = None  # this is used to reshuffle the transformer context
+        self.next_tokens = None
+        self.next_indices = None
+        self.length_penalty = length_penalty
+        self.logits_processors = LogitsProcessorList([
+            NoRepeatNGramLogitsProcessor(no_repeat_ngram_size),
+            MinLengthLogitsProcessor(min_length=min_length,
+                                     eos_token_id=eos_token_id),
+            ForcedEOSTokenLogitsProcessor(max_length=max_seq_len,
+                                          eos_token_id=eos_token_id)])
+        self.stopping_criteria = MaxLengthCriteria(max_length=max_seq_len)
+
+    def _all_beams_finished(self):
+        return all(
+            [len(beams) == self.n_beams for beams in self.done_beams])
+
+    def select_ids_from_logprobs(self, log_probs: FloatTensorT[
+        'NBeams*B,VocabSize'], input_ids: LongTensorT['NBeams*N,TgtSeqStep']) -> \
+            LongTensorT['NBeams*B']:
+        batch_size = log_probs.shape[0] // self.n_beams
+
+        next_token_scores = log_probs
+        next_token_scores_processed = self.logits_processors(input_ids,
+                                                             next_token_scores)
+        next_token_scores = next_token_scores_processed + self.beam_scores[:,
+                                                          None].expand_as(
+            next_token_scores)
+        vocab_size = next_token_scores.shape[-1]
+        next_token_scores = next_token_scores.view(batch_size,
+                                                   self.n_beams * vocab_size)
+        # Sample 2 next tokens for each beam (so we have some spare tokens and match output of beam search)
+        next_token_scores, next_tokens = torch.topk(
+            next_token_scores, 2 * self.n_beams, dim=1, largest=True,
+            sorted=True
+        )
+        next_indices = torch.div(next_tokens, vocab_size, rounding_mode="floor")
+        next_tokens = next_tokens % vocab_size
+        beam_outputs = self.beam_scorer.process(
+            input_ids,
+            next_token_scores,
+            next_tokens,
+            next_indices,
+            pad_token_id=self.pad_token_id,
+            eos_token_id=self.eos_token_id,
+        )
+        self.beam_scores = beam_outputs["next_beam_scores"]
+        beam_next_tokens = beam_outputs["next_beam_tokens"]
+        self.beam_idx = beam_outputs["next_beam_indices"]
+        self.is_done = self.beam_scorer.is_done or self.stopping_criteria(
+            input_ids, next_token_scores)
+        # todo, not the best, cache for call to finalizing later
+        if self.is_done:
+            self.next_tokens = next_tokens
+            self.next_indices = next_indices
+        return beam_next_tokens
+
+    def reoder_transformer_context(self,
+                                   transformer_context: TransformerContext):
+        for i in range(0, len(transformer_context.all_past_keys)):
+            # B = NBeams * B in this case
+            beam_indices: LongTensorT['NBeams,B'] = \
+                self.beam_idx
+
+            transformer_context.all_past_keys[i] = \
+                transformer_context.all_past_keys[i].index_select(0,
+                                                                  beam_indices.flatten())
+            transformer_context.all_past_values[i] = \
+                transformer_context.all_past_values[i].index_select(0,
+                                                                    beam_indices.flatten())
+
+    def get_best_sequence(self,
+                          input_ids: LongTensorT['NBeams*N,TgtSeqStep']) -> \
+            List[LongTensorT['TgtSeqLen']]:
+        return self.beam_scorer.finalize(input_ids=input_ids,
+                                         final_beam_scores=self.beam_scores,
+                                         final_beam_tokens=self.next_tokens,
+                                         final_beam_indices=self.next_indices,
+                                         pad_token_id=self.pad_token_id,
+                                         eos_token_id=self.eos_token_id,
+                                         max_length=self.max_seq_len)
 
 
 class LogitsRuleEnforce:
@@ -307,15 +405,20 @@ class BaseTransformer(nn.Module):
 
         # prepare for beam searcher
         beam_search = BeamInference(n_beams=n_beams,
+                                    batch_size=src_ids.shape[0],
                                     eos_token_id=eos_token_id,
+                                    pad_token_id=self.config.pad_token_id,
                                     max_seq_len=max_len,
-                                    length_penalty=self.config.length_penalty)
-        logits_rule = LogitsRuleEnforce(max_length=max_len,
-                                        eos_token_id=eos_token_id)
+                                    length_penalty=1,
+                                    no_repeat_ngram_size=self.config.no_repeat_ngram_size,
+                                    min_length=self.config.min_length)
+
         memory: FloatTensorT['n_beams*B,SrcSeqLen,EmbedLen'] = memory.repeat(
             n_beams, 1, 1)
         new_ids: LongTensorT['n_beams*B,1'] = tgt_ids.repeat(n_beams,
                                                              1)
+        input_ids: LongTensorT['n_beams*B,TgtSeqStep'] = new_ids.clone()
+
         src_mask = src_mask.repeat(n_beams, 1)
         for i in range(0, max_len):
             logits: FloatTensorT['n_beams*B,VocabSize'] = \
@@ -323,16 +426,15 @@ class BaseTransformer(nn.Module):
                             tgt_ids=new_ids,
                             src_mask=src_mask,
                             transformer_ctx=context).squeeze(-2)
-            logits = logits_rule.__call__(input_ids=new_ids,
-                                          new_logits=logits,
-                                          seq_len=i)
 
             probs = torch.log_softmax(logits, dim=-1)
             new_ids: LongTensorT[
-                'n_beams*B,1'] = beam_search.select_ids_from_logprobs(
-                log_probs=probs).unsqueeze(-1)
-            # todo let's make this a function of beam search instead, isn't obvious with the current pattern
-            context.reorder(beam_search)
+                'n_beams*B, 1'] = beam_search.select_ids_from_logprobs(
+                log_probs=probs, input_ids=input_ids).unsqueeze(-1)
+            beam_search.reoder_transformer_context(context)
+            input_ids = torch.cat([input_ids, new_ids], dim=-1)
             if beam_search.is_done:
                 break
-        return beam_search.get_best_sequence()
+        seq_output: LongTensorT['B,TgtSeqLen'] = \
+        beam_search.get_best_sequence(input_ids)['sequences']
+        return seq_output
