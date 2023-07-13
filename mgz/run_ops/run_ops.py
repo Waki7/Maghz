@@ -125,6 +125,7 @@ def val_model(
         print(tokenizer.batch_decode(batch.src, skip_special_tokens=True))
         print('tgt x', batch.src.shape)
         print('tgt y', batch.tgt.shape)
+        exit(6)
         break
 
 
