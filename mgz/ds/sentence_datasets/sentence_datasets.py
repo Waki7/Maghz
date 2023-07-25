@@ -22,17 +22,16 @@ class SampleType(Enum):
     NAME = 'name'
 
 
-class SentenceBatch:
+class Sent2SentBatch:
     """Object for holding a batch of data with mask during training."""
 
     def __init__(self, src: LongTensorT['B,SrcSeqLen'],
                  tgt: LongTensorT['B,TgtSeqLen'] = None,
-                 pad_idx=2):  # 2 = <blank>
+                 pad_idx=2):
         self.src: LongTensorT['B,SrcSeqLen'] = src
         self.src_mask = (src != pad_idx)
         if tgt is not None:
             self.tgt: LongTensorT['B,SeqLen - 1'] = tgt
-            self.tgt_y = tgt[:, 1:]
             self.tgt_mask = self.make_std_mask(self.tgt, pad_idx)
             self.ntokens = (self.tgt != pad_idx).data.sum()
         self.tgt_mask.to(self.tgt.device)
@@ -51,7 +50,6 @@ class SentenceBatch:
         self.src = self.src.cuda()
         self.src_mask = self.src_mask.cuda()
         self.tgt = self.tgt.cuda()
-        self.tgt_y = self.tgt_y.cuda()
         self.tgt_mask = self.tgt_mask.cuda()
         return self
 
@@ -120,7 +118,7 @@ def collate_batch(
         pad_id: int,
         max_src_len=128,
         max_tgt_len=128
-) -> SentenceBatch:
+) -> Sent2SentBatch:
     # ) -> Tuple[LongTensorT['B,SrcSeqLen'], LongTensorT['B,OutSeqLen']]:
     dtype = torch.int32
     bs_id = torch.tensor([0], device=device, dtype=dtype)  # <s> token id
@@ -174,4 +172,4 @@ def collate_batch(
 
     src: LongTensorT['B,SrcSeqLen'] = torch.stack(src_list)
     tgt: LongTensorT['B,TgtSeqLen'] = torch.stack(tgt_list)
-    return SentenceBatch(src, tgt, pad_idx=pad_id)
+    return Sent2SentBatch(src, tgt, pad_idx=pad_id)

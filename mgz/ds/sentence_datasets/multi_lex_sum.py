@@ -32,7 +32,7 @@ class InputSource(Enum):
 
 
 class MultiLexSum(SentenceDataset):
-    def __init__(self, tokenizer: PreTrainedTokenizer, max_src_len: SrcSeqLen,
+    def __init__(self, tokenizer: PreTrainedTokenizerBase, max_src_len: SrcSeqLen,
                  max_tgt_len: TgtSeqLen):
         super(MultiLexSum, self).__init__()
 
@@ -86,22 +86,13 @@ class MultiLexSum(SentenceDataset):
         raise NotImplementedError
 
     def _collate_fn(self, device: Union[int, torch.device],
-                    batch: List[Tuple[SourceListT, SummaryT]]):
+                    batch: List[Tuple[SrcTextT, TgtTextT]]):
         assert self.loaded, "Dataset not loaded"
 
-        def tokenize_src(sources: SourceListT) -> List[str]:
-            tokenized_sources: List[List[str]] = [
-                self.tokenizer_src.tokenize(source_text) for
-                source_text in
-                sources]
-            # We are going to flatten the list of lists and join them with a seperator token
-            flattened_source_text: List[str] = []
-            for tokenized_source in tokenized_sources:
-                flattened_source_text.extend(tokenized_source)
-                flattened_source_text.append(self.tokenizer_src.sep_token)
-            return flattened_source_text
+        def tokenize_src(src_text: SrcTextT) -> List[str]:
+            return self.tokenizer_tgt.tokenize(src_text)
 
-        def tokenize_tgt(text: SummaryT) -> List[str]:
+        def tokenize_tgt(text: TgtTextT) -> List[str]:
             return self.tokenizer_tgt.tokenize(text)
 
         def vocab_src(tokens: List[str]) -> List[int]:

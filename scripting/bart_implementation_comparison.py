@@ -6,7 +6,7 @@ import torch
 from torch.optim.lr_scheduler import LambdaLR
 from transformers import BartConfig
 import settings
-from mgz.ds.sentence_datasets.sentence_datasets import SentenceBatch
+from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch
 from mgz.ds.sentence_datasets.synthetic_memorization import \
     SyntheticMemorization
 from mgz.models.nlp.bart import BartForConditionalGeneration

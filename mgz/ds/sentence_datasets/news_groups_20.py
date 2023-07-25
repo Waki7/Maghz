@@ -10,7 +10,7 @@ from spacy.language import Language
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
-
+import os
 import spaces as sp
 from mgz.ds.base_dataset import T
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
@@ -24,20 +24,20 @@ class InputSource(Enum):
     SHORT = 'summary/short'
     TINY = 'summary/tiny'
 
-PATH = '../../../,,./datasets/corpus'
+
+DATASET_DIR = '../../../../datasets/20news-18828'
 
 
-class MultiLexSum(SentenceDataset):
-    def __init__(self, max_length: SrcSeqLen):
-        super(MultiLexSum, self).__init__()
+class NewsGroup20(SentenceDataset):
+    def __init__(self, tokenizer: PreTrainedTokenizerBase,
+                 max_length: SrcSeqLen):
+        super(NewsGroup20, self).__init__()
 
         self.max_length = max_length
         self._data: List[Dict[str, Union[SummaryT, List[SourceListT]]]] = []
 
-        self.tokenizer_src: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
-            "facebook/bart-base")
-        self.tokenizer_tgt: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
-            "facebook/bart-base")
+        self.tokenizer_src: PreTrainedTokenizerBase = tokenizer
+        self.tokenizer_tgt: PreTrainedTokenizerBase = tokenizer
         self.vocab_src: Dict[str, int] = self.tokenizer_src.get_vocab()
         self.vocab_tgt: Dict[str, int] = self.tokenizer_src.get_vocab()
 
@@ -125,19 +125,9 @@ class MultiLexSum(SentenceDataset):
         return partial(self._collate_fn, device)
 
     def _load(self, train: bool = False, val: bool = False, test: bool = False):
-        iter: DatasetDict
-        multi_lexsum = load_dataset("allenai/multi_lexsum", name="v20220616")
-        # ['train', 'validation', 'test']
-        # ['id', 'sources', 'summary/long', 'summary/short', 'summary/tiny']
-        example: List[Dict[str, Union[SummaryT, SourceListT]]] = []
-        if train:
-            example: Dataset = multi_lexsum["train"]
-        elif val:
-            example: Dataset = multi_lexsum["validation"]
-        elif test:
-            example: Dataset = multi_lexsum["test"]
-        self._data = example
-        self.loaded = True
+        class_directories = os.listdir(DATASET_DIR)
+        n_class = class_directories
+
 
     def load_training_data(self):
         self._load(train=True)

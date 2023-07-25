@@ -25,7 +25,7 @@ import mgz.models.nlp.bart_orig as hug
 from transformers import GenerationConfig, BartConfig
 
 from mgz.ds.sentence_datasets.multi_lex_sum import MultiLexSum
-from mgz.ds.sentence_datasets.sentence_datasets import SentenceBatch, \
+from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch, \
     SentenceDataset
 from mgz.models.nlp.bert_basic import subsequent_mask, EncoderDecoder, \
     PredictorHead, make_model

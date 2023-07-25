@@ -3,7 +3,7 @@ from functools import partial
 import settings
 import spaces as sp
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
-    SentenceBatch
+    Sent2SentBatch
 from mgz.typing import *
 
 
@@ -33,7 +33,7 @@ class SyntheticMemorization(SentenceDataset):
         'Denotes the total number of samples'
         return self.n_samples
 
-    def gen(self) -> Generator[SentenceBatch, None, None]:
+    def gen(self) -> Generator[Sent2SentBatch, None, None]:
         for i in range(self.batch_size):
             data = torch.randint(1, self.input_space.vocab_size,
                                  size=(self.batch_size, self.max_length))
@@ -43,21 +43,21 @@ class SyntheticMemorization(SentenceDataset):
             if self.use_cuda:
                 src = src.to(settings.DEVICE)
                 tgt = tgt.to(settings.DEVICE)
-            batch = SentenceBatch(src, tgt, 0)
+            batch = Sent2SentBatch(src, tgt, 0)
             yield batch
 
-    def __getitem__(self, index) -> SentenceBatch:
+    def __getitem__(self, index) -> Sent2SentBatch:
         '''
         Generates one sample of data
 
         :param index:
         :return: an image and a regression target, the regression target is 5 long, as per the __init__ def of the space
         '''
-        batch: SentenceBatch = next(self.gen())
+        batch: Sent2SentBatch = next(self.gen())
         return batch
 
     def _collate_fn(self, device: Union[int, torch.device],
-                    batch: List[SentenceBatch]) -> Tuple[
+                    batch: List[Sent2SentBatch]) -> Tuple[
         LongTensorT['B,SrcSeqLen'], LongTensorT['B,TgtSeqLen']]:
         assert self.loaded, "Dataset not loaded"
         func = torch.cat if len(batch[0].src.shape) == 2 else torch.stack

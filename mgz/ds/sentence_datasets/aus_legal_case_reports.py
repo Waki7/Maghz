@@ -20,7 +20,7 @@ from mgz.models.nlp.tokenizing import Tokenizer, TokenStrings
 from mgz.typing import *
 from bs4 import BeautifulSoup, ResultSet
 
-PATH = '../../../../datasets/corpus'
+DATASET_DIR = '../../../../datasets/corpus'
 
 
 class AusCaseReports(SentenceDataset):
@@ -111,7 +111,7 @@ class AusCaseReports(SentenceDataset):
         # 		<catchphrase> : a catchphrase for the case, with an id attribute
         # 	<sentences> : contains a list of <sentence> elements
         # 		<sentence> : a sentence with id attribute
-        fulltext_dir = os.path.join(PATH, 'fulltext')
+        fulltext_dir = os.path.join(DATASET_DIR, 'fulltext')
 
         # Read all the input text files, from readme:
         # 2. citations_summ: Contains citations element for each case. Fields:
@@ -123,7 +123,7 @@ class AusCaseReports(SentenceDataset):
         # 		<citance> : a citance for the case, this is a sentence from a later case that mention the current case. Attributes: id,from(the case from where the citance is taken).
         # 	<legistitles> : contains a list of <title> elements
         # 		<title> : Title of a piece of legislation cited by the current case (can be an act or a specific section).
-        citation_sum_dir = os.path.join(PATH, 'citations_summ')
+        citation_sum_dir = os.path.join(DATASET_DIR, 'citations_summ')
 
         # 3. citations_class: Contains for each case a list of labeled citations. Fields:
         # 	<name> : name of the case
@@ -134,7 +134,7 @@ class AusCaseReports(SentenceDataset):
         # 			<tocase> : the name of the case which is cited
         # 			<AustLII> : the link to the document of the case which is cited
         # 			<text> : paragraphs in the cited case where the current case is mentioned
-        citation_cls_dir = os.path.join(PATH, 'citations_class')
+        citation_cls_dir = os.path.join(DATASET_DIR, 'citations_class')
 
         total_samples = len(os.listdir(fulltext_dir))
         n_train = (int)(total_samples * self.training_ratio)

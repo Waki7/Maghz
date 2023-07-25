@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
 from mgz.ds.sentence_datasets.multi_lex_sum import MultiLexSum
-from mgz.ds.sentence_datasets.sentence_datasets import SentenceBatch, \
+from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch, \
     SentenceDataset
 from mgz.models.nlp.bert_basic import subsequent_mask, EncoderDecoder, \
     PredictorHead, make_model

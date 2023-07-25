@@ -392,6 +392,14 @@ class BaseTransformer(nn.Module):
             # todo@ceyer don't like using config for sep token id
             tgt_ids = torch.LongTensor([self.config.sep_token_id]).unsqueeze(
                 0).to(settings.DEVICE).repeat(src_ids.shape[0], 1)
+
+        # print('src_ids', src_ids[0].shape)
+        # print('src_mask', src_mask[0].shape)
+        # print('tgt_ids', tgt_ids[0].shape)
+        # # print('src_ids', torch.unique(src_ids[0], return_counts=True))
+        # # print('src_mask', torch.unique(src_mask[0], return_counts=True))
+        # # print('tgt_ids', torch.unique(tgt_ids[0], return_counts=True))
+        # exit(5)
         n_beams = self.config.num_beams
         max_len = self.config.max_length
         eos_token_id = self.config.eos_token_id
@@ -436,5 +444,5 @@ class BaseTransformer(nn.Module):
             if beam_search.is_done:
                 break
         seq_output: LongTensorT['B,TgtSeqLen'] = \
-        beam_search.get_best_sequence(input_ids)['sequences']
+            beam_search.get_best_sequence(input_ids)['sequences']
         return seq_output

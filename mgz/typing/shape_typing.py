@@ -36,6 +36,8 @@ GermanT = NewType("GermanSentence", str)
 
 CaseSourceT = str  # NewType("LegalDocumentCaseSource", str)
 SourceListT = List[CaseSourceT]
+SrcTextT = str  # NewType("SourceText", str)
+TgtTextT = str  # NewType("SourceText", str)
 SummaryT = str  # NewType("SummaryOfCase", str)
 
 SrcStringT = Union[SourceListT, GermanT, EnglishT]

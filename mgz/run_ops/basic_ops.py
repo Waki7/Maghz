@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from mgz.ds.sentence_datasets.sentence_datasets import SentenceBatch
+from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch
 from mgz.models.nlp.bert_basic import subsequent_mask, EncoderDecoder
 from mgz.typing import *
 
 
-def train_forward(model: EncoderDecoder, batch: SentenceBatch):
+def train_forward(model: EncoderDecoder, batch: Sent2SentBatch):
     return model.forward(batch.src, batch.tgt, batch.src_mask, batch.tgt_mask)
 
 

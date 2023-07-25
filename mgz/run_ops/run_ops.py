@@ -6,6 +6,7 @@ import os
 import torch.utils.data
 from tqdm import tqdm
 import time
+import mgz.models.metrics as metrics
 
 import GPUtil
 import torch.distributed as dist
@@ -17,7 +18,7 @@ from transformers import PreTrainedTokenizerBase
 
 import settings
 from mgz.ds.sentence_datasets.multi_lex_sum import MultiLexSum
-from mgz.ds.sentence_datasets.sentence_datasets import SentenceBatch, \
+from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch, \
     SentenceDataset
 from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask
 from mgz.models.nlp.base_transformer import BaseTransformer
@@ -37,8 +38,8 @@ class TrainState:
 
 
 def run_epoch(
-        data_loader: torch.utils.data.DataLoader[SentenceBatch],
-        val_data_loader: torch.utils.data.DataLoader[SentenceBatch],
+        data_loader: torch.utils.data.DataLoader[Sent2SentBatch],
+        val_data_loader: torch.utils.data.DataLoader[Sent2SentBatch],
         model: BaseTransformer,
         tokenizer: PreTrainedTokenizerBase,
         loss_compute,
@@ -56,7 +57,7 @@ def run_epoch(
     tokens = 0
     n_accum = 0
     i: int
-    batch: SentenceBatch
+    batch: Sent2SentBatch
     with torch.no_grad():
         val_model(val_data_loader, model, tokenizer)
 
@@ -105,7 +106,7 @@ def run_epoch(
 
 
 def val_model(
-        val_data_loader: torch.utils.data.DataLoader[SentenceBatch],
+        val_data_loader: torch.utils.data.DataLoader[Sent2SentBatch],
         model: BaseTransformer,
         tokenizer: PreTrainedTokenizerBase
 ) -> (torch.Tensor, TrainState):
@@ -115,18 +116,22 @@ def val_model(
     if started_training:
         model.train()
     i: int
-    batch: SentenceBatch
+    batch: Sent2SentBatch
+    n_samples = 0
+    # TODO, MAKE SURE THAT BLEU SCORES ADJACENTLY, CHECK BY EITHER VARYING THE BATCH SIZE AND MAKIGN SURE SAME SCORE, OR SHUFFLYING
     for i, batch in enumerate(val_data_loader):
-        predictions: LongTensorT['TgtSeqLen'] = model.generate(
+        # TgtSeqLen is max padded length
+        predictions: LongTensorT['B,TgtSeqLen'] = model.generate(
             src_ids=batch.src, src_mask=batch.src_mask)
-        print(predictions)
-        print(tokenizer.batch_decode(predictions, skip_special_tokens=True))
-        print(tokenizer.batch_decode(batch.tgt, skip_special_tokens=True))
-        print(tokenizer.batch_decode(batch.src, skip_special_tokens=True))
-        print('tgt x', batch.src.shape)
-        print('tgt y', batch.tgt.shape)
-        exit(6)
-        break
+        prediction_sentences: List[str] = tokenizer.batch_decode(predictions,
+                                                                 skip_special_tokens=True)
+        print(
+            (
+                "Validation BLEU Score: %6d"
+            )
+            % (metrics.bleu_from_batch_decode(prediction_sentences, batch.tgt)
+               )
+        )
 
 
 def forward_controller(model: BaseTransformer, text: str,
@@ -219,7 +224,7 @@ def train_worker(
         model.train()
         print(f"[GPU{gpu}] Epoch {epoch} Training ====", flush=True)
         _, train_state = run_epoch(
-            (SentenceBatch(b[0], b[1], pad_idx) for b in train_dataloader),
+            (Sent2SentBatch(b[0], b[1], pad_idx) for b in train_dataloader),
             model,
             SimpleLossCompute(module.generator, criterion),
             optimizer,
@@ -238,7 +243,7 @@ def train_worker(
         print(f"[GPU{gpu}] Epoch {epoch} Validation ====", flush=True)
         model.eval()
         sloss = run_epoch(
-            (SentenceBatch(b[0], b[1], pad_idx) for b in valid_dataloader),
+            (Sent2SentBatch(b[0], b[1], pad_idx) for b in valid_dataloader),
             model,
             SimpleLossCompute(module.generator, criterion),
             DummyOptimizer(),
