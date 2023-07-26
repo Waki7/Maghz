@@ -32,7 +32,8 @@ class InputSource(Enum):
 
 
 class MultiLexSum(SentenceDataset):
-    def __init__(self, tokenizer: PreTrainedTokenizerBase, max_src_len: SrcSeqLen,
+    def __init__(self, tokenizer: PreTrainedTokenizerBase,
+                 max_src_len: SrcSeqLen,
                  max_tgt_len: TgtSeqLen):
         super(MultiLexSum, self).__init__()
 
@@ -239,10 +240,10 @@ class MultiLexSumShortToTiny(MultiLexSum):
 
 def main():
     # please install HuggingFace ds by pip install ds
-    ds = MultiLexSum(max_src_len=128).load_training_data()
-    print(ds.tokenizer_src.tokenize("hello i am a test"))
     from transformers import BertTokenizer
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+    ds = MultiLexSum(tokenizer=tokenizer, max_length=128).load_training_data()
+    print(ds.tokenizer_src.tokenize("hello i am a test"))
     print(tokenizer.tokenize("I have a new GPU!"))
 
     example: Dict = \

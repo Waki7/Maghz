@@ -25,7 +25,7 @@ class InputSource(Enum):
     TINY = 'summary/tiny'
 
 
-DATASET_DIR = '../../../../datasets/20news-18828'
+DATASET_DIR = '../../../../datasets/20news-18828/'
 
 
 class NewsGroup20(SentenceDataset):
@@ -125,9 +125,24 @@ class NewsGroup20(SentenceDataset):
         return partial(self._collate_fn, device)
 
     def _load(self, train: bool = False, val: bool = False, test: bool = False):
-        class_directories = os.listdir(DATASET_DIR)
-        n_class = class_directories
-
+        class_directories: List[str] = os.listdir(DATASET_DIR)
+        class_directories.sort()
+        print('DATASET_DIR', os.path.abspath(DATASET_DIR))
+        print('class_directories', class_directories)
+        n_tags = class_directories
+        for n_tag, directory in enumerate(class_directories):
+            class_dir = os.path.join(DATASET_DIR, directory)
+            if directory.startswith('.') or not os.path.isdir(class_dir):
+                print(class_dir)
+                continue
+            for file in os.listdir(class_dir):
+                file_path = os.path.join(class_dir, file)
+                if file.startswith('.') or not os.path.isfile(file_path):
+                    continue
+                with open(file_path) as f:
+                    lines: List[str] = f.readlines()
+                print(lines)
+                exit(3)
 
     def load_training_data(self):
         self._load(train=True)
@@ -161,36 +176,11 @@ class NewsGroup20(SentenceDataset):
 
 def main():
     # please install HuggingFace ds by pip install ds
-    ds = MultiLexSum(max_length=128)
-    print(ds.tokenizer_src.tokenize("hello i am a test"))
     from transformers import BertTokenizer
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+    ds = NewsGroup20(tokenizer=tokenizer, max_length=128).load_training_data()
+    print(ds.tokenizer_src.tokenize("hello i am a test"))
     print(tokenizer.tokenize("I have a new GPU!"))
-    multi_lexsum: DatasetDict = load_dataset("allenai/multi_lexsum",
-                                             name="v20220616")
-
-    example: Dict = \
-        multi_lexsum["validation"][4]  # The first instance of the dev set
-    print(list(multi_lexsum.keys()))
-    # keys are ['id', 'sources', 'summary/long', 'summary/short', 'summary/tiny']
-    print(list(example.keys()))
-    print('sources: \n', example['sources'], '\n')
-
-    # for item in example['sources']:
-    #     print(len(tokenize(item, Tokenizer.load_en_web_sm())))
-    for a, b in example.items():
-        if b is not None:
-            if isinstance(b, str):
-                print(a, ": ", type(b), " length of ", len(b), " content: ",
-                      b[:100],
-                      "... ")
-            else:
-                print(a, ": ", type(b), " length of  ", len(b))
-        else:
-            print(a, ": ", type(b), ".... ", b)
-
-    # for sum_len in ["long", "short", "tiny"]:
-    #     print(example["summary/" + sum_len])  # Summaries of three lengths
 
 
 if __name__ == '__main__':
