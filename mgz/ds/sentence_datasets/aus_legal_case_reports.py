@@ -1,24 +1,21 @@
 from __future__ import annotations
 
-from enum import Enum
+import os
 from functools import partial
 
+from bs4 import BeautifulSoup, ResultSet
 from datasets import load_dataset
 from datasets.arrow_dataset import Dataset
 from datasets.dataset_dict import DatasetDict
-from spacy.language import Language
 from torch.utils.data import Dataset
-from tqdm import tqdm
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
-import os
 import spaces as sp
 from mgz.ds.base_dataset import T
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
     collate_batch, SampleType
-from mgz.models.nlp.tokenizing import Tokenizer, TokenStrings
+from mgz.models.nlp.tokenizing import TokenStrings
 from mgz.typing import *
-from bs4 import BeautifulSoup, ResultSet
 
 DATASET_DIR = '../../../../datasets/corpus'
 
@@ -151,35 +148,43 @@ class AusCaseReports(SentenceDataset):
             raise ValueError("No dataset split selected")
 
         keys = []
-        data_entries = {SampleType.NAME: [], SampleType.CATCHPHRASES: [],
-                        SampleType.INPUT_TEXT: []}
+        data_entries: Dict[SampleType, List[str]] = \
+            {SampleType.KEY: [],
+             SampleType.NAME: [],
+             SampleType.CATCHPHRASES: [],
+             SampleType.INPUT_TEXT: []}
         for file in os.listdir(fulltext_dir)[start_end[0]: start_end[1]]:
-            file = os.path.join(fulltext_dir, file)
-            with open(file) as fp:
+            file_path = os.path.join(fulltext_dir, file)
+            with open(file_path) as fp:
                 soup = BeautifulSoup(fp, 'html.parser')
                 case_name_xml: ResultSet = soup.find('name')
                 catchphrases_xml: List[ResultSet] = soup.find_all('catchphrase')
                 sentences_xml: List[ResultSet] = soup.find_all('sentence')
 
+                data_entries[SampleType.KEY].append(file_path.split(".")[0])
                 data_entries[SampleType.NAME].append(case_name_xml.text)
+
+                # catchphrases are used as gold standard for summarization
                 data_entries[SampleType.CATCHPHRASES].append(
                     [entry.text for entry in catchphrases_xml])
+
+                # sentences are used as input text
                 data_entries[SampleType.INPUT_TEXT].append(
                     [entry.text for entry in sentences_xml])
+                print(data_entries[SampleType.KEY][-1])
+                print(data_entries[SampleType.NAME][-1])
+                print(data_entries[SampleType.CATCHPHRASES][-1])
+                print(data_entries[SampleType.INPUT_TEXT][-1])
+                input_list = data_entries[SampleType.INPUT_TEXT][-1]
+                input_text_full = ' '.join(input_list)
+                print(input_text_full)
+                print(len(input_text_full))
+                exit(3)
+                if file_path.endswith(".txt"):
+                    keys.append(file_path.split(".")[0])
 
-                if file.endswith(".txt"):
-                    keys.append(file.split(".")[0])
-
-        # ['id', 'sources', 'summary/long', 'summary/short', 'summary/tiny']
-        example: List[Dict[str, Union[SummaryT, SourceListT]]] = []
-        if train:
-            example: Dataset = multi_lexsum["train"]
-        elif val:
-            example: Dataset = multi_lexsum["validation"]
-        elif test:
-            example: Dataset = multi_lexsum["test"]
-        self._data = example
-        self.loaded = True
+                # self._data = example
+                self.loaded = True
 
     def load_training_data(self):
         self._load(train=True)

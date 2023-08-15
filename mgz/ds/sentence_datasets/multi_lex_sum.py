@@ -1,25 +1,21 @@
 from __future__ import annotations
 
+import logging
 from enum import Enum
 from functools import partial
 
 from datasets import load_dataset
 from datasets.arrow_dataset import Dataset
 from datasets.dataset_dict import DatasetDict
-from mgz.ds.base_dataset import BaseDataset, DataSplit
-
-from spacy.language import Language
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from transformers import AutoTokenizer, PreTrainedTokenizerBase
-import logging
+from transformers import PreTrainedTokenizer
+from transformers import PreTrainedTokenizerBase
+
 import spaces as sp
 from mgz.ds.base_dataset import T
-from transformers import PreTrainedTokenizer
-
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
-    collate_batch, DataSplit, SampleType
-from mgz.models.nlp.tokenizing import Tokenizer, TokenStrings
+    collate_batch, DataSplit
 from mgz.typing import *
 
 
@@ -70,7 +66,8 @@ class MultiLexSum(SentenceDataset):
         raise NotImplementedError
 
     def _get_source_types(self) -> Tuple[InputSource, InputSource]:
-        raise NotImplementedError
+        raise NotImplementedError(
+            'There are implementations of this method in the subclasses')
 
     @property
     def in_space(self) -> sp.Sentence:
@@ -242,9 +239,10 @@ def main():
     # please install HuggingFace ds by pip install ds
     from transformers import BertTokenizer
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-    ds = MultiLexSum(tokenizer=tokenizer, max_length=128).load_training_data()
-    print(ds.tokenizer_src.tokenize("hello i am a test"))
-    print(tokenizer.tokenize("I have a new GPU!"))
+    ds = MultiLexSumShortToTiny(tokenizer=tokenizer,
+                                max_position_embeddings=1024).load_training_data()
+    print('----Tokenization Example: ',
+          ds.tokenizer_src.tokenize("hello i am a test"))
 
     example: Dict = \
         ds._data[4]  # The first instance of the dev set

@@ -8,11 +8,15 @@ from mgz.models.mobile_net import MobileNetV2
 import json
 from json import JSONDecoder, JSONEncoder
 import os
+from pathlib import Path
 from mgz.model_vc.model_node import ModelNode
 import logging
 
 # DEFAULTS
 DEFAULT_ROOTS = {}
+DEFAULT_INDEX_PATH = os.path.join(Path(__file__).resolve().parent.parent.parent,
+                                  'index_dir/main/indexer.json').replace("\\",
+                                                                         "/")
 
 
 class Indexer:
@@ -35,7 +39,7 @@ class Indexer:
             f.write(self.to_json())
 
     @staticmethod
-    def load_from_json(path='../../../index_dir/main/indexer.json'):
+    def load_from_json(path=DEFAULT_INDEX_PATH):
         # obj_dict = {}
         # for k, v in sorted(dict):
         #     obj_dict[k] = v

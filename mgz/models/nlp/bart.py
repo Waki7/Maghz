@@ -1,31 +1,21 @@
 """ PyTorch BART model."""
-import copy
+import json
 import math
+import os
 import random
 from abc import ABC
-from mgz.model_vc.model_index import CACHED_INDEXER
+
 import torch.utils.checkpoint
+import transformers as hug
 from torch import nn
-import json
 from transformers.activations import ACT2FN
-from transformers.modeling_utils import PreTrainedModel
 from transformers.models.bart.configuration_bart import BartConfig
-from transformers.utils import (
-    logging,
-)
-import os
 
 import settings
+from mgz.model_vc.model_index import CACHED_INDEXER
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext
+from mgz.models.nlp.utils_attention import _attention
 from mgz.typing import *
-
-import transformers as hug
-from transformers import BartTokenizer, PreTrainedTokenizer
-
-
-def clones(module, N: int) -> nn.ModuleList:
-    "Produce N identical layers."
-    return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
 
 
 def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int,
@@ -89,58 +79,6 @@ class BartLearnedPositionalEmbedding(nn.Embedding):
         return super().forward(positions + self.offset)
 
 
-def _attention(query: FloatTensorT,
-               key: FloatTensorT,
-               value: FloatTensorT,
-               mask: IntTensorT,
-               dropout_p: float = None) -> \
-        Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
-    "Compute 'Scaled Dot Product Attention'"
-    scores: FloatTensorT['B,TgtSeqLen,SrcSeqLen'] = \
-        torch.matmul(query, key.transpose(-2, -1))
-    # same mask per head
-    if mask is not None:
-        assert mask.shape[0] == scores.shape[
-            0], 'make sure mask aligns score shape {} vs mask shape {} '.format(
-            scores.shape, mask.shape)
-        mask = mask.unsqueeze(1)
-        scores = scores.masked_fill(mask == 0, -1e4)
-
-    # also called attention weights
-    p_attn: torch.Tensor = scores.softmax(dim=-1)
-    # if not in training, None will be passed
-    if dropout_p is not None:
-        p_attn = nn.functional.dropout(p_attn, p=dropout_p)
-
-    # using the probabilities to pay attention to the value
-    # noinspection PyTypeChecker
-    attn_out = torch.matmul(p_attn, value)
-    del mask
-    del scores
-    del p_attn
-    settings.empty_cache()
-    return attn_out
-
-
-def attention(query: FloatTensorT['B*NHeads,TgtSeqLen,EmbedLen/NHeads'],
-              key: FloatTensorT['B*NHeads,SrcSeqLen,EmbedLen/NHeads'],
-              value: FloatTensorT['B*NHeads,SrcSeqLen,EmbedLen/NHeads'],
-              mask: IntTensorT['B*NHeads,TgtSeqLen,SrcSeqLen'] = None,
-              dropout_p: ProbT = None) -> \
-        Tuple[FloatTensorT['B,TgtSeqLen,EmbedLen'], torch.Tensor]:
-    return _attention(query, key, value, mask, dropout_p)
-
-
-def self_attention(query: FloatTensorT['B*NHeads,SrcSeqLen,EmbedLen/NHeads'],
-                   key: FloatTensorT['B*NHeads,SrcSeqLen,EmbedLen/NHeads'],
-                   value: FloatTensorT[
-                       'B*NHeads,SrcSeqLen,EmbedLen/NHeads'],
-                   mask: IntTensorT['B*NHeads,SrcSeqLen,SrcSeqLen'] = None,
-                   dropout_p=None) -> \
-        Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
-    return _attention(query, key, value, mask, dropout_p)
-
-
 class MultiHeadedAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
@@ -150,7 +88,6 @@ class MultiHeadedAttention(nn.Module):
             num_heads: int,
             decoder_attention: bool = False,
             dropout: ProbT = 0.0,
-            bias: bool = True,
     ):
         super().__init__()
         self.embed_dim = embed_dim
@@ -165,10 +102,10 @@ class MultiHeadedAttention(nn.Module):
                 f" and `num_heads`: {num_heads})."
             )
         self.scaling = self.head_dim ** -0.5
-        self.k_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
-        self.v_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
-        self.q_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
-        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.k_proj = nn.Linear(embed_dim, embed_dim)
+        self.v_proj = nn.Linear(embed_dim, embed_dim)
+        self.q_proj = nn.Linear(embed_dim, embed_dim)
+        self.out_proj = nn.Linear(embed_dim, embed_dim)
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int) -> \
             FloatTensorT['B,SrcSeqLen,NHeads']:
@@ -412,7 +349,7 @@ class BartEncoder(nn.Module):
             self.embed_tokens.weight = embed_tokens.weight
 
         self.embed_positions = BartLearnedPositionalEmbedding(
-            config.max_position_embeddings,
+            self.max_source_positions,
             embed_dim,
         )
         self.layers = nn.ModuleList(
@@ -638,7 +575,7 @@ class BartForConditionalGeneration(BartPretrainedModel):
         model: BartForConditionalGeneration = \
             CACHED_INDEXER.lookup(model_id, loader=loader, init_save=init_save)
         model.eval()
-        tokenizer = BartTokenizer.from_pretrained(tokenizer_id)
+        tokenizer = hug.BartTokenizer.from_pretrained(tokenizer_id)
         model.verify_tokenizer(tokenizer)
         return model, tokenizer
 
@@ -699,9 +636,16 @@ class BartForConditionalGeneration(BartPretrainedModel):
             src_ids=src_ids, src_mask=src_mask,
             tgt_ids=tgt_ids, tgt_mask=tgt_mask)
 
+        if self.__class__.DONE == 0:
+            print('hidden_states', output.shape)
+                  # torch.unique(output, return_counts=True))
+            # print('--------')
+            self.__class__.DONE = 1
         lm_logits = self.lm_head(output)
         lm_logits = lm_logits + self.final_logits_bias.to(lm_logits.device)
+
         return lm_logits
+    DONE = 0
 
     def encode(self, src_ids: LongTensorT['B,SrcSeqLen'],
                src_mask: IntTensorT['B,SrcSeqLen']):

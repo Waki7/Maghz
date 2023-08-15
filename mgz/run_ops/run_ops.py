@@ -2,24 +2,20 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import os
-
-import torch.utils.data
-from tqdm import tqdm
 import time
-import mgz.models.metrics as metrics
 
 import GPUtil
 import torch.distributed as dist
+import torch.utils.data
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim.lr_scheduler import LambdaLR
-from torch.utils.data import DataLoader
-from torch.utils.data.distributed import DistributedSampler
+from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
 
+import mgz.models.metrics as metrics
 import settings
 from mgz.ds.sentence_datasets.multi_lex_sum import MultiLexSum
-from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch, \
-    SentenceDataset
+from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch
 from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.models.nlp.bert_basic import make_model
@@ -134,12 +130,22 @@ def val_model(
         )
 
 
-def forward_controller(model: BaseTransformer, text: str,
+def embedding_controller(model: BaseTransformer, text: List[str],
+                         tokenizer: PreTrainedTokenizerBase) -> FloatTensorT[
+    'B,EmbeddingDim']:
+    batch_encoding = tokenizer(text, return_tensors="pt")
+    src_ids = batch_encoding.input_ids.to(settings.DEVICE)
+    src_mask = batch_encoding.attention_mask.to(settings.DEVICE)
+    return model.encode(src_ids=src_ids, src_mask=src_mask).mean(1)
+
+
+def forward_controller(model: BaseTransformer, text: List[str],
                        tokenizer: PreTrainedTokenizerBase):
     batch_encoding = tokenizer(text, return_tensors="pt")
     src_ids = batch_encoding.input_ids.to(settings.DEVICE)
-    tgt_ids = torch.LongTensor([tokenizer.bos_token_id]).unsqueeze(0).to(
-        settings.DEVICE)
+    batch_size = len(text)
+    tgt_ids = torch.LongTensor([tokenizer.sep_token_id]).unsqueeze(0).to(
+        settings.DEVICE).repeat(batch_size, 1)
     src_mask = batch_encoding.attention_mask.to(settings.DEVICE)
     tgt_mask = (tgt_ids != tokenizer.pad_token_id).unsqueeze(-2)
     tgt_mask = tgt_mask & subsequent_mask(tgt_ids.size(-1)).type_as(
@@ -162,6 +168,8 @@ def generate_controller(model: BaseTransformer, text: List[str],
     tgt_ids = torch.LongTensor([tokenizer.sep_token_id]).unsqueeze(0).to(
         settings.DEVICE).repeat(batch_size, 1)
     src_mask = batch_encoding.attention_mask.to(settings.DEVICE)
+    src_ids, src_mask = model._pre_encode_pad_if_needed(src_ids, src_mask,
+                                                        tokenizer.pad_token_id)
     # don't need tgt_mask because you are generating one token at a time
     return model.generate(src_ids=src_ids, tgt_ids=tgt_ids,
                           src_mask=src_mask)

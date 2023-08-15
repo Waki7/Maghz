@@ -1,25 +1,31 @@
+from enum import Enum
 from functools import partial
 
 from torch.nn.functional import pad
-from torchtext.vocab.vocab import Vocab
+from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 
 import spaces as sp
-from mgz.ds.base_dataset import BaseDataset, DataSplit
+from mgz.ds.base_dataset import BaseDataset
 from mgz.typing import *
-from torch.utils.data.distributed import DistributedSampler
-from torch.utils.data import DataLoader
-
-from enum import Enum
 
 
 class SampleType(Enum):
-    INPUT_TEXT = 'input_text'
+    ID = 'id'
+    INPUT_TEXT = 'sources'
     SUMMARY_TINY = 'summary_tiny'
     SUMMARY_SHORT = 'summary_short'
     SUMMARY_LONG = 'summary_long'
 
     CATCHPHRASES = 'catchphrase'
     NAME = 'name'
+    KEY = 'key'
+
+
+class DataSplit(Enum):
+    TRAIN = 'train'
+    VAL = 'validation'
+    TEST = 'test'
 
 
 class Sent2SentBatch:
@@ -54,6 +60,11 @@ class Sent2SentBatch:
         return self
 
 
+# links:
+# top 20 links: https://odsc.medium.com/20-open-datasets-for-natural-language-processing-538fbfaf8e38
+# legal case reports (aus): https://archive.ics.uci.edu/dataset/239/legal+case+reports
+# news groups: http://qwone.com/~jason/20Newsgroups/
+# multilexsum: https://github.com/multilexsum/dataset
 class SentenceDataset(BaseDataset):
     def __init__(self):
         super(SentenceDataset, self).__init__()

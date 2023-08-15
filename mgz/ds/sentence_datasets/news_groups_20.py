@@ -24,7 +24,6 @@ class InputSource(Enum):
     SHORT = 'summary/short'
     TINY = 'summary/tiny'
 
-
 DATASET_DIR = '../../../../datasets/20news-18828/'
 
 
