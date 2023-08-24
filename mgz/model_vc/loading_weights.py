@@ -19,7 +19,7 @@ from transformers import BartTokenizer
 
 import settings
 from mgz.models.nlp.bart import BartForConditionalGeneration
-from mgz.run_ops.run_ops import generate_controller, forward_controller
+from mgz.model_running.run_ops import generate_controller, forward_controller
 from mgz.typing import *
 import mgz.models.nlp.bart_orig as hug
 from transformers import GenerationConfig, BartConfig

@@ -57,10 +57,12 @@ class NewsGroup20(SentenceDataset):
         return self._data[idx]['sources'], self._data[idx]['summary/long']
 
     @property
+    @overrides(SentenceDataset)
     def in_space(self) -> sp.Sentence:
         return self.in_space
 
     @property
+    @overrides(SentenceDataset)
     def pred_space(self) -> Union[sp.Sentence, sp.RegressionTarget]:
         return self.target_space
 

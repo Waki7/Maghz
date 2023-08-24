@@ -10,6 +10,6 @@ class Sentence(Box):
                  shape: Tuple[Union[SrcSeqLen, TgtSeqLen]],
                  dtype=torch.IntType):
         self.vocab_size = vocab_size
-        self.dim_names: List[str] = [str(SrcSeqLen)]
+        self.dim_names: List[str] # TODO = [str(SrcSeqLen)]
         super(Sentence, self).__init__(low=0, high=vocab_size, shape=shape,
                                        dtype=dtype)

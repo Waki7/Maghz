@@ -4,12 +4,11 @@ import math
 import torch.nn as nn
 from torch.nn.functional import log_softmax
 
-from mgz.models.nlp.base_transformer import BaseTransformer
-from mgz.typing import *
-
-
 # import altair as alt
 # import GPUtil
+from mgz.ds.sentence_datasets.multi_lex_sum import MultiLexSum
+from mgz.models.nlp.base_transformer import BaseTransformer
+from mgz.typing import *
 
 
 def _attention(query: TensorT,
@@ -37,17 +36,10 @@ def _attention(query: TensorT,
         torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
     if mask is not None:
         scores = scores.masked_fill(mask == 0, -1e4)
-    print('------')
-    print('query', query.shape)
-    print('key', key.shape)
-    print('value', value.shape)
-    print('scores', scores.shape)
-    print('mask', mask.shape)
     # also called attention weights
     p_attn = scores.softmax(dim=-1)
     if dropout_p is not None:
         p_attn = nn.Dropout(dropout_p)(p_attn)
-    print('p_attn', p_attn.shape)
     return torch.matmul(p_attn, value), p_attn
 
 
@@ -422,3 +414,25 @@ def make_model(
     #     if we have good typing annotations u can make it intuitive to relate them and add blocks together
     #     as in u know what goes in and u know what comes out. u will define dropout and other classes with
     #         types that include dimensions both variable as a function of the input and constants
+
+
+def load_trained_model(config):
+    # config = {
+    #     "batch_size": 32,
+    #     "distributed": False,
+    #     "num_epochs": 8,
+    #     "accum_iter": 10,
+    #     "base_lr": 1.0,
+    #     "max_padding": 72,
+    #     "warmup": 3000,
+    #     "file_prefix": "multi30k_model_",
+    # }
+    model_path = "C:/Users/ceyer/OneDrive/Documents/Projects/Maghz/index_dir/model_storage/multi30k_model_final.pt"
+    # if not exists(model_path):
+    #     train_model(config)
+
+    ds = MultiLexSum(config["max_padding"])
+    model = make_model(len(ds.vocab_src), len(ds.vocab_tgt), N=6)
+    print(model)
+    model.load_state_dict(torch.load(model_path))
+    return model

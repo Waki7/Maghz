@@ -1,36 +1,46 @@
-from typing import *
-import os
-import pandas as pd
-from torchvision.io import read_image
-import torch
-from torch import Tensor
-from torch.utils.data import Dataset, ConcatDataset
-from torchvision import datasets
-import gym.spaces as rs
-from mgz.typing import *
-
-import torchvision.io as torch_io
-import torchvision.transforms.functional as torch_f
 from enum import Enum
+
 from torch.utils.data import DataLoader
+from torch.utils.data import Dataset, ConcatDataset
+
+import spaces as sp
+from mgz.typing import *
 
 LabelType = []
 T = TypeVar("T")
 
 
 class DataSplit(Enum):
+    NOT_LOADED = 'not_loaded'
     TRAIN = 'train'
     VAL = 'val'
     TEST = 'test'
 
 
 class BaseDataset(Dataset):
-    # def __init__(self, annotations_file, img_dir, transform=None,
-    #              target_transform=None):
+    __metaclass__ = ABCMeta
+
     def __init__(self):
         self.img_index: Dict[str, str] = {}
         self.img_label_index: Dict[str, LabelType] = {}
         self.meta_data = None
+
+        self.in_space: sp.Space
+        self.tgt_space: sp.Space
+
+        # --- Initialization flags ---
+        self.use_cuda = False
+        self.data_state = DataSplit.NOT_LOADED
+
+    @abstractmethod
+    @property
+    def input_space(self) -> sp.Sentence:
+        raise NotImplementedError
+
+    @abstractmethod
+    @property
+    def target_space(self) -> Union[sp.Sentence, sp.RegressionTarget]:
+        raise NotImplementedError
 
     def __add__(self, other: 'Dataset[T_co]') -> 'ConcatDataset[T_co]':
         raise NotImplementedError
@@ -55,6 +65,31 @@ class BaseDataset(Dataset):
 
     def pad_idx(self) -> int:
         raise NotImplementedError
+
+    @abstractmethod
+    def load_training_data(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def gen_training_data(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def load_validation_data(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def gen_validation_data(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def load_testing_data(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def gen_testing_data(self):
+        raise NotImplementedError
+
     # class _MapStyleDataset(torch.utils.data.Dataset):
 
     # def __init__(self, iter_data) -> None:

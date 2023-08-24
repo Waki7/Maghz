@@ -267,8 +267,8 @@ class BaseTransformer(nn.Module):
         validate_field('cls_token_id')
         validate_field('mask_token_id')
         validate_field('vocab_size')
-        # For LED we need to pad the input ids and attention mask to be multiple of the attention window
 
+    # For LED we need to pad the input ids and attention mask to be multiple of the attention window
     def _pre_encode_pad_if_needed(
             self,
             src_ids: LongTensorT['B,SrcSeqLen'],
@@ -312,7 +312,6 @@ class BaseTransformer(nn.Module):
 
         n_beams = self.config.num_beams
         max_len = self.config.max_length
-        eos_token_id = self.config.eos_token_id
         context = TransformerContext(src_ids.shape[0] * n_beams,
                                      self.config.d_model,
                                      self.config.decoder_layers,

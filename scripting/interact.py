@@ -3,7 +3,7 @@ from enum import Enum
 import transformers as hug
 
 import settings
-from mgz.run_ops.run_ops import generate_controller, forward_controller
+from mgz.model_running.run_ops import generate_controller, forward_controller
 from mgz.typing import *
 
 
@@ -48,7 +48,7 @@ with torch.no_grad():
     use_hug = False
 
     use_mgz = True
-    # use_hug = True
+    use_hug = True
     use_generation = True  # True False
     use_encode = False  # True False
     use_model = Model.LED
@@ -78,6 +78,8 @@ with torch.no_grad():
             tgt_ids = torch.LongTensor(
                 [tokenizer.sep_token_id]).unsqueeze(0).to(
                 settings.DEVICE).repeat(batch_size, 1)
+            print(model_hug.config.max_length)
+            exit(4)
             input_ids = tokenizer(text, return_tensors='pt').input_ids.to(
                 settings.DEVICE)
             if use_encode:

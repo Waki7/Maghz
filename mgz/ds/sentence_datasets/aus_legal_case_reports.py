@@ -8,7 +8,7 @@ from datasets import load_dataset
 from datasets.arrow_dataset import Dataset
 from datasets.dataset_dict import DatasetDict
 from torch.utils.data import Dataset
-from transformers import AutoTokenizer, PreTrainedTokenizerBase
+from transformers import PreTrainedTokenizerBase
 
 import spaces as sp
 from mgz.ds.base_dataset import T
@@ -21,23 +21,27 @@ DATASET_DIR = '../../../../datasets/corpus'
 
 
 class AusCaseReports(SentenceDataset):
-    def __init__(self, max_length: SrcSeqLen):
+    def __init__(self, tokenizer: PreTrainedTokenizerBase,
+                 max_src_len: SrcSeqLen,
+                 max_tgt_len: TgtSeqLen):
         super(AusCaseReports, self).__init__()
 
-        self.max_length = max_length
-        self._data: List[Dict[str, Union[SummaryT, List[SourceListT]]]] = []
+        self.max_src_len = max_src_len
+        self.max_tgt_len = max_tgt_len
 
-        self.tokenizer_src: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
-            "facebook/bart-base")
-        self.tokenizer_tgt: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
-            "facebook/bart-base")
+        # {'INPUT_TEXT': List[str], 'CATCHPHRASES': List[str], 'summary/short': str, 'summary/tiny': str, 'id': str}
+        self._data: List[Dict[str, Union[
+            SummaryT, List[SummaryT], SrcTextT, List[SrcTextT]]]] = []
+
+        self.tokenizer_src: PreTrainedTokenizerBase = tokenizer
+        self.tokenizer_tgt: PreTrainedTokenizerBase = tokenizer
         self.vocab_src: Dict[str, int] = self.tokenizer_src.get_vocab()
-        self.vocab_tgt: Dict[str, int] = self.tokenizer_src.get_vocab()
+        self.vocab_tgt: Dict[str, int] = self.tokenizer_tgt.get_vocab()
 
         self.input_space = sp.Sentence(
-            len((self.vocab_src)), shape=(max_length,))
+            len((self.vocab_src)), shape=(max_src_len,))
         self.target_space = sp.Sentence(len((self.vocab_tgt)),
-                                        shape=(max_length,))
+                                        shape=(max_tgt_len,))
 
         # --- Initialization flags ---
         self.use_cuda = False
@@ -148,9 +152,9 @@ class AusCaseReports(SentenceDataset):
             raise ValueError("No dataset split selected")
 
         keys = []
-        data_entries: Dict[SampleType, List[str]] = \
-            {SampleType.KEY: [],
-             SampleType.NAME: [],
+        data_entry: Dict[SampleType, Union[str, List[str]]] = \
+            {SampleType.KEY: None,
+             SampleType.NAME: None,
              SampleType.CATCHPHRASES: [],
              SampleType.INPUT_TEXT: []}
         for file in os.listdir(fulltext_dir)[start_end[0]: start_end[1]]:
@@ -161,30 +165,29 @@ class AusCaseReports(SentenceDataset):
                 catchphrases_xml: List[ResultSet] = soup.find_all('catchphrase')
                 sentences_xml: List[ResultSet] = soup.find_all('sentence')
 
-                data_entries[SampleType.KEY].append(file_path.split(".")[0])
-                data_entries[SampleType.NAME].append(case_name_xml.text)
+                data_entry[SampleType.KEY] = (file.split(".")[0])
+                data_entry[SampleType.NAME] = (case_name_xml.text)
 
                 # catchphrases are used as gold standard for summarization
-                data_entries[SampleType.CATCHPHRASES].append(
-                    [entry.text for entry in catchphrases_xml])
+                catchphrases: List[str] = [entry.text for entry in
+                                           catchphrases_xml]
+                data_entry[SampleType.CATCHPHRASES] = catchphrases
 
                 # sentences are used as input text
-                data_entries[SampleType.INPUT_TEXT].append(
-                    [entry.text for entry in sentences_xml])
-                print(data_entries[SampleType.KEY][-1])
-                print(data_entries[SampleType.NAME][-1])
-                print(data_entries[SampleType.CATCHPHRASES][-1])
-                print(data_entries[SampleType.INPUT_TEXT][-1])
-                input_list = data_entries[SampleType.INPUT_TEXT][-1]
-                input_text_full = ' '.join(input_list)
-                print(input_text_full)
-                print(len(input_text_full))
-                exit(3)
-                if file_path.endswith(".txt"):
-                    keys.append(file_path.split(".")[0])
+                input_text: List[str] = [entry.text for entry in
+                                         sentences_xml]
+                data_entry[SampleType.INPUT_TEXT] = input_text
 
-                # self._data = example
-                self.loaded = True
+                # check if citation_summ and citation_class files exist, we can add some additional fields here
+                if os.path.exists(os.path.join(citation_sum_dir, file)):
+                    pass
+                if os.path.exists(os.path.join(citation_sum_dir, file)):
+                    pass
+
+                print(data_entry[SampleType.KEY])
+                exit(3)
+                self._data.append(data_entry)
+            self.loaded = True
 
     def load_training_data(self):
         self._load(train=True)
@@ -221,8 +224,10 @@ class AusCaseReports(SentenceDataset):
 
 def main():
     # please install HuggingFace ds by pip install ds
-    ds = AusCaseReports(max_length=256).load_testing_data()
-
+    from transformers import BertTokenizer
+    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+    ds = AusCaseReports(tokenizer=tokenizer, max_tgt_len=1000,
+                        max_src_len=10000).load_training_data()
     exit(3)
     print(ds.tokenizer_src.tokenize("hello i am a test"))
     from transformers import BertTokenizer

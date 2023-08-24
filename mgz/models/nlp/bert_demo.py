@@ -3,11 +3,11 @@ from __future__ import annotations
 from mgz.ds.sentence_datasets.synthetic_memorization import \
     SyntheticMemorization
 from mgz.models.nlp.bert_basic import PositionalEncoding
-from mgz.run_ops.run_ops import *
-from mgz.run_ops.learning_ops import *
+from mgz.model_running.run_ops import *
+from mgz.model_running.learning_ops import *
 from settings import to_cuda
 from mgz.typing import *
-from mgz.run_ops.basic_ops import greedy_decode
+from mgz.model_running.basic_ops import greedy_decode
 
 
 def show_example(fn, args=[]):

@@ -11,21 +11,17 @@ from mgz.typing import *
 
 
 class SampleType(Enum):
+    # MultiLexSum keys
     ID = 'id'
     INPUT_TEXT = 'sources'
-    SUMMARY_TINY = 'summary_tiny'
-    SUMMARY_SHORT = 'summary_short'
-    SUMMARY_LONG = 'summary_long'
+    SUMMARY_TINY = 'summary/tiny'
+    SUMMARY_SHORT = 'summary/short'
+    SUMMARY_LONG = 'summary/long'
 
+    # Australian Legal Case Reports keys
     CATCHPHRASES = 'catchphrase'
     NAME = 'name'
     KEY = 'key'
-
-
-class DataSplit(Enum):
-    TRAIN = 'train'
-    VAL = 'validation'
-    TEST = 'test'
 
 
 class Sent2SentBatch:
@@ -66,21 +62,21 @@ class Sent2SentBatch:
 # news groups: http://qwone.com/~jason/20Newsgroups/
 # multilexsum: https://github.com/multilexsum/dataset
 class SentenceDataset(BaseDataset):
+    __metaclass__ = ABCMeta
+
     def __init__(self):
         super(SentenceDataset, self).__init__()
-        self.input_space = None
-        self.target_space = None
+        self.input_space: sp.Sentence = None
+        self.target_space: sp.Sentence = None
 
-        # --- Initialization flags ---
-        self.use_cuda = False
-        self.loaded = False
-
+    @abstractmethod
     @property
-    def in_space(self) -> sp.Sentence:
+    def input_space(self) -> sp.Sentence:
         raise NotImplementedError
 
+    @abstractmethod
     @property
-    def pred_space(self) -> Union[sp.Sentence, sp.RegressionTarget]:
+    def target_space(self) -> Union[sp.Sentence, sp.RegressionTarget]:
         raise NotImplementedError
 
     def _collate_fn(self, device: Union[int, torch.device],
@@ -90,6 +86,7 @@ class SentenceDataset(BaseDataset):
     def get_collate_fn(self, device: Union[int, torch.device]):
         assert self.loaded, "Dataset not loaded"
         return partial(self._collate_fn, device)
+
 
     def create_dataloaders(self,
                            device: Union[torch.device, int],
