@@ -1,6 +1,8 @@
 from .shape_typing import *
 from .data_utils import *
 from abc import abstractmethod, ABCMeta
+import logging
+logging.basicConfig(level=logging.INFO)
 
 def overrides(interface_class):
     def overrider(method):

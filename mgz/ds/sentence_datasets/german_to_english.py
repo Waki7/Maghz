@@ -29,9 +29,9 @@ class GermanToEnglish(SentenceDataset):
         self.vocab_src, self.vocab_tgt = self.load_vocab(self.spacy_de,
                                                          self.spacy_en)
 
-        self.input_space = sp.Sentence(len(self.vocab_src), shape=(max_length,))
-        self.target_space = sp.Sentence(len(self.vocab_tgt),
-                                        shape=(max_length,))
+        self.input_space = sp.SentenceT(len(self.vocab_src), shape=(max_length,))
+        self.target_space = sp.SentenceT(len(self.vocab_tgt),
+                                         shape=(max_length,))
 
         # --- Initialization flags ---
         self.use_cuda = False
@@ -45,11 +45,11 @@ class GermanToEnglish(SentenceDataset):
         return self._data[idx]
 
     @property
-    def in_space(self) -> sp.Sentence:
+    def in_space(self) -> sp.SentenceT:
         return self.in_space
 
     @property
-    def pred_space(self) -> Union[sp.Sentence, sp.RegressionTarget]:
+    def pred_space(self) -> Union[sp.SentenceT, sp.RegressionTarget]:
         return self.target_space
 
     def __add__(self, other: Dataset[T]) -> 'ConcatDataset[T]':

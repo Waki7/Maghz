@@ -32,14 +32,12 @@ class BaseDataset(Dataset):
         self.use_cuda = False
         self.data_state = DataSplit.NOT_LOADED
 
-    @abstractmethod
     @property
-    def input_space(self) -> sp.Sentence:
+    def input_space(self) -> sp.SentenceT:
         raise NotImplementedError
 
-    @abstractmethod
     @property
-    def target_space(self) -> Union[sp.Sentence, sp.RegressionTarget]:
+    def target_space(self) -> Union[sp.SentenceT, sp.RegressionTarget]:
         raise NotImplementedError
 
     def __add__(self, other: 'Dataset[T_co]') -> 'ConcatDataset[T_co]':

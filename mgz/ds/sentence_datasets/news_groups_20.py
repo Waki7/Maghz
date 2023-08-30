@@ -40,10 +40,10 @@ class NewsGroup20(SentenceDataset):
         self.vocab_src: Dict[str, int] = self.tokenizer_src.get_vocab()
         self.vocab_tgt: Dict[str, int] = self.tokenizer_src.get_vocab()
 
-        self.input_space = sp.Sentence(
+        self.input_space = sp.SentenceT(
             len((self.vocab_src)), shape=(max_length,))
-        self.target_space = sp.Sentence(len((self.vocab_tgt)),
-                                        shape=(max_length,))
+        self.target_space = sp.SentenceT(len((self.vocab_tgt)),
+                                         shape=(max_length,))
 
         # --- Initialization flags ---
         self.use_cuda = False
@@ -58,12 +58,12 @@ class NewsGroup20(SentenceDataset):
 
     @property
     @overrides(SentenceDataset)
-    def in_space(self) -> sp.Sentence:
+    def in_space(self) -> sp.SentenceT:
         return self.in_space
 
     @property
     @overrides(SentenceDataset)
-    def pred_space(self) -> Union[sp.Sentence, sp.RegressionTarget]:
+    def pred_space(self) -> Union[sp.SentenceT, sp.RegressionTarget]:
         return self.target_space
 
     def __add__(self, other: Dataset[T]) -> 'ConcatDataset[T]':

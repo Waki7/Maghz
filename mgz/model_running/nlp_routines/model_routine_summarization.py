@@ -1,10 +1,11 @@
+from __future__ import annotations
+import mgz.model_vc as vc
 import settings
 import spaces as sp
 from mgz.ds import DataSplit
 from mgz.ds.base_dataset import BaseDataset
 from mgz.model_running.base_routine import BaseProtocol
 from mgz.model_running.run_ops import run_epoch
-from mgz.model_vc import ModelNode, ModelEdge
 
 
 class SummarizationRoutine(BaseProtocol):
@@ -15,13 +16,13 @@ class SummarizationRoutine(BaseProtocol):
         self.predict_init = False
 
     def _check(self, ds: BaseDataset):
-        assert isinstance(ds.input_space, sp.Sentence)
-        assert isinstance(ds.target_space, sp.Sentence)
+        assert isinstance(ds.input_space, sp.SentenceT)
+        assert isinstance(ds.target_space, sp.SentenceT)
 
-    def train(self, model_node: ModelNode, ds: BaseDataset,
-              model_edge: ModelEdge,
+    def train(self, model_node: vc.ModelNode, ds: BaseDataset,
+              model_edge: vc.ModelEdge,
               batch_size=8, device=None, distributed: bool = False,
-              turn_off_shuffle=False) -> ModelNode:
+              turn_off_shuffle=False) -> vc.ModelNode:
         model_node.model.train()
         val_ds = ds.gen_validation_data()
         train_ds = ds.load_training_data()
@@ -44,8 +45,8 @@ class SummarizationRoutine(BaseProtocol):
 
         assert self.ds.data_state == DataSplit.TRAIN
 
-    def evaluate(self, model_node: ModelNode):
+    def evaluate(self, model_node: vc.ModelNode):
         pass
 
-    def predict(self, model_node: ModelNode):
+    def predict(self, model_node: vc.ModelNode):
         pass

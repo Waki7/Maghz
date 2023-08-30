@@ -59,7 +59,7 @@ def main2():
         train_transition_edge = ModelEdge(model_node, loss_fn, optimizer)
 
         routine.train(model_node=model_node, ds=dataset,
-                      edge=train_transition_edge, batch_size=batch_size,
+                      model_edge=train_transition_edge, batch_size=batch_size,
                       device=settings.DEVICE, distributed=False,
                       turn_off_shuffle=True)
 

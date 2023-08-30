@@ -1,19 +1,17 @@
 from __future__ import annotations
 
 import os
+from collections import defaultdict
 from functools import partial
 
 from bs4 import BeautifulSoup, ResultSet
-from datasets import load_dataset
-from datasets.arrow_dataset import Dataset
-from datasets.dataset_dict import DatasetDict
-from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizerBase
 
 import spaces as sp
-from mgz.ds.base_dataset import T
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
     collate_batch, SampleType
+from mgz.models.nlp.metrics import word_count_diff, \
+    bleu_from_tokenized_sentences, cosine_similarity_from_raw_sentences
 from mgz.models.nlp.tokenizing import TokenStrings
 from mgz.typing import *
 
@@ -29,8 +27,9 @@ class AusCaseReports(SentenceDataset):
         self.max_src_len = max_src_len
         self.max_tgt_len = max_tgt_len
 
-        # {'INPUT_TEXT': List[str], 'CATCHPHRASES': List[str], 'summary/short': str, 'summary/tiny': str, 'id': str}
-        self._data: List[Dict[str, Union[
+        # {'INPUT_TEXT': List[str], 'CATCHPHRASES': List[str],
+        # 'summary/short': str, 'summary/tiny': str, 'id': str}
+        self.data: List[Dict[SampleType, Union[
             SummaryT, List[SummaryT], SrcTextT, List[SrcTextT]]]] = []
 
         self.tokenizer_src: PreTrainedTokenizerBase = tokenizer
@@ -38,35 +37,33 @@ class AusCaseReports(SentenceDataset):
         self.vocab_src: Dict[str, int] = self.tokenizer_src.get_vocab()
         self.vocab_tgt: Dict[str, int] = self.tokenizer_tgt.get_vocab()
 
-        self.input_space = sp.Sentence(
-            len((self.vocab_src)), shape=(max_src_len,))
-        self.target_space = sp.Sentence(len((self.vocab_tgt)),
-                                        shape=(max_tgt_len,))
-
         # --- Initialization flags ---
-        self.use_cuda = False
-        self.loaded = False
         self.training_ratio = .7
         self.validation_ratio = .15
         self.test_ratio = .15
 
     def __len__(self):
         'Denotes the total number of samples'
-        return len(self._data)
+        return len(self.data)
 
     def __getitem__(self, idx) -> (SourceListT, SummaryT):
-        return self._data[idx]['sources'], self._data[idx]['summary/long']
-
-    @property
-    def in_space(self) -> sp.Sentence:
-        return self.in_space
-
-    @property
-    def pred_space(self) -> Union[sp.Sentence, sp.RegressionTarget]:
-        return self.target_space
-
-    def __add__(self, other: Dataset[T]) -> 'ConcatDataset[T]':
         raise NotImplementedError
+
+    def _get_source_types(self) -> Tuple[SampleType, SampleType]:
+        raise NotImplementedError(
+            'There are implementations of this method in the subclasses')
+
+    @property
+    @overrides(SentenceDataset)
+    def input_space(self) -> sp.SentenceT:
+        return sp.SentenceT(
+            len((self.vocab_src)), shape=(self.max_src_len,))
+
+    @property
+    @overrides(SentenceDataset)
+    def target_space(self) -> Union[sp.SentenceT, sp.RegressionTarget]:
+        return sp.SentenceT(len((self.vocab_tgt)),
+                            shape=(self.max_tgt_len,))
 
     def _collate_fn(self, device: Union[int, torch.device],
                     batch: List[Tuple[SourceListT, SummaryT]]):
@@ -141,26 +138,35 @@ class AusCaseReports(SentenceDataset):
         n_train = (int)(total_samples * self.training_ratio)
         n_val = (int)(total_samples * self.validation_ratio)
         n_test = (int)(total_samples * self.test_ratio)
-        start_end: Tuple[int, int] = None
+        sample_range: Tuple[int, int] = None
         if train:
-            start_end = range(0, n_train)
+            sample_range = range(0, n_train)
         elif val:
-            start_end = range(n_train, n_train + n_val)
+            sample_range = range(n_train, n_train + n_val)
         elif test:
-            start_end = range(total_samples - n_test, total_samples)
-        if start_end is None:
+            sample_range = range(total_samples - n_test, total_samples)
+        if sample_range is None:
             raise ValueError("No dataset split selected")
 
-        keys = []
-        data_entry: Dict[SampleType, Union[str, List[str]]] = \
-            {SampleType.KEY: None,
-             SampleType.NAME: None,
-             SampleType.CATCHPHRASES: [],
-             SampleType.INPUT_TEXT: []}
-        for file in os.listdir(fulltext_dir)[start_end[0]: start_end[1]]:
+        # src_type: SampleType
+        # tgt_type: SampleType
+        # src_type, tgt_type = self._get_source_types()
+
+        for file in os.listdir(fulltext_dir)[sample_range[0]: sample_range[-1]]:
+            data_entry: Dict[SampleType, Union[str, List[str]]] = \
+                {SampleType.KEY: None,
+                 SampleType.NAME: None,
+                 SampleType.CATCHPHRASES: [],
+                 SampleType.INPUT_TEXT: []}
+
             file_path = os.path.join(fulltext_dir, file)
             with open(file_path) as fp:
-                soup = BeautifulSoup(fp, 'html.parser')
+                try:
+                    soup = BeautifulSoup(fp, 'html.parser')
+                except UnicodeDecodeError as e:
+                    logging.info(
+                        "Error parsing file non utf-8 character found: " + file)
+                    continue
                 case_name_xml: ResultSet = soup.find('name')
                 catchphrases_xml: List[ResultSet] = soup.find_all('catchphrase')
                 sentences_xml: List[ResultSet] = soup.find_all('sentence')
@@ -178,36 +184,39 @@ class AusCaseReports(SentenceDataset):
                                          sentences_xml]
                 data_entry[SampleType.INPUT_TEXT] = input_text
 
-                # check if citation_summ and citation_class files exist, we can add some additional fields here
+                # check if citation_summ and citation_class files exist,
+                # we can add some additional fields here
                 if os.path.exists(os.path.join(citation_sum_dir, file)):
                     pass
                 if os.path.exists(os.path.join(citation_sum_dir, file)):
                     pass
 
-                print(data_entry[SampleType.KEY])
-                exit(3)
-                self._data.append(data_entry)
+                self.data.append(data_entry)
             self.loaded = True
 
     def load_training_data(self):
         self._load(train=True)
         return self
 
+    def gen_training_data(self):
+        return self.__init__(self.tokenizer_src, self.max_src_len,
+                             self.max_tgt_len).load_training_data()
+
     def load_validation_data(self):
         self._load(val=True)
         return self
+
+    def gen_validation_data(self):
+        return self.__init__(self.tokenizer_src, self.max_src_len,
+                             self.max_tgt_len).load_validation_data()
 
     def load_testing_data(self):
         self._load(test=True)
         return self
 
-    def cuda(self):
-        self.use_cuda = True
-        return self
-
-    def cpu(self):
-        self.use_cuda = False
-        return self
+    def gen_testing_data(self):
+        return self.__init__(self.tokenizer_src, self.max_src_len,
+                             self.max_tgt_len).load_testing_data()
 
     def pad_idx(self) -> int:
         return self.vocab_tgt['<blank>']
@@ -218,8 +227,115 @@ class AusCaseReports(SentenceDataset):
     def tgt_vocab_len(self) -> int:
         return len(self.vocab_tgt)
 
-    def gen(self) -> Generator[T, None, None]:
-        raise NotImplementedError
+
+class AusCaseReportsToTag(AusCaseReports):
+    def __init__(self, tokenizer: PreTrainedTokenizerBase,
+                 max_position_embeddings: int):
+        assert max_position_embeddings >= 1024
+        super(AusCaseReportsToTag, self).__init__(tokenizer, 1024,
+                                                  256)
+
+    def _get_source_types(self) -> Tuple[SampleType, SampleType]:
+        return SampleType.SUMMARY_LONG, SampleType.SUMMARY_TINY
+
+    @overrides(AusCaseReports)
+    def __getitem__(self, idx) -> (SourceListT, SummaryT):
+        entry = self.data[idx]
+        return entry[SampleType.INPUT_TEXT.value], entry[
+            SampleType.CATCHPHRASES.value]
+
+
+class PhrasePairDifference:
+    def __init__(self, phrase1: List[str], phrase2: List[str],
+                 tokenizer: PreTrainedTokenizerBase,
+                 word_diff: int = None,
+                 bleu_score: float = None, cosine_similarity: float = None):
+        ''' phrase1 and phrase2 are lists of words, setting word_diff and
+        bleu_score are completely optional, they will be computed if not set'''
+        self.phrase1 = phrase1
+        self.phrase2 = phrase2
+        self.phrase1_tokenized = tokenizer.tokenize(phrase1)
+        self.phrase2_tokenized = tokenizer.tokenize(phrase2)
+        self.word_diff: int = word_count_diff(phrase1,
+                                              phrase2) if word_diff is None else word_diff
+        self.bleu_score: float = bleu_score
+        self.cosine_similarity: float = cosine_similarity
+
+    def _load_scores(self):
+        if self.bleu_score is None:
+            self.bleu_score = \
+                bleu_from_tokenized_sentences(self.phrase1_tokenized,
+                                              self.phrase2_tokenized, max_n=2)
+        if self.cosine_similarity is None:
+            self.cosine_similarity = \
+                cosine_similarity_from_raw_sentences(self.phrase1,
+                                                     self.phrase2)[0]
+
+    def __getitem__(self, item) -> List[str]:
+        if item == 0:
+            return self.phrase1
+        elif item == 1:
+            return self.phrase2
+        else:
+            raise IndexError("PhrasePairDifference only has two phrases")
+
+    def n_total_tokens(self):
+        return len(self.phrase1_tokenized) + len(self.phrase2_tokenized)
+
+    def print_diff(self):
+        self._load_scores()
+        print('----\n\t',
+              "Phrase: \n\t\t {} ...tokenized as: {}  \n\t differs from: \n\t\t {} ...tokenized as: {} \n\t by "
+              "{} words with a score of {} and cosine similarity of {}".format(
+                  self.phrase1, self.phrase1_tokenized, self.phrase2,
+                  self.phrase2_tokenized, self.word_diff, self.bleu_score,
+                  self.cosine_similarity))
+
+
+def investigate_catchphrase_differences(ds: AusCaseReports,
+                                        tokenizer: PreTrainedTokenizerBase):
+    catchphrases = ds.data[0][SampleType.CATCHPHRASES]
+    total = 0
+    phrase_pair_diff_count: Dict[int, int] = defaultdict(lambda: 0)
+    phrase_pair_differences: Dict[
+        int, List[PhrasePairDifference]] = defaultdict(
+        lambda: [])
+    for idx, d in enumerate(ds.data):
+        other_catchphrases = d[SampleType.CATCHPHRASES]
+        for phrase in catchphrases:
+            tokenized_phrase = tokenizer.tokenize(phrase)
+            closest_diff = float('inf')
+            phrase_pair_closest: Tuple[str, str] = None
+            for other_catchphrase in other_catchphrases:
+                tokenized_other_catchphrase = tokenizer.tokenize(
+                    other_catchphrase)
+                word_diff = word_count_diff(tokenized_phrase,
+                                            tokenized_other_catchphrase)
+                if closest_diff > word_diff:
+                    phrase_pair_closest = (phrase, other_catchphrase)
+                    closest_diff = word_diff
+            total += 1
+            phrase_pair_diff_count[closest_diff] += 1
+            phrase_pair_differences[closest_diff].append(
+                PhrasePairDifference(phrase_pair_closest[0],
+                                     phrase_pair_closest[1],
+                                     tokenizer, closest_diff))
+
+    print(
+        'Analysis of catchphrase differences. We are using just first '
+        'sample\'s catchphrases as reference. We take each of the first '
+        'samples catchphrase and comapre it to every other catchphrase, '
+        'this is how often the exact same catch phrase is used or a small '
+        'deviation, measured as how many words differ.')
+    for diff, count in phrase_pair_diff_count.items():
+        print(
+            'Number of catchphrases with {} word difference: {}'.format(diff,
+                                                                        count))
+        print('multi word phrases that differ by <3 words: ')
+        if diff < 3:
+            for phrase in phrase_pair_differences[diff]:
+                if phrase.n_total_tokens() >= 3:
+                    phrase.print_diff()
 
 
 def main():
@@ -228,36 +344,7 @@ def main():
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
     ds = AusCaseReports(tokenizer=tokenizer, max_tgt_len=1000,
                         max_src_len=10000).load_training_data()
-    exit(3)
-    print(ds.tokenizer_src.tokenize("hello i am a test"))
-    from transformers import BertTokenizer
-    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-    print(tokenizer.tokenize("I have a new GPU!"))
-    multi_lexsum: DatasetDict = load_dataset("allenai/multi_lexsum",
-                                             name="v20220616")
-
-    example: Dict = \
-        multi_lexsum["validation"][4]  # The first instance of the dev set
-    print(list(multi_lexsum.keys()))
-    # keys are ['id', 'sources', 'summary/long', 'summary/short', 'summary/tiny']
-    print(list(example.keys()))
-    print('sources: \n', example['sources'], '\n')
-
-    # for item in example['sources']:
-    #     print(len(tokenize(item, Tokenizer.load_en_web_sm())))
-    for a, b in example.items():
-        if b is not None:
-            if isinstance(b, str):
-                print(a, ": ", type(b), " length of ", len(b), " content: ",
-                      b[:100],
-                      "... ")
-            else:
-                print(a, ": ", type(b), " length of  ", len(b))
-        else:
-            print(a, ": ", type(b), ".... ", b)
-
-    # for sum_len in ["long", "short", "tiny"]:
-    #     print(example["summary/" + sum_len])  # Summaries of three lengths
+    investigate_catchphrase_differences(ds, tokenizer)
 
 
 if __name__ == '__main__':

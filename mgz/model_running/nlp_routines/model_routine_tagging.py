@@ -14,7 +14,7 @@ class TaggingRoutine(BaseProtocol):
         self.predict_init = False
 
     def _check(self, ds: BaseDataset):
-        assert isinstance(ds.input_space, sp.Sentence)
+        assert isinstance(ds.input_space, sp.SentenceT)
         assert isinstance(ds.target_space, sp.Tagging)
 
     def train(self, model_node: ModelNode, ds: BaseDataset,

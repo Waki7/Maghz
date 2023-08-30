@@ -5,9 +5,11 @@ from typing import *
 import numpy as np
 import torch
 
+##############################################
 #######################
-# Named Shape Types
+# Named Shape Types, Defines Dimensions
 #######################
+##############################################
 B = TypeVar("Batch")
 N = TypeVar("N")  # arbitrary count
 NHeads = int  # NewType("NHeads", int)  # something like n attention heads
@@ -27,9 +29,11 @@ EmbedLen = int  # NewType("EmbeddingSize", int)
 Shape = TypeVar("Shape")
 DType = TypeVar("DType")
 
+##############################################
 #######################
-# Named Primitive Types
+# Named Primitive Types, Defines Data Type
 #######################
+##############################################
 ProbT = NewType("DType", float)
 EnglishT = NewType("EnglishSentence", str)
 GermanT = NewType("GermanSentence", str)
@@ -39,6 +43,8 @@ SourceListT = List[CaseSourceT]
 SrcTextT = str  # NewType("SourceText", str)
 TgtTextT = str  # NewType("SourceText", str)
 SummaryT = str  # NewType("SummaryOfCase", str)
+SentenceT = str
+TokenT = str
 
 SrcStringT = Union[SourceListT, GermanT, EnglishT]
 TgtStringT = Union[SourceListT, GermanT, EnglishT]
@@ -142,4 +148,3 @@ GenericTensor = ShapedTensorT
 #         image: SentenceT['H,W,3', np.uint8]
 #         nd_mask: SentenceT['...', bool]
 #     """
-SentenceT = TensorT

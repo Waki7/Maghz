@@ -1354,7 +1354,7 @@ class LEDForConditionalGeneration(LEDPretrainedModel):
                        os.path.normpath(os.path.join(path, 'weights.bin')))
 
         model: LEDForConditionalGeneration = \
-            CACHED_INDEXER.lookup(model_id, loader=loader, init_save=init_save)
+            CACHED_INDEXER.lookup_or_init(model_id, loader=loader, init_save=init_save)
         model.eval()
         tokenizer = hug.LEDTokenizerFast.from_pretrained(tokenizer_id)
         model.verify_tokenizer(tokenizer)

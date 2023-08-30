@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import torch.nn as nn
 import torch.nn as nn
 import transformers as hug
@@ -9,6 +11,7 @@ from transformers.generation.utils import MinLengthLogitsProcessor, \
 
 import settings
 from mgz.typing import *
+from mgz.models.base_model import BaseModel
 
 
 # import altair as alt
@@ -243,7 +246,13 @@ class LogitsRuleEnforce:
         return new_logits
 
 
-class BaseTransformer(nn.Module):
+class BaseTransformer(BaseModel):
+
+    @classmethod
+    def from_pretrained(cls, name: str) -> Tuple[
+        BaseTransformer, hug.PreTrainedTokenizerBase]:
+        raise NotImplementedError
+
     def __init__(self, config):
         super(BaseTransformer, self).__init__()
         self.config: hug.PretrainedConfig = config

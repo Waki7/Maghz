@@ -5,6 +5,7 @@ import os
 import time
 
 import GPUtil
+import mgz.models.nlp.metrics as metrics
 import torch.distributed as dist
 import torch.utils.data
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -12,7 +13,6 @@ from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
 
-import mgz.models.metrics as metrics
 import settings
 from mgz.ds.sentence_datasets.multi_lex_sum import MultiLexSum
 from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch
@@ -125,18 +125,21 @@ def val_model(
             (
                 "Validation BLEU Score: %6d"
             )
-            % (metrics.bleu_from_batch_decode(prediction_sentences, batch.tgt)
+            % (metrics.bleu_from_tokenized_sentences(prediction_sentences,
+                                                     batch.tgt)
                )
         )
 
 
 def embedding_controller(model: BaseTransformer, text: List[str],
-                         tokenizer: PreTrainedTokenizerBase) -> FloatTensorT[
-    'B,EmbeddingDim']:
+                         tokenizer: PreTrainedTokenizerBase,
+                         average: bool = True) -> FloatTensorT[
+    'B,EmbeddingDim,Opt[SrcSeqLen]']:
     batch_encoding = tokenizer(text, return_tensors="pt")
     src_ids = batch_encoding.input_ids.to(settings.DEVICE)
     src_mask = batch_encoding.attention_mask.to(settings.DEVICE)
-    return model.encode(src_ids=src_ids, src_mask=src_mask).mean(1)
+    embedding = model.encode(src_ids=src_ids, src_mask=src_mask)
+    return embedding.mean(1) if average else embedding
 
 
 def forward_controller(model: BaseTransformer, text: List[str],

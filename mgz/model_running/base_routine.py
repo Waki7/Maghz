@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from abc import ABCMeta, abstractmethod
 
+import mgz.model_vc as vc
 from mgz.ds.base_dataset import BaseDataset
-from mgz.model_vc import ModelEdge, ModelNode
 
 
 class BaseProtocol(object):
@@ -11,10 +13,10 @@ class BaseProtocol(object):
     def __init__(self):
         pass
 
-    def train(self, model_node: ModelNode, ds: BaseDataset,
-              model_edge: ModelEdge,
+    def train(self, model_node: vc.ModelNode, ds: BaseDataset,
+              model_edge: vc.ModelEdge,
               batch_size=8, device=None, distributed: bool = False,
-              turn_off_shuffle=False) -> ModelNode:
+              turn_off_shuffle=False) -> vc.ModelNode:
         pass
 
     def evaluate(self):

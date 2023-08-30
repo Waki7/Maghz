@@ -22,6 +22,7 @@ class SampleType(Enum):
     CATCHPHRASES = 'catchphrase'
     NAME = 'name'
     KEY = 'key'
+    # KEY = 'key'
 
 
 class Sent2SentBatch:
@@ -66,18 +67,6 @@ class SentenceDataset(BaseDataset):
 
     def __init__(self):
         super(SentenceDataset, self).__init__()
-        self.input_space: sp.Sentence = None
-        self.target_space: sp.Sentence = None
-
-    @abstractmethod
-    @property
-    def input_space(self) -> sp.Sentence:
-        raise NotImplementedError
-
-    @abstractmethod
-    @property
-    def target_space(self) -> Union[sp.Sentence, sp.RegressionTarget]:
-        raise NotImplementedError
 
     def _collate_fn(self, device: Union[int, torch.device],
                     batch: List[Tuple[GermanT, EnglishT]]):
@@ -86,7 +75,6 @@ class SentenceDataset(BaseDataset):
     def get_collate_fn(self, device: Union[int, torch.device]):
         assert self.loaded, "Dataset not loaded"
         return partial(self._collate_fn, device)
-
 
     def create_dataloaders(self,
                            device: Union[torch.device, int],

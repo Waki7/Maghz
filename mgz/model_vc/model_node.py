@@ -1,9 +1,15 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from transformers import PreTrainedTokenizerBase
 
-from mgz.model_vc.model_edge import ModelEdge
 from mgz.models.base_model import BaseModel
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.typing import *
+
+if TYPE_CHECKING:
+    import mgz.model_vc as vc
 
 
 class ModelNode:
@@ -15,7 +21,7 @@ class ModelNode:
         self.edges = []
         self.edge_data = []
 
-    def add_edge(self, model_node: ModelEdge):
+    def add_edge(self, model_node: vc.ModelEdge):
         pass
 
     def train_seq_to_seq(self, in_seq: Sequence, out_seq: Sequence):

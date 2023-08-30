@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from functools import partial
 
 from datasets import load_dataset
@@ -12,9 +11,9 @@ from transformers import PreTrainedTokenizer
 from transformers import PreTrainedTokenizerBase
 
 import spaces as sp
-from mgz.ds.base_dataset import T
+from mgz.ds.base_dataset import T, DataSplit
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
-    collate_batch, DataSplit, SampleType
+    collate_batch, SampleType
 from mgz.typing import *
 
 KEY_FOR_SAMPLE_TYPES = {
@@ -37,8 +36,8 @@ class MultiLexSum(SentenceDataset):
         ## main dataset information
         # A single element of this list will be:
         # {'sources': List[str], 'summary/long': str, 'summary/short': str, 'summary/tiny': str, 'id': str}
-        self._data: List[
-            Dict[str, Union[
+        self.data: List[
+            Dict[SampleType, Union[
                 SummaryT, List[SummaryT], SrcTextT, List[SrcTextT]]]] = []
 
         self.dataset_keys: List[str] = []
@@ -51,7 +50,7 @@ class MultiLexSum(SentenceDataset):
 
     def __len__(self):
         'Denotes the total number of samples'
-        return len(self._data)
+        return len(self.data)
 
     def __getitem__(self, idx) -> (SourceListT, SummaryT):
         raise NotImplementedError
@@ -61,14 +60,16 @@ class MultiLexSum(SentenceDataset):
             'There are implementations of this method in the subclasses')
 
     @property
-    def input_space(self) -> sp.Sentence:
-        return sp.Sentence(
+    @overrides(SentenceDataset)
+    def input_space(self) -> sp.SentenceT:
+        return sp.SentenceT(
             len((self.vocab_src)), shape=(self.max_src_len,))
 
     @property
-    def target_space(self) -> Union[sp.Sentence, sp.RegressionTarget]:
-        return sp.Sentence(len((self.vocab_tgt)),
-                           shape=(self.max_tgt_len,))
+    @overrides(SentenceDataset)
+    def target_space(self) -> Union[sp.SentenceT, sp.RegressionTarget]:
+        return sp.SentenceT(len((self.vocab_tgt)),
+                            shape=(self.max_tgt_len,))
 
     def __add__(self, other: Dataset[T]) -> 'ConcatDataset[T]':
         raise NotImplementedError
@@ -134,8 +135,8 @@ class MultiLexSum(SentenceDataset):
             if sample[KEY_FOR_SAMPLE_TYPES[tgt_type]] is None or sample[
                 KEY_FOR_SAMPLE_TYPES[tgt_type]] is None:
                 continue
-            self._data.append(sample)
-        logging.info('Loaded {} examples'.format(len(self._data)))
+            self.data.append(sample)
+        logging.info('Loaded {} examples'.format(len(self.data)))
 
     def load_training_data(self):
         self._load(train=True)
@@ -161,14 +162,6 @@ class MultiLexSum(SentenceDataset):
         return self.__init__(self.tokenizer_src, self.max_src_len,
                              self.max_tgt_len).load_testing_data()
 
-    def cuda(self):
-        self.use_cuda = True
-        return self
-
-    def cpu(self):
-        self.use_cuda = False
-        return self
-
     def pad_idx(self) -> int:
         return self.vocab_tgt[self.tokenizer_tgt.pad_token]
 
@@ -183,7 +176,7 @@ def count_per_summary(ds: MultiLexSum):
     counts = {SampleType.SUMMARY_LONG: 0,
               SampleType.SUMMARY_SHORT: 0,
               SampleType.SUMMARY_TINY: 0}
-    for (entry) in tqdm(ds._data):
+    for (entry) in tqdm(ds.data):
         if entry.get(SampleType.SUMMARY_LONG) is not None:
             counts[SampleType.SUMMARY_LONG] += 1
         if entry.get(SampleType.SUMMARY_SHORT) is not None:
@@ -207,7 +200,7 @@ class MultiLexSumLongToTiny(MultiLexSum):
 
     @overrides(MultiLexSum)
     def __getitem__(self, idx) -> (SourceListT, SummaryT):
-        entry = self._data[idx]
+        entry = self.data[idx]
         return entry[SampleType.SUMMARY_LONG.value], entry[
             SampleType.SUMMARY_TINY.value]
 
@@ -224,7 +217,7 @@ class MultiLexSumLongToShort(MultiLexSum):
 
     @overrides(MultiLexSum)
     def __getitem__(self, idx) -> (SourceListT, SummaryT):
-        entry = self._data[idx]
+        entry = self.data[idx]
         return entry[SampleType.SUMMARY_LONG], entry[
             SampleType.SUMMARY_SHORT]
 
@@ -241,7 +234,7 @@ class MultiLexSumShortToTiny(MultiLexSum):
 
     @overrides(MultiLexSum)
     def __getitem__(self, idx) -> (SourceListT, SummaryT):
-        entry = self._data[idx]
+        entry = self.data[idx]
         return entry[SampleType.SUMMARY_LONG], entry[
             SampleType.SUMMARY_SHORT]
 
@@ -257,7 +250,7 @@ def main():
           ds.tokenizer_src.tokenize("hello i am a test"))
 
     example: Dict = \
-        ds._data[4]  # The first instance of the dev set
+        ds.data[4]  # The first instance of the dev set
     print('dataset keys are: ', ds.dataset_keys)
     print('entry_keys keys are: ', ds.entry_keys)
     print(type(example['sources']))

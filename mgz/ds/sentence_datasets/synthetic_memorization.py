@@ -11,23 +11,13 @@ class SyntheticMemorization(SentenceDataset):
     def __init__(self, vocab_size: int, out_vocab_size: int, max_length: int,
                  n_samples: int, batch_size: int):
         super(SyntheticMemorization, self).__init__()
-        self.input_space = sp.Sentence(vocab_size, shape=(max_length,))
-        self.target_space = sp.Sentence(out_vocab_size, shape=(max_length,))
+        self.input_space = sp.SentenceT(vocab_size, shape=(max_length,))
+        self.target_space = sp.SentenceT(out_vocab_size, shape=(max_length,))
 
         self.max_length = max_length
         self.n_samples = n_samples
         self.n_batches = n_samples // batch_size
         self.batch_size = batch_size
-        self.loaded = True
-        self.use_cuda = True
-
-    def cuda(self):
-        self.use_cuda = True
-        return self
-
-    def cpu(self):
-        self.use_cuda = False
-        return self
 
     def __len__(self):
         'Denotes the total number of samples'

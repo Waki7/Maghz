@@ -493,7 +493,8 @@ class BartModel(BartPretrainedModel):
         model = BartModel(model_hug.config)
         model.load_state_dict(
             model_hug.state_dict())
-        return model
+        tokenizer = hug.BartTokenizer.from_pretrained(name)
+        return model, tokenizer
 
     def __init__(self, config: BartConfig):
         super().__init__(config)
@@ -552,7 +553,8 @@ class BartModel(BartPretrainedModel):
 
 class BartForConditionalGeneration(BartPretrainedModel):
     @classmethod
-    def from_pretrained(cls, model_id, tokenizer_id):
+    def from_pretrained(cls, model_id, tokenizer_id) -> Tuple[
+        BaseTransformer, hug.PreTrainedTokenizerBase]:
         def loader(path: str):
             with open(os.path.normpath(os.path.join(path, 'config.json')),
                       'r') as f:
@@ -573,7 +575,8 @@ class BartForConditionalGeneration(BartPretrainedModel):
                        os.path.normpath(os.path.join(path, 'weights.bin')))
 
         model: BartForConditionalGeneration = \
-            CACHED_INDEXER.lookup(model_id, loader=loader, init_save=init_save)
+            CACHED_INDEXER.lookup_or_init(model_id, loader=loader,
+                                          init_save=init_save)
         model.eval()
         tokenizer = hug.BartTokenizer.from_pretrained(tokenizer_id)
         model.verify_tokenizer(tokenizer)
@@ -638,13 +641,14 @@ class BartForConditionalGeneration(BartPretrainedModel):
 
         if self.__class__.DONE == 0:
             print('hidden_states', output.shape)
-                  # torch.unique(output, return_counts=True))
+            # torch.unique(output, return_counts=True))
             # print('--------')
             self.__class__.DONE = 1
         lm_logits = self.lm_head(output)
         lm_logits = lm_logits + self.final_logits_bias.to(lm_logits.device)
 
         return lm_logits
+
     DONE = 0
 
     def encode(self, src_ids: LongTensorT['B,SrcSeqLen'],

@@ -1,16 +1,14 @@
-from mgz.typing import *
-from mgz.typing import *
-from mgz.models.base_model import BaseModel
-from mgz.ds.base_dataset import BaseDataset
-import spaces as sp
-from mgz.models.base_model import BaseModel
-from mgz.models.mobile_net import MobileNetV2
 import json
-from json import JSONDecoder, JSONEncoder
 import os
 from pathlib import Path
+
+from transformers import PreTrainedTokenizerBase
+
+from mgz.ds.base_dataset import BaseDataset
 from mgz.model_vc.model_node import ModelNode
-import logging
+from mgz.models.base_model import BaseModel
+from mgz.models.nlp.base_transformer import BaseTransformer
+from mgz.typing import *
 
 # DEFAULTS
 DEFAULT_ROOTS = {}
@@ -20,9 +18,15 @@ DEFAULT_INDEX_PATH = os.path.join(Path(__file__).resolve().parent.parent.parent,
 
 
 class Indexer:
+    @staticmethod
+    def get_default_index():
+        return CACHED_INDEXER
+
     def __init__(self, dir: DirPath):
         self.root_path = dir
         self.roots: Dict[str, List[str]] = {}
+        self.runtime_model_cache: Dict[str, BaseTransformer] = {}
+        self.runtime_tokenizer_cache: Dict[str, PreTrainedTokenizerBase] = {}
 
     def to_json(self) -> str:
         obj_dict = {}
@@ -76,9 +80,9 @@ class Indexer:
         self.roots = dict(sorted(self.roots.items()))
         self.save_as_json()
 
-    def lookup(self, model_id: str,
-               loader: Callable[[str], BaseDataset],
-               init_save: Callable[[str], None]) -> ModelNode:
+    def lookup_or_init(self, model_id: str,
+                       loader: Callable[[str], BaseDataset],
+                       init_save: Callable[[str], None]) -> ModelNode:
         self.check_state()
         loaded_successfully = False
         # root_path, child_path = find_parent_child(model)
@@ -97,6 +101,33 @@ class Indexer:
             except OSError as e:  # model has not been created yet and does not exist
                 raise e
         return model
+
+    def get_model_for(self, model_id: str):
+        '''
+            TODO we want to be able to look up models by task, input/output space.
+        '''
+        pass
+
+    def cache_runtime_model(self, model_id: str, model: BaseModel):
+        self.runtime_model_cache[model_id] = model
+
+    def get_cached_runtime_nlp_model(self, model_id: str, model_cls: Type[
+        BaseTransformer] = None) -> Tuple[
+        BaseTransformer, PreTrainedTokenizerBase]:
+        '''
+        Let's try to automate the whole finding model_cls later
+        '''
+
+        if model_id not in self.runtime_model_cache:
+            if model_cls is None:
+                return None, None
+            else:
+                logging.info('loading model {} into cache'.format(model_id))
+                model, tokenizer = model_cls.from_pretrained(model_id)
+                self.runtime_model_cache[model_id] = model
+                self.runtime_tokenizer_cache[model_id] = tokenizer
+        return self.runtime_model_cache[model_id], \
+            self.runtime_tokenizer_cache[model_id]
 
 
 CACHED_INDEXER = Indexer.load_from_json()  # what's currently cached when the script is running
