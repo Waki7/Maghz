@@ -2,7 +2,7 @@ import torch.nn as nn
 from torchtext.data.metrics import bleu_score
 
 import settings
-from mgz.model_vc.model_index import Indexer
+from mgz.version_control.model_index import Indexer
 from mgz.models.nlp.bart import BartModel
 from mgz.typing import *
 
@@ -13,6 +13,8 @@ def bleu_from_tokenized_sentences(candidate_corpus: List[TokenT],
                                   weights: List[float] = None):
     if weights is None:
         weights = [1 / max_n] * max_n
+    print('candidate_corpus', candidate_corpus)
+    print('references_corpus', references_corpus)
     return bleu_score([candidate_corpus], [[references_corpus]], max_n=max_n,
                       weights=weights)
 
@@ -22,7 +24,7 @@ def cosine_similarity_from_raw_sentences(sentences1: List[SentenceT],
                                          model_id: str = 'allenai/bart-large-multi_lexsum-short-tiny') -> \
         List[float]:
     from mgz.model_running.run_ops import embedding_controller
-    # TODO this is not how we should be doing it in the future
+
     idxer = Indexer.get_default_index()
     model, tokenizer = idxer.get_cached_runtime_nlp_model(model_id, BartModel)
     model.eval()
@@ -54,7 +56,7 @@ def word_count_diff(src_words: List[TokenT], tgt_words: List[TokenT]):
 ####################################################################
 def investigate_cosine():
     tokenized1 = ['calderbank letter']
-    tokenized2 = ['calderbank letter']
+    tokenized2 = ['calderbank letter', 'another sentence']
     print(cosine_similarity_from_raw_sentences(tokenized1, tokenized2))
 
     tokenized1 = ['great']

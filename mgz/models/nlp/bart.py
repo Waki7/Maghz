@@ -1,4 +1,6 @@
 """ PyTorch BART model."""
+from __future__ import annotations
+
 import json
 import math
 import os
@@ -11,8 +13,8 @@ from torch import nn
 from transformers.activations import ACT2FN
 from transformers.models.bart.configuration_bart import BartConfig
 
+import mgz.version_control.model_index as model_index
 import settings
-from mgz.model_vc.model_index import CACHED_INDEXER
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext
 from mgz.models.nlp.utils_attention import _attention
 from mgz.typing import *
@@ -554,7 +556,7 @@ class BartModel(BartPretrainedModel):
 class BartForConditionalGeneration(BartPretrainedModel):
     @classmethod
     def from_pretrained(cls, model_id, tokenizer_id) -> Tuple[
-        BaseTransformer, hug.PreTrainedTokenizerBase]:
+        BaseTransformer, hug.PreTrainedTokenizer]:
         def loader(path: str):
             with open(os.path.normpath(os.path.join(path, 'config.json')),
                       'r') as f:
@@ -575,8 +577,9 @@ class BartForConditionalGeneration(BartPretrainedModel):
                        os.path.normpath(os.path.join(path, 'weights.bin')))
 
         model: BartForConditionalGeneration = \
-            CACHED_INDEXER.lookup_or_init(model_id, loader=loader,
-                                          init_save=init_save)
+            model_index.Indexer.get_default_index().lookup_or_init(model_id,
+                                                                   init_loader=loader,
+                                                                   init_save=init_save)
         model.eval()
         tokenizer = hug.BartTokenizer.from_pretrained(tokenizer_id)
         model.verify_tokenizer(tokenizer)

@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-import torch.nn as nn
-import torch.nn as nn
 import transformers as hug
-from transformers import PreTrainedTokenizerBase
+from transformers import PreTrainedTokenizer
 from transformers.generation.utils import MinLengthLogitsProcessor, \
     ForcedEOSTokenLogitsProcessor, \
     NoRepeatNGramLogitsProcessor, LogitsProcessorList, MaxLengthCriteria, \
     BeamSearchScorer
 
 import settings
-from mgz.typing import *
 from mgz.models.base_model import BaseModel
+from mgz.typing import *
 
 
 # import altair as alt
@@ -249,15 +247,15 @@ class LogitsRuleEnforce:
 class BaseTransformer(BaseModel):
 
     @classmethod
-    def from_pretrained(cls, name: str) -> Tuple[
-        BaseTransformer, hug.PreTrainedTokenizerBase]:
+    def from_pretrained(cls, name: str, tokenizer_id: str = None) -> Tuple[
+        BaseTransformer, PreTrainedTokenizer]:
         raise NotImplementedError
 
     def __init__(self, config):
         super(BaseTransformer, self).__init__()
         self.config: hug.PretrainedConfig = config
 
-    def verify_tokenizer(self, tokenizer: PreTrainedTokenizerBase):
+    def verify_tokenizer(self, tokenizer: PreTrainedTokenizer):
         def validate_field(field_name):
             assert hasattr(tokenizer, field_name), "tokenizer missing {} field"
             field_value = getattr(tokenizer, field_name)
@@ -312,8 +310,7 @@ class BaseTransformer(BaseModel):
                  src_ids: LongTensorT['B,SrcSeqLen'],
                  src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
                  tgt_ids: LongTensorT['B,TgtSeqLen'] = None
-                 ) -> \
-            List[LongTensorT['TgtSeqLen']]:
+                 ) -> LongTensorT['TgtSeqLen']:
         if tgt_ids is None:
             # todo@ceyer don't like using config for sep token id
             tgt_ids = torch.LongTensor([self.config.sep_token_id]).unsqueeze(

@@ -9,7 +9,7 @@ from datasets.dataset_dict import DatasetDict
 from spacy.language import Language
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from transformers import AutoTokenizer, PreTrainedTokenizerBase
+from transformers import AutoTokenizer, PreTrainedTokenizer
 import os
 import spaces as sp
 from mgz.ds.base_dataset import T
@@ -28,15 +28,15 @@ DATASET_DIR = '../../../../datasets/20news-18828/'
 
 
 class NewsGroup20(SentenceDataset):
-    def __init__(self, tokenizer: PreTrainedTokenizerBase,
+    def __init__(self, tokenizer: PreTrainedTokenizer,
                  max_length: SrcSeqLen):
         super(NewsGroup20, self).__init__()
 
         self.max_length = max_length
         self._data: List[Dict[str, Union[SummaryT, List[SourceListT]]]] = []
 
-        self.tokenizer_src: PreTrainedTokenizerBase = tokenizer
-        self.tokenizer_tgt: PreTrainedTokenizerBase = tokenizer
+        self.tokenizer_src: PreTrainedTokenizer = tokenizer
+        self.tokenizer_tgt: PreTrainedTokenizer = tokenizer
         self.vocab_src: Dict[str, int] = self.tokenizer_src.get_vocab()
         self.vocab_tgt: Dict[str, int] = self.tokenizer_src.get_vocab()
 

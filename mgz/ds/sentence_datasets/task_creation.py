@@ -1,16 +1,27 @@
 from __future__ import annotations
 
+import itertools
 from collections import defaultdict
 
 import torch.nn as nn
 from tqdm import tqdm
 
+import mgz.model_running.run_ops as run_ops
+import mgz.models.nlp.metrics as metrics
+import mgz.version_control.model_index as model_index
 import settings
-from mgz.model_running.run_ops import embedding_controller
-from mgz.model_vc.model_index import Indexer
 from mgz.models.nlp.bart import BartModel
-from mgz.models.nlp.metrics import word_count_diff
 from mgz.typing import *
+
+
+class SimilarTagGrouper:
+    '''
+    This class works on datasets whose target output space are tags. This
+    must be a List of strings for each sample.
+    '''
+
+    def __init__(self):
+        pass
 
 
 def tagging_with_semantic_grouping(training_phrases: List[List[SentenceT]],
@@ -24,57 +35,80 @@ def tagging_with_semantic_grouping(training_phrases: List[List[SentenceT]],
         if len(current_tag) == 1 or abs(len(tag_to_apply) - len(
                 current_tag)) > similar_enough_count_diff:
             return False
-        if word_count_diff(tag_to_apply,
-                           current_tag) <= similar_enough_count_diff:
+        if metrics.word_count_diff(tag_to_apply,
+                                   current_tag) <= similar_enough_count_diff:
             return True
         return False
 
-    # Not ideal, but we need to do this to avoid GPU OOM
-    orig_device = settings.DEVICE
-    settings.DEVICE = torch.device('cpu')
-
-    idxer = Indexer.get_default_index()
+    idxer = model_index.Indexer.get_default_index()
     model, tokenizer = idxer.get_cached_runtime_nlp_model(model_id, BartModel)
     model.eval()
     model.to(settings.DEVICE)
+
+    length_to_embedding_cache: Dict[int, Dict[str, torch.Tensor]] = \
+        defaultdict(lambda: {})
+
+    gpu_queue: List[str] = []
+    queue_size = 64
+    for sample_idx, cur_phrases in enumerate(tqdm(training_phrases)):
+        for cur_tag in cur_phrases:
+            # Break out cur tag into appropriate bucket by length, this is
+            # strictly meant to speed up processing later.
+            tokenized: List[str] = tokenizer.tokenize(cur_tag)
+            if len(tokenized) > max_words_tag:
+                continue
+
+            # If embedding not already in the dictionary, add it
+            if cur_tag not in length_to_embedding_cache[len(tokenized)]:
+                gpu_queue.append(cur_tag)
+        if len(gpu_queue) > queue_size or sample_idx == (len(
+                training_phrases) - 1):
+            embeddings: FloatTensorT[
+                'B,EmbedLen'] = run_ops.embedding_controller(model,
+                                                             gpu_queue,
+                                                             tokenizer)
+            for batch_idx, tag in enumerate(gpu_queue):
+                # Can't store everything on gpu
+                length_to_embedding_cache[len(tokenizer.tokenize(tag))][tag] = \
+                    embeddings[batch_idx].cpu()
+            gpu_queue.clear()
+
     cos = nn.CosineSimilarity(dim=-1, eps=1e-4)
-
-    buckets: Dict[str, List[int]] = defaultdict(lambda: [])
-    embedding_cache: Dict[str, torch.Tensor] = {}
-
-    for sample_idx, phrases in tqdm(training_phrases):
-        for cur_tag in phrases:
-            embedding = embedding_cache.get(cur_tag,
-                                            embedding_controller(model,
-                                                                 cur_tag,
-                                                                 tokenizer))
+    new_tags: List[List[SentenceT]] = []
+    for sample_idx, cur_phrases in enumerate(tqdm(training_phrases)):
+        new_tags_for_sample: List[SentenceT] = []
+        for cur_tag in cur_phrases:
             tokenized_phrase = tokenizer.tokenize(cur_tag)
+            n_tokens = len(tokenized_phrase)
+            if n_tokens > max_words_tag:
+                continue
 
-            if len(tokenized_phrase) < max_words_tag:
-                buckets[cur_tag].append(sample_idx)
-                embedding_cache[cur_tag] = embedding
+            embedding = length_to_embedding_cache[n_tokens][cur_tag]
 
-            for tag_to_apply in buckets.keys():
+            near_tag_token_lengths: List[ItemsView[str, torch.Tensor]] = \
+                [length_to_embedding_cache[tag_token_len].items() for
+                 tag_token_len in length_to_embedding_cache.keys() if
+                 abs(tag_token_len - n_tokens) <= similar_enough_count_diff]
+            neighboring_length_tags = itertools.chain(*near_tag_token_lengths)
+            for tag_to_apply, tag_to_apply_embedding in neighboring_length_tags:
                 matched = False
+                # Tag has already been added to the tags dict before loop
                 if tag_to_apply == cur_tag:
                     matched = True
                 elif similar_enough(
                         tag_to_apply=tokenizer.tokenize(tag_to_apply),
                         current_tag=tokenizer.tokenize(cur_tag)):
                     matched = True
-                elif len(tokenized_phrase) < max_words_tag:
-                    matched = True
                 else:
                     cosine_threshold = cosine_threshold_phrase if len(
                         tokenized_phrase) > 1 else cosine_threshold_word
                     if cos(embedding,
-                           embedding_cache[tag_to_apply]) > cosine_threshold:
+                           tag_to_apply_embedding) > cosine_threshold:
                         matched = True
                 if matched:
-                    buckets[tag_to_apply].append(sample_idx)
-                    embedding_cache[tag_to_apply] = embedding
-
-    settings.DEVICE = orig_device
+                    new_tags_for_sample.append(tag_to_apply)
+        new_tags.append(new_tags_for_sample)
+    return new_tags
 
 
 if __name__ == '__main__':

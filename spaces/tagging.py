@@ -17,7 +17,7 @@ class Tagging(MultiDiscrete):
 
 
 class BinaryTagging(Tagging):
-    def __init__(self, n: int,
+    def __init__(self,
                  dtype=torch.IntType):
         self.dim_names: List[str]  # TODO = [str(SrcSeqLen)]
-        super(Tagging, self).__init__(nvec=[2] * n, dtype=dtype)
+        super(Tagging, self).__init__(nvec=[2], dtype=dtype)

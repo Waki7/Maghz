@@ -5,14 +5,14 @@ import os
 import time
 
 import GPUtil
-import mgz.models.nlp.metrics as metrics
 import torch.distributed as dist
 import torch.utils.data
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
-from transformers import PreTrainedTokenizerBase
+from transformers import PreTrainedTokenizer
 
+import mgz.models.nlp.metrics as metrics
 import settings
 from mgz.ds.sentence_datasets.multi_lex_sum import MultiLexSum
 from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch
@@ -22,120 +22,48 @@ from mgz.model_running.learning_ops import LabelSmoothing, DummyOptimizer, \
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.models.nlp.bert_basic import make_model
 from mgz.typing import *
+from mgz.model_running.base_routine import run_epoch, TrainState
 
 
-class TrainState:
-    """Track number of steps, examples, and tokens processed"""
+# def pad(texts: List[str], tokenizer: PreTrainedTokenizer, max_len: int = None):
+#     tokenized_texts: List[List[str]] = [tokenizer(text) for text in tokenizer]
+#     if max_len == None:
+#         max_len = max()
+#     text_as_ids: List[torch.Tensor] = []
+#     def token_to_id(tokens: List[str]):
+#         return [tokenizer.get_vocab()[token] for token in tokens]
+#     for text in texts:
+#         processed_text = torch.cat(
+#             [
+#                 tokenizer.bos_token_id,
+#                 torch.tensor(
+#                     token_to_id(tokenizer(text)),
+#                     dtype=torch.int32,
+#                     device=settings.DEVICE,
+#                 ),
+#                 tokenizer.eos_token_id,
+#             ],
+#             0,
+#         )
+#         text_as_ids.append(
+#             # warning - overwrites values for negative values of padding - len
+#             pad(
+#                 processed_text,
+#                 (
+#                     0,
+#                     max_src_len - len(processed_src),
+#                 ),
+#                 value=tokenizer.pad_token_id,
+#             )
+#         )
+#     src: LongTensorT['B,SrcSeqLen'] = torch.stack(src_list)
 
-    step: int = 0  # Steps in the current epoch
-    accum_step: int = 0  # Number of gradient accumulation steps
-    samples: int = 0  # total # of examples used
-    tokens: int = 0  # total # of tokens processed
-
-
-def run_epoch(
-        data_loader: torch.utils.data.DataLoader[Sent2SentBatch],
-        val_data_loader: torch.utils.data.DataLoader[Sent2SentBatch],
-        model: BaseTransformer,
-        tokenizer: PreTrainedTokenizerBase,
-        loss_fn,
-        optimizer: torch.optim.Optimizer,
-        scheduler: torch.optim.lr_scheduler.LRScheduler = None,
-        accum_iter=1,
-        train_state=TrainState(),
-        log_interval=40,
-        accuracy_interval=120,
-) -> (torch.Tensor, TrainState):
-    """Train a single epoch"""
-    start = time.time()
-    total_tokens = 0
-    total_loss = 0
-    tokens = 0
-    n_accum = 0
-    i: int
-    batch: Sent2SentBatch
-    with torch.no_grad():
-        val_model(val_data_loader, model, tokenizer)
-
-    for i, batch in tqdm(enumerate(data_loader)):
-        logits = model.forward(
-            src_ids=batch.src, tgt_ids=batch.tgt, src_mask=batch.src_mask,
-            tgt_mask=batch.tgt_mask
-        )
-
-        loss, loss_node = loss_fn(logits, batch.tgt, batch.ntokens)
-        # loss_node = loss_node / accum_iter
-        loss_node.backward()
-        train_state.step += 1
-        train_state.samples += batch.src.shape[0]
-        train_state.tokens += batch.ntokens
-        if i % accum_iter == 0:
-            optimizer.step()
-            optimizer.zero_grad(set_to_none=True)
-            n_accum += 1
-            train_state.accum_step += 1
-        if scheduler is not None: scheduler.step()
-
-        total_loss += loss
-        total_tokens += batch.ntokens
-        tokens += batch.ntokens
-        if i % log_interval == 1:
-            lr = optimizer.param_groups[0]["lr"]
-            elapsed = time.time() - start
-            print(
-                (
-                        "Epoch Step: %6d | Accumulation Step: %3d | Loss: %6.2f "
-                        + "| Tokens / Sec: %7.1f | Learning Rate: %6.1e"
-                )
-                % (i, n_accum, loss / batch.ntokens, tokens / elapsed, lr)
-            )
-            start = time.time()
-            tokens = 0
-        if i % accuracy_interval == 1:
-            with torch.no_grad():
-                settings.empty_cache()
-                val_model(val_data_loader, model, tokenizer)
-        # cuda / mps / gpu usage and managing
-        settings.empty_cache()
-        settings.print_gpu_usage()
-    return total_loss / total_tokens, train_state
-
-
-def val_model(
-        val_data_loader: torch.utils.data.DataLoader[Sent2SentBatch],
-        model: BaseTransformer,
-        tokenizer: PreTrainedTokenizerBase
-) -> (torch.Tensor, TrainState):
-    started_training = model.training
-    model.eval()
-
-    if started_training:
-        model.train()
-    i: int
-    batch: Sent2SentBatch
-    n_samples = 0
-    # TODO, MAKE SURE THAT BLEU SCORES ADJACENTLY, CHECK BY EITHER VARYING THE BATCH SIZE AND MAKIGN SURE SAME SCORE, OR SHUFFLYING
-    for i, batch in enumerate(val_data_loader):
-        # TgtSeqLen is max padded length
-        predictions: LongTensorT['B,TgtSeqLen'] = model.generate(
-            src_ids=batch.src, src_mask=batch.src_mask)
-        prediction_sentences: List[str] = tokenizer.batch_decode(predictions,
-                                                                 skip_special_tokens=True)
-        print(
-            (
-                "Validation BLEU Score: %6d"
-            )
-            % (metrics.bleu_from_tokenized_sentences(prediction_sentences,
-                                                     batch.tgt)
-               )
-        )
-
-
+@torch.no_grad()
 def embedding_controller(model: BaseTransformer, text: List[str],
-                         tokenizer: PreTrainedTokenizerBase,
+                         tokenizer: PreTrainedTokenizer,
                          average: bool = True) -> FloatTensorT[
-    'B,EmbeddingDim,Opt[SrcSeqLen]']:
-    batch_encoding = tokenizer(text, return_tensors="pt")
+    'B,EmbedLen,Opt[SrcSeqLen]']:
+    batch_encoding = tokenizer(text, return_tensors="pt", padding=True)
     src_ids = batch_encoding.input_ids.to(settings.DEVICE)
     src_mask = batch_encoding.attention_mask.to(settings.DEVICE)
     embedding = model.encode(src_ids=src_ids, src_mask=src_mask)
@@ -143,7 +71,7 @@ def embedding_controller(model: BaseTransformer, text: List[str],
 
 
 def forward_controller(model: BaseTransformer, text: List[str],
-                       tokenizer: PreTrainedTokenizerBase):
+                       tokenizer: PreTrainedTokenizer):
     batch_encoding = tokenizer(text, return_tensors="pt")
     src_ids = batch_encoding.input_ids.to(settings.DEVICE)
     batch_size = len(text)
@@ -160,7 +88,7 @@ def forward_controller(model: BaseTransformer, text: List[str],
 
 
 def generate_controller(model: BaseTransformer, text: List[str],
-                        tokenizer: PreTrainedTokenizerBase,
+                        tokenizer: PreTrainedTokenizer,
                         ):
     batch_size = len(text)
     batch_encoding = tokenizer(text, return_tensors="pt")
@@ -176,6 +104,8 @@ def generate_controller(model: BaseTransformer, text: List[str],
     # don't need tgt_mask because you are generating one token at a time
     return model.generate(src_ids=src_ids, tgt_ids=tgt_ids,
                           src_mask=src_mask)
+
+
 
 
 def train_worker(

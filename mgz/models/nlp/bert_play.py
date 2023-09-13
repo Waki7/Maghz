@@ -8,9 +8,9 @@
 
 from transformers import AutoTokenizer, AutoModel
 from transformers.models.bert.tokenization_bert_fast import BertTokenizerFast
-from transformers.tokenization_utils_base import BatchEncoding, PreTrainedTokenizerBase
+from transformers.tokenization_utils_base import BatchEncoding, PreTrainedTokenizer
 
-tokenizer: PreTrainedTokenizerBase
+tokenizer: PreTrainedTokenizer
 tokenizer: BertTokenizerFast = AutoTokenizer.from_pretrained("bert-base-uncased")
 model = AutoModel.from_pretrained("bert-base-uncased")
 input_text = "Hello world!"

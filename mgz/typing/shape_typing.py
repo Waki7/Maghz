@@ -139,6 +139,7 @@ class IntTensorT(torch.Tensor, Generic[Shape]):
         return tensor
 
 
+
 GenericTensor = ShapedTensorT
 
 # TensorT is meant for typing,

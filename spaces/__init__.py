@@ -1,7 +1,7 @@
 from spaces.hierarchical import Hierarchical
 from spaces.action_node import DiscreteNode
 from spaces.image import Image
-from spaces.sentence import SentenceT
+from spaces.sentence import Sentence
 from spaces.tagging import Tagging, BinaryTagging
 from spaces.generic_box import GenericBox
 from spaces.regression_target import *

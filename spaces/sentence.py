@@ -11,5 +11,5 @@ class Sentence(Box):
                  dtype=torch.IntType):
         self.vocab_size = vocab_size
         self.dim_names: List[str] # TODO = [str(SrcSeqLen)]
-        super(SentenceT, self).__init__(low=0, high=vocab_size, shape=shape,
+        super(Sentence, self).__init__(low=0, high=vocab_size, shape=shape,
                                         dtype=dtype)

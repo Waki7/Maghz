@@ -13,10 +13,11 @@ from transformers.activations import ACT2FN
 from transformers.models.led.configuration_led import LEDConfig
 
 import settings
-from mgz.model_vc.model_index import CACHED_INDEXER
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext
 from mgz.models.nlp.utils_attention import _attention
 from mgz.typing import *
+from mgz.version_control.model_index import CACHED_INDEXER
+from mgz.version_control.model_node import ModelNode
 
 
 def clones(module, N: int) -> nn.ModuleList:
@@ -80,6 +81,7 @@ class LEDLearnedPositionalEmbedding(nn.Embedding):
         ).expand(bsz, -1)
 
         return super().forward(positions)
+
 
 # Copied from transformers.models.longformer.modeling_longformer.LongformerSelfAttention with Longformer->LEDEncoder
 class LEDEncoderSelfAttention(nn.Module):
@@ -892,6 +894,7 @@ class LEDEncoderLayer(nn.Module):
         self.fc1 = nn.Linear(self.embed_dim, config.encoder_ffn_dim)
         self.fc2 = nn.Linear(config.encoder_ffn_dim, self.embed_dim)
         self.final_layer_norm = nn.LayerNorm(self.embed_dim)
+
     DONE = 0
 
     def forward(
@@ -1157,7 +1160,8 @@ class LEDEncoder(nn.Module):
         is_index_masked = src_mask == 0
         # todo, this never seems to be true, so we can probably remove it, understand why it was here
         is_index_global_attn = src_mask > 1
-        print('is_index_global_attn', torch.unique(is_index_global_attn, return_counts=True))
+        print('is_index_global_attn',
+              torch.unique(is_index_global_attn, return_counts=True))
         is_global_attn = is_index_global_attn.flatten().any().item()
 
         encoder_layer: LEDEncoderLayer
@@ -1178,7 +1182,6 @@ class LEDEncoder(nn.Module):
 
             hidden_states = layer_outputs
         return hidden_states
-
 
 
 class LEDDecoder(nn.Module):
@@ -1256,15 +1259,6 @@ class LEDDecoder(nn.Module):
 
 
 class LEDModel(LEDPretrainedModel):
-    @classmethod
-    def from_pretrained(cls, name: str):
-        model_hug = hug.LEDModel.from_pretrained(
-            name).to(settings.DEVICE)
-        model = LEDModel(model_hug.config)
-        model.load_state_dict(
-            model_hug.state_dict())
-        return model
-
     def __init__(self, config: LEDConfig):
         super().__init__(config)
         self.config: LEDConfig = config
@@ -1332,15 +1326,19 @@ class LEDModel(LEDPretrainedModel):
 
 class LEDForConditionalGeneration(LEDPretrainedModel):
     @classmethod
-    def from_pretrained(cls, model_id, tokenizer_id):
-        def loader(path: str):
+    def from_pretrained(cls, model_id: str = None,
+                        tokenizer_id: str = None) -> ModelNode:
+        assert tokenizer_id is not None, 'NLP Model needs tokenizer id'
+
+        def init_load(path: str):
             with open(os.path.normpath(os.path.join(path, 'config.json')),
                       'r') as f:
                 config = json.load(f)
             model = LEDForConditionalGeneration(
                 LEDConfig.from_dict(config))
+            tokenizer = hug.LEDTokenizerFast.from_pretrained(tokenizer_id)
             model.load_state_dict(torch.load(os.path.join(path, 'weights.bin')))
-            return model
+            return ModelNode(model, tokenizer)
 
         def init_save(path: str):
             if not os.path.exists(path):
@@ -1353,12 +1351,14 @@ class LEDForConditionalGeneration(LEDPretrainedModel):
             torch.save(model_hug.state_dict(),
                        os.path.normpath(os.path.join(path, 'weights.bin')))
 
-        model: LEDForConditionalGeneration = \
-            CACHED_INDEXER.lookup_or_init(model_id, loader=loader, init_save=init_save)
-        model.eval()
-        tokenizer = hug.LEDTokenizerFast.from_pretrained(tokenizer_id)
-        model.verify_tokenizer(tokenizer)
-        return model, tokenizer
+        model_node: ModelNode = \
+            CACHED_INDEXER.lookup_or_init(model_id, init_loader=init_load,
+                                          init_save=init_save)
+        model_node.model.eval()
+        tokenizer = hug.LEDTokenizerFast.from_pretrained(
+            tokenizer_id) if model_node.tokenizer is None else model_node.tokenizer
+        model_node.model.verify_tokenizer(tokenizer)
+        return model_node
 
     def __init__(self, config: LEDConfig):
         super().__init__(config)
@@ -1457,3 +1457,139 @@ class LEDForConditionalGeneration(LEDPretrainedModel):
                       layer_past[:2]) + layer_past[2:],
             )
         return reordered_past
+
+
+class LEDForBinaryTagging(LEDPretrainedModel):
+    @classmethod
+    def from_pretrained(cls, model_id: str = None,
+                        tokenizer_id: str = None) -> ModelNode:
+        assert tokenizer_id is not None, 'NLP Model needs tokenizer id'
+
+        def init_load(path: str):
+            with open(os.path.normpath(os.path.join(path, 'config.json')),
+                      'r') as f:
+                config = json.load(f)
+            model = LEDForConditionalGeneration(
+                LEDConfig.from_dict(config))
+            tokenizer = hug.LEDTokenizerFast.from_pretrained(tokenizer_id)
+            model.load_state_dict(torch.load(os.path.join(path, 'weights.bin')))
+            return ModelNode(model, tokenizer)
+
+        def init_save(path: str):
+            if not os.path.exists(path):
+                os.makedirs(path)
+            model_hug = hug.LEDForConditionalGeneration.from_pretrained(
+                model_id).to(settings.DEVICE)
+            with open(os.path.normpath(os.path.join(path, 'config.json')),
+                      'w') as f:
+                json.dump(model_hug.config.to_dict(), f)
+            torch.save(model_hug.state_dict(),
+                       os.path.normpath(os.path.join(path, 'weights.bin')))
+
+        model_node: ModelNode = \
+            CACHED_INDEXER.lookup_or_init(model_id, init_loader=init_load,
+                                          init_save=init_save)
+        model_node.model.eval()
+        tokenizer = hug.LEDTokenizerFast.from_pretrained(
+            tokenizer_id) if model_node.tokenizer is None else model_node.tokenizer
+        model_node.model.verify_tokenizer(tokenizer)
+        return model_node
+
+    def __init__(self, config: LEDConfig):
+        super().__init__(config)
+        self.led = LEDModel(config)
+        self.register_buffer("final_logits_bias",
+                             torch.zeros((1, self.led.shared.num_embeddings)))
+        self.lm_head = nn.Linear(config.d_model,
+                                 self.led.shared.num_embeddings, bias=False)
+
+        # Initialize weights and apply final processing
+        self.apply(self._init_weights)
+
+    def get_encoder(self):
+        return self.led.get_encoder()
+
+    def get_decoder(self):
+        return self.led.get_decoder()
+
+    def resize_token_embeddings(self, new_num_tokens: int) -> nn.Embedding:
+        new_embeddings = super().resize_token_embeddings(new_num_tokens)
+        self._resize_final_logits_bias(new_num_tokens)
+        return new_embeddings
+
+    def _resize_final_logits_bias(self, new_num_tokens: int) -> None:
+        old_num_tokens = self.final_logits_bias.shape[-1]
+        if new_num_tokens <= old_num_tokens:
+            new_bias = self.final_logits_bias[:, :new_num_tokens]
+        else:
+            extra_bias = torch.zeros((1, new_num_tokens - old_num_tokens),
+                                     device=self.final_logits_bias.device)
+            new_bias = torch.cat([self.final_logits_bias, extra_bias], dim=1)
+        self.register_buffer("final_logits_bias", new_bias)
+
+    def get_output_embeddings(self):
+        return self.lm_head
+
+    def set_output_embeddings(self, new_embeddings):
+        self.lm_head = new_embeddings
+
+    def encode(self, src_ids: LongTensorT['B,SrcSeqLen'],
+               src_mask: IntTensorT['B,SrcSeqLen']):
+        src_ids, src_mask = self._pre_encode_pad_if_needed(
+            src_ids=src_ids,
+            src_mask=src_mask,
+            pad_token_id=self.config.pad_token_id,
+        )
+        return self.led.encode(src_ids=src_ids, src_mask=src_mask, )
+
+    def decode(self,
+               encoder_memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
+               tgt_ids: LongTensorT['B,TgtSeqLen'],
+               src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
+               tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen'] = None,
+               transformer_ctx: TransformerContext = None):
+        output = self.led.decoder.forward(
+            encoder_hidden_states=encoder_memory,
+            tgt_ids=tgt_ids,
+            src_mask=src_mask,
+            tgt_mask=tgt_mask, transformer_ctx=transformer_ctx
+        )
+
+        lm_logits = self.lm_head(output)
+        lm_logits = lm_logits + self.final_logits_bias.to(lm_logits.device)
+        return lm_logits
+
+    def forward(
+            self,
+            src_ids: LongTensorT['B,SrcSeqLen'],
+            tgt_ids: LongTensorT['B,TgtSeqLen'],
+            src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
+            tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen']
+    ) -> FloatTensorT['B,TgtSeqLen,OutNClasses']:
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
+            config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
+            (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
+
+        Returns:
+        """
+        output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.led.forward(
+            src_ids=src_ids, src_mask=src_mask,
+            tgt_ids=tgt_ids, tgt_mask=tgt_mask)
+
+        lm_logits = self.lm_head(output)
+        lm_logits = lm_logits + self.final_logits_bias.to(lm_logits.device)
+        return lm_logits
+
+    @staticmethod
+    def _reorder_cache(past, beam_idx):
+        reordered_past = ()
+        for layer_past in past:
+            # cached cross_attention states don't have to be reordered -> they are always the same
+            reordered_past += (
+                tuple(past_state.index_select(0, beam_idx) for past_state in
+                      layer_past[:2]) + layer_past[2:],
+            )
+        return reordered_past
+

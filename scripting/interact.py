@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from enum import Enum
 
 import transformers as hug
@@ -71,7 +73,7 @@ with torch.no_grad():
         text = '. '.join(
             [text[0], text[0], text[0], text[0], text[0], text[0], text[0],
              text[0], text[0], text[0]])
-        text = [text, text]
+        text = [text, text[0:-10]]
         batch_size = len(text)
         if use_hug:
             model_hug, tokenizer = model_selectors(use_model, use_hug=True)
@@ -79,8 +81,8 @@ with torch.no_grad():
                 [tokenizer.sep_token_id]).unsqueeze(0).to(
                 settings.DEVICE).repeat(batch_size, 1)
             print(model_hug.config.max_length)
-            exit(4)
-            input_ids = tokenizer(text, return_tensors='pt').input_ids.to(
+            input_ids = tokenizer(text, return_tensors='pt',
+                                  padding=True).input_ids.to(
                 settings.DEVICE)
             if use_encode:
                 encoding = model_hug.forward(input_ids,

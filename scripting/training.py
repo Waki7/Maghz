@@ -11,9 +11,11 @@ from mgz.models.nlp.bart import BartForConditionalGeneration
 import logging
 from mgz.ds.sentence_datasets.multi_lex_sum import \
     MultiLexSumLongToShort
+
+from mgz.ds.sentence_datasets.aus_legal_case_reports import AusCaseReportsToTagGrouped
 from mgz.model_running.learning_ops import LabelSmoothing
-from mgz.model_running import SummarizationRoutine
-from mgz.model_vc import ModelEdge, ModelNode
+from mgz.model_running import TaggingRoutine
+from mgz.version_control import ModelEdge, ModelNode
 
 '''
 input_ids tensor([[    0, 31414,   232,  1437,     2,     2]])
@@ -28,7 +30,7 @@ def dataset_memorization():
         128, 128, 128, 1000, 1)
 
 
-def main2():
+def main1():
     logging.basicConfig(level=logging.INFO)
     batch_size = 4
     # Initializing a BART facebook/bart-large style configuration
@@ -44,9 +46,9 @@ def main2():
         cfg: BartConfig = model.config
         model.train()
 
-        dataset = MultiLexSumLongToShort(tokenizer,
+        dataset = AusCaseReportsToTagGrouped(tokenizer,
                                          cfg.max_position_embeddings)
-        routine = SummarizationRoutine()
+        routine = TaggingRoutine()
         model_node = ModelNode(model, tokenizer)
         loss_fn = LabelSmoothing(
             n_cls=dataset.tgt_vocab_len(), padding_idx=tokenizer.pad_token_id,
@@ -67,4 +69,4 @@ def main2():
 
 
 if __name__ == '__main__':
-    main2()
+    main1()
