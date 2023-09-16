@@ -11,6 +11,7 @@ import torch
 #######################
 ##############################################
 B = TypeVar("Batch")
+NShot = TypeVar("NShot")  # for few shot learning
 N = TypeVar("N")  # arbitrary count
 NHeads = int  # NewType("NHeads", int)  # something like n attention heads
 SrcSeqLen = int  # NewType("SeqLen", int)  # or input sequence length
@@ -40,14 +41,14 @@ GermanT = NewType("GermanSentence", str)
 
 CaseSourceT = str  # NewType("LegalDocumentCaseSource", str)
 SourceListT = List[CaseSourceT]
-SrcTextT = str  # NewType("SourceText", str)
-TgtTextT = str  # NewType("SourceText", str)
+SrcTextT = str  # NewType("SourceText", str) # tokenized
+TgtTextT = str  # NewType("SourceText", str) # tokenized
 SummaryT = str  # NewType("SummaryOfCase", str)
 SentenceT = str
 TokenT = str
 
-SrcStringT = Union[SourceListT, GermanT, EnglishT]
-TgtStringT = Union[SourceListT, GermanT, EnglishT]
+SrcStringT = Union[SourceListT, GermanT, EnglishT]  # untokenized
+TgtStringT = Union[SourceListT, GermanT, EnglishT]  # untokenized
 
 Opt = Optional
 
@@ -117,10 +118,8 @@ class LongTensorT(torch.Tensor, Generic[Shape]):
         nd_mask: Array['...', bool]
     """
 
-    def __new__(cls, data, stats, requires_grad=False):
-        data = torch.as_tensor(data, dtype=torch.long)
-        tensor = torch.Tensor._make_subclass(cls, data, requires_grad)
-        tensor.stats = stats
+    def __new__(cls, tensor, shape: Generic[Shape] = None):
+        # todo assert shape
         return tensor
 
 
@@ -137,7 +136,6 @@ class IntTensorT(torch.Tensor, Generic[Shape]):
         tensor = torch.Tensor._make_subclass(cls, data, requires_grad)
         tensor.stats = stats
         return tensor
-
 
 
 GenericTensor = ShapedTensorT

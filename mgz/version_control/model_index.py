@@ -16,6 +16,7 @@ DEFAULT_INDEX_PATH = os.path.join(Path(__file__).resolve().parent.parent.parent,
                                                                          "/")
 
 
+
 class Indexer:
     @staticmethod
     def get_default_index():

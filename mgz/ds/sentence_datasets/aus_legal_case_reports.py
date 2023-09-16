@@ -18,7 +18,7 @@ import mgz.models.nlp.metrics as metrics
 import spaces as sp
 from mgz.ds.base_dataset import BaseDataset, DataState
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
-    Sent2TagBatch, Sent2SentBatch, SampleType
+    Sent2TagMetaTaskBatch, Sent2SentBatch, SampleType
 from mgz.ds.sentence_datasets.task_creation import \
     tagging_with_semantic_grouping
 from mgz.typing import *
@@ -41,6 +41,7 @@ class AusCaseReports(SentenceDataset):
     '''
     Loading pattern for this class is that the parent will load all the data
     and the children will load a subset of a modified subset of the data.
+    There are children that are also meta learning datasets.
     '''
 
     def __init__(self, tokenizer: PreTrainedTokenizer,
@@ -83,9 +84,10 @@ class AusCaseReports(SentenceDataset):
         assert self.loaded, "Dataset not loaded"
         return partial(Sent2SentBatch.default_collate_fn, self, device)
 
-    def _pre_load_set_state_data_range(self, n_files: int, train: bool,
+    def _pre_load_set_state_data_range(self, train: bool,
                                        val: bool,
                                        test: bool) -> range:
+        n_files = len(os.listdir(os.path.join(DATASET_DIR, 'fulltext')))
         n_train = (int)(n_files * self.training_ratio)
         n_val = (int)(n_files * self.validation_ratio)
         n_test = (int)(n_files * self.test_ratio)
@@ -138,10 +140,9 @@ class AusCaseReports(SentenceDataset):
         # 			<text> : paragraphs in the cited case where the current case is mentioned
         citation_cls_dir = os.path.join(DATASET_DIR, 'citations_class')
 
-        sample_range: range = \
-            self._pre_load_set_state_data_range(len(fulltext_dir), train, val,
-                                                test)
-
+        sample_range: range = self._pre_load_set_state_data_range(train, val,
+                                                                  test)
+        logging.info('Loading data from: ' + fulltext_dir)
         for file in tqdm(
                 os.listdir(fulltext_dir)[sample_range[0]: sample_range[-1]]):
             data_entry: Dict[SampleType, Union[str, List[str]]] = \
@@ -242,44 +243,12 @@ class AusCaseReportsToPhraseTag(AusCaseReports):
         return input_text, catchphrase
 
 
-class TagGroupedSampler(torch.utils.data.Sampler[int]):
-    r"""Samples elements for meta learning task of differentiating binary
-    tagging. No guarantee that you will go through all the samples in the
-    dataset.
-
-    Args:
-        data_source (Dataset): dataset to sample from
-    """
-    data_source: Sized
-
-    def __init__(self, data_source: AusCaseReportsToTagGrouped) -> None:
-        assert isinstance(data_source,
-                          AusCaseReportsToTagGrouped), 'Have not implemented for other datasets'
-        self.data_source = data_source
-        sampling_order = []
-        sampled = list(range(len(self.data_source)))
-        # deterministic shuffle
-        for i in range(0, len(data_source)):
-            # sample without replacement
-            idx = sampled.pop(random.randint(0, len(sampled) - 1))
-
-            catchphrases: List[str] = data_source.data[idx][
-                SampleType.CATCHPHRASES]
-            # Now we want to find
-
-    def __iter__(self) -> Iterator[int]:
-        return iter(range(len(self.data_source)))
-
-    def __len__(self) -> int:
-        return len(self.data_source)
-
-
 class AusCaseReportsToTagGrouped(AusCaseReports):
     def __init__(self, tokenizer: PreTrainedTokenizer,
-                 max_src_len: int, training_ratio=0.7, n_shot=5):
-        print('training_ratio', training_ratio)
+                 max_src_len: int, training_ratio=0.7, n_shot=5,
+                 max_words_tag=5):
         assert max_src_len >= 1024
-        max_words_tag = 5
+
         super(AusCaseReportsToTagGrouped, self).__init__(tokenizer,
                                                          max_src_len=1024,
                                                          max_tgt_len=max_words_tag,
@@ -305,48 +274,59 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
         return sp.BinaryTagging()
 
     def _collate_fn(self, device: Union[int, torch.device],
-                    batch: List[Tuple[SrcTextT, List[TgtTextT]]]):
+                    batch: List[Tuple[SrcStringT, List[TgtStringT]]]):
         assert len(batch) == 1, "Batch size must be 1 for meta-learning for now"
         # Examples that do and don't have the tag respectively
-        positive_examples: set[SrcTextT] = set()
-        negative_examples: set[SrcTextT] = set()
-        print(batch)
-        # Based on the batch, we want to sample additional catchphrases to create a meta learning task out of the batch
-        for sample_text, pos_tags in batch:
-            for pos_tag in pos_tags:
+        positive_examples: set[int] = set()
+        negative_examples: set[int] = set()
+
+        # For now we are going to randomly sample a tag and use that, but in the future I think we want to handle that differently
+        n_tgt = 1
+        pos_tags = [random.sample(sample[1], n_tgt)[0] for sample in batch]
+        for pos_tag in pos_tags:
+            # Based on the batch, we want to sample additional catchphrases to create a meta learning task out of the batch
+            for sample_text, pos_tags in batch:
                 timeout = 0  # catch when we can't find a negative example or other positive examples
                 while len(
                         positive_examples) < self.n_shot and timeout < 2 * self.n_shot:
                     if len(positive_examples) < self.n_shot:
                         pos_sample_idxs: List[int] = self.tag_to_sample_idx_map[
                             pos_tag]
-                        if len(pos_sample_idxs):
+                        if len(pos_sample_idxs) < self.n_shot:
                             logging.warning(
-                                'Not enough samples with tag %s and training shot of %s' % (
-                                    pos_tag, self.n_shot))
-                            raise ValueError(
-                                'Not enough samples with tag %s and training shot of %s' % (
-                                    pos_tag, self.n_shot))
+                                'Not enough samples with tag \'%s\' and training shot of %s, only %s present' % (
+                                    pos_tag, self.n_shot, len(pos_sample_idxs)))
+                            if self.data_state == DataState.TRAIN:
+                                # We may want to skip this batch in the future
+                                logging.error(
+                                    'Not enough samples with tag \'%s\' and training shot of %s, only %s present' % (
+                                        pos_tag, self.n_shot,
+                                        len(pos_sample_idxs)))
 
                         pos_sample_idx = random.choice(pos_sample_idxs)
-                        positive_sample_text = self.data[pos_sample_idx][
-                            SampleType.INPUT_TEXT]
-                        positive_examples.add(positive_sample_text)
+                        positive_examples.add(pos_sample_idx)
 
                     # TODO: experiment with pulling negative samples that have very
                     #  different embeddings
                     if len(negative_examples) < self.n_shot:
-                        random_sample = random.choice(self.data)
-                        neg_text, neg_tags = random_sample[
-                            SampleType.INPUT_TEXT], random_sample[
+                        neg_sample_idx = random.randint(0, len(self.data) - 1)
+                        neg_tags = self.data[neg_sample_idx][
                             SampleType.CATCHPHRASES]
                         if pos_tag not in neg_tags:
-                            negative_examples.add(neg_text)
+                            negative_examples.add(neg_sample_idx)
                     timeout += 1
-        print(len(positive_examples))
-        print(len(negative_examples))
-        exit(3)
         assert self.data_state != DataState.NOT_LOADED, "Dataset not loaded"
+
+        pos_batch: List[SrcStringT] = [self.data[i][SampleType.INPUT_TEXT] for i
+                                       in positive_examples]
+
+        neg_srcs: List[SrcStringT] = [self.data[i][SampleType.INPUT_TEXT]
+                                      for i in negative_examples]
+
+        tag_task: Dict[
+            TgtStringT, Tuple[List[SrcStringT], List[SrcStringT]]] = {
+            pos_tag: (pos_batch, neg_srcs)
+        }
 
         def tokenize_src(src_text: SrcTextT) -> List[str]:
             return self.tokenizer_tgt.tokenize(src_text)
@@ -360,8 +340,8 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
         def vocab_tgt(tokens: List[str]) -> List[int]:
             return [self.vocab_tgt[token] for token in tokens]
 
-        return Sent2TagBatch.collate_batch(
-            batch=batch,
+        return Sent2TagMetaTaskBatch.collate_batch(
+            tag_task=tag_task,
             src_tokenizer_pipeline=tokenize_src,
             tgt_tokenizer_pipeline=tokenize_tgt,
             src_vocab_pipeline=vocab_src,
@@ -445,14 +425,14 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
             f.write(json.dumps(obj_dict, indent=4, separators=(',', ': ')))
 
     def _load(self, train: bool = False, val: bool = False, test: bool = False):
-        self._pre_load_set_state_data_range(
-            len(os.path.join(DATASET_DIR, 'fulltext')), train, val, test)
+        self._pre_load_set_state_data_range(train, val, test)
         loaded_from_json = self.try_load_from_json()  # loads self.data
 
         if not loaded_from_json:
             super()._load(train, val, test)  # Only loads into self.data
             self.loaded = False
-
+            print(len(self.data))
+            print(self.data_state)
             # --- Remove punctuation ---
             if self.punctuation_to_remove:
                 for i in range(len(self.data)):
@@ -473,8 +453,10 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
             # Drop sample types from data that aren't needed
             for i in range(len(self.data)):
                 catchphrases: List[str] = self.data[i][SampleType.CATCHPHRASES]
+                # Input text is joined because we want all sentences, it's a very long text encoding task
                 self.data[i] = {
-                    SampleType.INPUT_TEXT: self.data[i][SampleType.INPUT_TEXT],
+                    SampleType.INPUT_TEXT: ' '.join(
+                        self.data[i][SampleType.INPUT_TEXT]),
                     SampleType.CATCHPHRASES: catchphrases}
 
             cache_dir = os.path.join(DATASET_DIR, 'cache')
@@ -488,7 +470,6 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
                 if catchphrase not in self.tag_to_sample_idx_map:
                     self.tag_to_sample_idx_map[catchphrase] = []
                 self.tag_to_sample_idx_map[catchphrase].append(i)
-
         self.loaded = True
 
     @overrides(AusCaseReports)

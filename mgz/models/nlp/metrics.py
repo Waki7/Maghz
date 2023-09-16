@@ -1,3 +1,4 @@
+from __future__ import annotations
 import torch.nn as nn
 from torchtext.data.metrics import bleu_score
 

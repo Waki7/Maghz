@@ -12,7 +12,7 @@ import settings
 import spaces as sp
 from mgz.ds.base_dataset import BaseDataset
 from mgz.version_control import ModelNode
-from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch
+from mgz.ds.sentence_datasets.sentence_datasets import Sent2TagMetaTaskBatch
 from mgz.model_running.base_routine import BaseProtocol
 from mgz.model_running.run_ops import run_epoch, TrainState
 from mgz.models.nlp.base_transformer import BaseTransformer
@@ -20,8 +20,8 @@ from mgz.typing import *
 
 
 def run_epoch(
-        data_loader: torch.utils.data.DataLoader[Sent2SentBatch],
-        val_data_loader: torch.utils.data.DataLoader[Sent2SentBatch],
+        data_loader: torch.utils.data.DataLoader[Sent2TagMetaTaskBatch],
+        val_data_loader: torch.utils.data.DataLoader[Sent2TagMetaTaskBatch],
         model: BaseTransformer,
         tokenizer: PreTrainedTokenizer,
         loss_fn,
@@ -39,28 +39,37 @@ def run_epoch(
     tokens = 0
     n_accum = 0
     i: int
-    batch: Sent2SentBatch
-    with torch.no_grad():
-        val_model(val_data_loader, model, tokenizer)
-
+    batch: Sent2TagMetaTaskBatch
     for i, batch in tqdm(enumerate(data_loader)):
-        logits = model.forward(
-            src_ids=batch.src, tgt_ids=batch.tgt, src_mask=batch.src_mask,
-            tgt_mask=batch.tgt_mask
-        )
+        pos_srcs = batch.per_tag_pos_srcs
+        neg_srcs = batch.per_tag_neg_srcs
+        tgt_tags = batch.tgt_tag
 
-        loss, loss_node = loss_fn(logits, batch.tgt, batch.ntokens)
-        # loss_node = loss_node / accum_iter
-        loss_node.backward()
-        train_state.step += 1
-        train_state.samples += batch.src.shape[0]
-        train_state.tokens += batch.ntokens
-        if i % accum_iter == 0:
-            optimizer.step()
-            optimizer.zero_grad(set_to_none=True)
-            n_accum += 1
-            train_state.accum_step += 1
-        if scheduler is not None: scheduler.step()
+        # treat each tag as a separate task
+        for task_idx, tag in enumerate(tgt_tags):
+            pos_src = pos_srcs[task_idx]
+            logits = model.forward(
+                src_ids=pos_src, tgt_ids=batch.tgt, src_mask=batch.src_mask,
+                tgt_mask=batch.tgt_mask
+            )
+
+            neg_src = neg_srcs[task_idx]
+            logits = model.forward(
+                src_ids=pos_src, tgt_ids=batch.tgt, src_mask=batch.src_mask,
+                tgt_mask=batch.tgt_mask
+            )
+            loss, loss_node = loss_fn(logits, batch.tgt, batch.ntokens)
+            # loss_node = loss_node / accum_iter
+            loss_node.backward()
+            train_state.step += 1
+            train_state.samples += batch.src.shape[0]
+            train_state.tokens += batch.ntokens
+            if i % accum_iter == 0:
+                optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
+                n_accum += 1
+                train_state.accum_step += 1
+            if scheduler is not None: scheduler.step()
 
         total_loss += loss
         total_tokens += batch.ntokens

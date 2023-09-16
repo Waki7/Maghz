@@ -1,4 +1,6 @@
-""" PyTorch BART model."""
+""" PyTorch LED model."""
+from __future__ import annotations
+
 import copy
 import json
 import math
@@ -1592,4 +1594,3 @@ class LEDForBinaryTagging(LEDPretrainedModel):
                       layer_past[:2]) + layer_past[2:],
             )
         return reordered_past
-

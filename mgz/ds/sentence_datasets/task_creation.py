@@ -50,6 +50,11 @@ def tagging_with_semantic_grouping(training_phrases: List[List[SentenceT]],
 
     gpu_queue: List[str] = []
     queue_size = 64
+
+    logging.info(
+        'Grouping like tags together, this is a non vector operation so it is very slow')
+
+    logging.info('Reading tags...')
     for sample_idx, cur_phrases in enumerate(tqdm(training_phrases)):
         for cur_tag in cur_phrases:
             # Break out cur tag into appropriate bucket by length, this is
@@ -75,6 +80,7 @@ def tagging_with_semantic_grouping(training_phrases: List[List[SentenceT]],
 
     cos = nn.CosineSimilarity(dim=-1, eps=1e-4)
     new_tags: List[List[SentenceT]] = []
+    logging.info('Grouping tags...')
     for sample_idx, cur_phrases in enumerate(tqdm(training_phrases)):
         new_tags_for_sample: List[SentenceT] = []
         for cur_tag in cur_phrases:

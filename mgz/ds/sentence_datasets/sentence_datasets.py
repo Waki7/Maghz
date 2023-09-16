@@ -37,39 +37,38 @@ def subsequent_mask(size: SrcSeqLen):
 
 
 class Sent2TagBatch:
+    # @TODO
+    pass
+
+
+class Sent2TagMetaTaskBatch:
     """Object for holding a batch of data with mask during training."""
 
-    def __init__(self, src: LongTensorT['B,SrcSeqLen'],
-                 tgt: LongTensorT['B,TgtSeqLen'] = None,
+    def __init__(self,
+                 per_tag_pos_srcs: List[LongTensorT['NShot,SrcSeqLen']],
+                 per_tag_neg_srcs: List[LongTensorT['NShot,SrcSeqLen']],
+                 tgt_tags: List[LongTensorT['TgtSeqLen']],
                  pad_idx=2):
-        self.src: LongTensorT['B,SrcSeqLen'] = src
-        self.src_mask: IntTensorT['B, SrcSeqLen'] = (src != pad_idx).long()
-        if tgt is not None:
-            self.tgt: LongTensorT['B,TgtSeqLen'] = tgt
-            self.tgt_mask = self.make_std_mask(self.tgt, pad_idx)
-            self.ntokens = (self.tgt != pad_idx).data.sum()
-        self.tgt_mask.to(self.tgt.device)
-        self.src_mask.to(self.src.device)
 
-    @staticmethod
-    def make_std_mask(tgt: LongTensorT['B,SrcSeqLen'], pad: int):
-        "Create a mask to hide padding and future words."
-        tgt_mask = (tgt != pad).unsqueeze(-2)
-        tgt_mask = tgt_mask & subsequent_mask(tgt.size(-1)).type_as(
-            tgt_mask.data
-        )
-        return tgt_mask
+        self.src_pos_masks = \
+            [(p_src != pad_idx).long().to(p_src.device) for p_src in
+             per_tag_pos_srcs]
+        self.src_neg_masks = \
+            [(n_src != pad_idx).long().to(n_src.device) for n_src in
+             per_tag_neg_srcs]
+        self.tgt_tag_masks = [(tgt != pad_idx).long().to(tgt.device) for tgt in
+                              tgt_tags]
 
-    def try_cuda(self):
-        self.src = self.src.cuda()
-        self.src_mask = self.src_mask.cuda()
-        self.tgt = self.tgt.cuda()
-        self.tgt_mask = self.tgt_mask.cuda()
-        return self
+        self.per_tag_pos_srcs: List[
+            LongTensorT['B,SrcSeqLen']] = per_tag_pos_srcs
+        self.per_tag_neg_srcs: List[
+            LongTensorT['B,SrcSeqLen']] = per_tag_neg_srcs
+        self.tgt_tag = tgt_tags
 
     @staticmethod
     def collate_batch(
-            batch,
+            tag_task: Dict[
+                TgtStringT, Tuple[List[SrcStringT], List[SrcStringT]]],
             src_tokenizer_pipeline: Callable[[SrcStringT], List[str]],
             tgt_tokenizer_pipeline: Callable[[TgtStringT], List[str]],
             src_vocab_pipeline: Callable[List[str], List[int]],
@@ -78,61 +77,64 @@ class Sent2TagBatch:
             pad_id: int,
             max_src_len=128,
             max_tgt_len=128
-    ) -> Sent2TagBatch:
+    ) -> Sent2TagMetaTaskBatch:
+
         # ) -> Tuple[LongTensorT['B,SrcSeqLen'], LongTensorT['B,OutSeqLen']]:
         dtype = torch.int32
         bs_id = torch.tensor([0], device=device, dtype=dtype)  # <s> token id
         eos_id = torch.tensor([1], device=device, dtype=dtype)  # </s> token id
-        src_list, tgt_list = [], []
         _src: SrcStringT
         _tgt: TgtStringT
-        for (_src, _tgt) in batch:
-            processed_src = torch.cat(
-                [
-                    bs_id,
-                    torch.tensor(
-                        src_vocab_pipeline((src_tokenizer_pipeline(_src))),
-                        dtype=dtype,
-                        device=device,
-                    ),
-                    eos_id,
-                ],
-                0,
-            )
-            processed_tgt = torch.cat(
-                [
-                    bs_id,
-                    torch.tensor(
-                        tgt_vocab_pipeline((tgt_tokenizer_pipeline(_tgt))),
-                        dtype=dtype,
-                        device=device,
-                    ),
-                    eos_id,
-                ],
-                0,
-            )
-            src_list.append(
-                # warning - overwrites values for negative values of padding - len
-                pad(
-                    processed_src,
-                    (
-                        0,
-                        max_src_len - len(processed_src),
-                    ),
-                    value=pad_id,
-                )
-            )
-            tgt_list.append(
-                pad(
-                    processed_tgt,
-                    (0, max_tgt_len - len(processed_tgt)),
-                    value=pad_id,
-                )
-            )
 
-        src: LongTensorT['B,SrcSeqLen'] = torch.stack(src_list)
-        tgt: LongTensorT['B,TgtSeqLen'] = torch.stack(tgt_list)
-        return Sent2SentBatch(src, tgt, pad_idx=pad_id)
+        per_tag_pos_srcs: List[LongTensorT['NShot,SrcSeqLen']] = []
+        per_tag_neg_srcs: List[LongTensorT['NShot,SrcSeqLen']] = []
+        tgt_tags: List[LongTensorT['TgtSeqLen']] = []
+        for tag, pos_neg_srcs in tag_task.items():
+            src_pos_list: List[torch.Tensor('SrcSeqLen')] = []  # SrcSeqLen
+            src_neg_list: List[torch.Tensor('SrcSeqLen')] = []
+
+            # At the moment it's enforced that srcs_pos and srcs_neg are of
+            # the same length, but this may change
+            srcs_pos: List[SrcStringT] = pos_neg_srcs[0]
+            srcs_neg: List[SrcStringT] = pos_neg_srcs[1]
+
+            for src_pos in srcs_pos:
+                processed_src_pos: torch.Tensor('SrcSeqLen') = \
+                    torch.cat([bs_id, torch.tensor(
+                        src_vocab_pipeline((src_tokenizer_pipeline(src_pos))),
+                        dtype=dtype, device=device), eos_id], dim=0)
+                src_pos_list.append(
+                    # warning - overwrites values for negative values of padding - len
+                    pad(processed_src_pos,
+                        pad=(0, max_src_len - len(processed_src_pos)),
+                        value=pad_id))
+
+            for src_neg in srcs_neg:
+                processed_src_neg: torch.Tensor('SrcSeqLen') = \
+                    torch.cat([bs_id, torch.tensor(
+                        src_vocab_pipeline((src_tokenizer_pipeline(src_neg))),
+                        dtype=dtype, device=device), eos_id], dim=0)
+                src_neg_list.append(
+                    # warning - overwrites values for negative values of padding - len
+                    pad(processed_src_neg,
+                        pad=(0, max_src_len - len(processed_src_neg)),
+                        value=pad_id))
+            processed_tgt: LongTensorT['TgtSeqLen'] = LongTensorT(
+                torch.cat(
+                    [bs_id, torch.tensor(
+                        tgt_vocab_pipeline(
+                            (tgt_tokenizer_pipeline(tag))),
+                        dtype=dtype, device=device), eos_id, ], dim=0))
+
+            per_tag_pos_srcs.append(
+                LongTensorT(torch.stack(src_pos_list)))
+            per_tag_neg_srcs.append(
+                LongTensorT(torch.stack(src_neg_list)))
+            tgt_tags.append(processed_tgt)
+        return Sent2TagMetaTaskBatch(per_tag_pos_srcs=per_tag_pos_srcs,
+                                     per_tag_neg_srcs=per_tag_neg_srcs,
+                                     tgt_tags=tgt_tags,
+                                     pad_idx=pad_id)
 
 
 class Sent2SentBatch:
@@ -143,33 +145,28 @@ class Sent2SentBatch:
                  pad_idx=2):
 
         self.src: LongTensorT['B,SrcSeqLen'] = src
-        self.src_mask: IntTensorT['B, SrcSeqLen'] = (src != pad_idx).long()
+        self.src_mask: IntTensorT['B, SrcSeqLen'] = (
+                src != pad_idx).long()
         if tgt is not None:
             self.tgt: LongTensorT['B,TgtSeqLen'] = tgt
-            self.tgt_mask = self.make_std_mask(self.tgt, pad_idx)
+            self.tgt_mask = self.make_gen_mask(self.tgt, pad_idx)
             self.ntokens = (self.tgt != pad_idx).data.sum()
         self.tgt_mask.to(self.tgt.device)
         self.src_mask.to(self.src.device)
 
     @staticmethod
-    def make_std_mask(tgt: LongTensorT['B,SrcSeqLen'], pad: int):
-        "Create a mask to hide padding and future words."
+    def make_gen_mask(tgt: LongTensorT['B,SrcSeqLen'], pad: int):
+        "Create a mask to hide padding and future words. This is only needed"
+        "when training for generation."
         tgt_mask = (tgt != pad).unsqueeze(-2)
         tgt_mask = tgt_mask & subsequent_mask(tgt.size(-1)).type_as(
             tgt_mask.data
         )
         return tgt_mask
 
-    def try_cuda(self):
-        self.src = self.src.cuda()
-        self.src_mask = self.src_mask.cuda()
-        self.tgt = self.tgt.cuda()
-        self.tgt_mask = self.tgt_mask.cuda()
-        return self
-
     @staticmethod
     def collate_batch(
-            batch,
+            batch: List[Tuple[SrcStringT, TgtStringT]],
             src_tokenizer_pipeline: Callable[[SrcStringT], List[str]],
             tgt_tokenizer_pipeline: Callable[[TgtStringT], List[str]],
             src_vocab_pipeline: Callable[List[str], List[int]],
@@ -181,57 +178,38 @@ class Sent2SentBatch:
     ) -> Sent2SentBatch:
         # ) -> Tuple[LongTensorT['B,SrcSeqLen'], LongTensorT['B,OutSeqLen']]:
         dtype = torch.int32
-        bs_id = torch.tensor([0], device=device, dtype=dtype)  # <s> token id
-        eos_id = torch.tensor([1], device=device, dtype=dtype)  # </s> token id
+        bs_id = torch.tensor([0], device=device,
+                             dtype=dtype)  # <s> token id
+        eos_id = torch.tensor([1], device=device,
+                              dtype=dtype)  # </s> token id
         src_list, tgt_list = [], []
         _src: SrcStringT
         _tgt: TgtStringT
         for (_src, _tgt) in batch:
             processed_src = torch.cat(
-                [
-                    bs_id,
-                    torch.tensor(
-                        src_vocab_pipeline((src_tokenizer_pipeline(_src))),
-                        dtype=dtype,
-                        device=device,
-                    ),
-                    eos_id,
-                ],
-                0,
-            )
+                [bs_id, torch.tensor(
+                    src_vocab_pipeline((src_tokenizer_pipeline(_src))),
+                    dtype=dtype, device=device), eos_id],
+                dim=0)
             processed_tgt = torch.cat(
-                [
-                    bs_id,
-                    torch.tensor(
-                        tgt_vocab_pipeline((tgt_tokenizer_pipeline(_tgt))),
-                        dtype=dtype,
-                        device=device,
-                    ),
-                    eos_id,
-                ],
-                0,
-            )
+                [bs_id, torch.tensor(
+                    tgt_vocab_pipeline((tgt_tokenizer_pipeline(_tgt))),
+                    dtype=dtype, device=device), eos_id],
+                dim=0)
             src_list.append(
                 # warning - overwrites values for negative values of padding - len
-                pad(
-                    processed_src,
-                    (
-                        0,
-                        max_src_len - len(processed_src),
-                    ),
-                    value=pad_id,
-                )
-            )
+                pad(processed_src,
+                    pad=(0, max_src_len - len(processed_src),),
+                    value=pad_id))
             tgt_list.append(
-                pad(
-                    processed_tgt,
-                    (0, max_tgt_len - len(processed_tgt)),
-                    value=pad_id,
-                )
-            )
+                pad(processed_tgt,
+                    pad=(0, max_tgt_len - len(processed_tgt)),
+                    value=pad_id))
 
-        src: LongTensorT['B,SrcSeqLen'] = torch.stack(src_list)
-        tgt: LongTensorT['B,TgtSeqLen'] = torch.stack(tgt_list)
+        src: LongTensorT['B,SrcSeqLen'] = LongTensorT(
+            torch.stack(src_list))
+        tgt: LongTensorT['B,TgtSeqLen'] = LongTensorT(
+            torch.stack(tgt_list))
         return Sent2SentBatch(src, tgt, pad_idx=pad_id)
 
     @staticmethod
@@ -283,7 +261,8 @@ class SentenceDataset(BaseDataset):
 
         self.data: List[
             Dict[SampleType, Union[
-                SummaryT, List[SummaryT], SrcTextT, List[SrcTextT]]]] = []
+                SummaryT, List[SummaryT], SrcTextT, List[
+                    SrcTextT]]]] = []
 
         self.tokenizer_src: PreTrainedTokenizer = tokenizer
         self.tokenizer_tgt: PreTrainedTokenizer = tokenizer

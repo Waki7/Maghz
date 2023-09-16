@@ -68,7 +68,7 @@ class BaseDataset(Dataset):
 
     def create_dataloaders(self,
                            device: Union[torch.device, int],
-                           batch_size: int = 12000,
+                           batch_size: int = 12,
                            is_distributed: bool = True,
                            turn_off_shuffle=False,
                            data_sampler: torch.utils.data.Sampler = None
