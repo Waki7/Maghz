@@ -13,7 +13,6 @@ from torch import nn
 from transformers.activations import ACT2FN
 from transformers.models.bart.configuration_bart import BartConfig
 
-import mgz.version_control.model_index as model_index
 import settings
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext
 from mgz.models.nlp.utils_attention import _attention
@@ -489,14 +488,30 @@ class BartDecoder(nn.Module):
 
 class BartModel(BartPretrainedModel):
     @classmethod
-    def from_pretrained(cls, name="facebook/bart-base"):
+    def load_model(cls, path: str) -> BartModel:
+        with open(os.path.normpath(os.path.join(path, 'config.json')),
+                  'r') as f:
+            config = json.load(f)
+        model = BartModel(
+            hug.BartConfig.from_dict(config))
+        model.load_state_dict(torch.load(os.path.join(path, 'weights.bin')))
+        return model
+
+    @classmethod
+    def load_tokenizer(cls, tokenizer_id: str) -> hug.BartTokenizer:
+        return hug.BartTokenizer.from_pretrained(tokenizer_id)
+
+    @classmethod
+    def initial_save(cls, model_id: str, path: str):
+        if not os.path.exists(path):
+            os.makedirs(path)
         model_hug = hug.BartModel.from_pretrained(
-            name).to(settings.DEVICE)
-        model = BartModel(model_hug.config)
-        model.load_state_dict(
-            model_hug.state_dict())
-        tokenizer = hug.BartTokenizer.from_pretrained(name)
-        return model, tokenizer
+            model_id).to(settings.DEVICE)
+        with open(os.path.normpath(os.path.join(path, 'config.json')),
+                  'w') as f:
+            json.dump(model_hug.config.to_dict(), f)
+        torch.save(model_hug.state_dict(),
+                   os.path.normpath(os.path.join(path, 'weights.bin')))
 
     def __init__(self, config: BartConfig):
         super().__init__(config)
@@ -555,35 +570,30 @@ class BartModel(BartPretrainedModel):
 
 class BartForConditionalGeneration(BartPretrainedModel):
     @classmethod
-    def from_pretrained(cls, model_id, tokenizer_id) -> Tuple[
-        BaseTransformer, hug.PreTrainedTokenizer]:
-        def loader(path: str):
-            with open(os.path.normpath(os.path.join(path, 'config.json')),
-                      'r') as f:
-                config = json.load(f)
-            model = BartForConditionalGeneration(BartConfig.from_dict(config))
-            model.load_state_dict(torch.load(os.path.join(path, 'weights.bin')))
-            return model
+    def load_model(cls, path: str) -> BartModel:
+        with open(os.path.normpath(os.path.join(path, 'config.json')),
+                  'r') as f:
+            config = json.load(f)
+        model = BartForConditionalGeneration(
+            hug.BartConfig.from_dict(config))
+        model.load_state_dict(torch.load(os.path.join(path, 'weights.bin')))
+        return model
 
-        def init_save(path: str):
-            if not os.path.exists(path):
-                os.makedirs(path)
-            model_hug = hug.BartForConditionalGeneration.from_pretrained(
-                model_id).to(settings.DEVICE)
-            with open(os.path.normpath(os.path.join(path, 'config.json')),
-                      'w') as f:
-                json.dump(model_hug.config.to_dict(), f)
-            torch.save(model_hug.state_dict(),
-                       os.path.normpath(os.path.join(path, 'weights.bin')))
+    @classmethod
+    def load_tokenizer(cls, tokenizer_id: str) -> hug.BartTokenizer:
+        return hug.BartTokenizer.from_pretrained(tokenizer_id)
 
-        model: BartForConditionalGeneration = \
-            model_index.Indexer.get_default_index().lookup_or_init(model_id,
-                                                                   init_loader=loader,
-                                                                   init_save=init_save)
-        model.eval()
-        tokenizer = hug.BartTokenizer.from_pretrained(tokenizer_id)
-        model.verify_tokenizer(tokenizer)
-        return model, tokenizer
+    @classmethod
+    def initial_save(cls, model_id: str, path: str):
+        if not os.path.exists(path):
+            os.makedirs(path)
+        model_hug = hug.BartForConditionalGeneration.from_pretrained(
+            model_id).to(settings.DEVICE)
+        with open(os.path.normpath(os.path.join(path, 'config.json')),
+                  'w') as f:
+            json.dump(model_hug.config.to_dict(), f)
+        torch.save(model_hug.state_dict(),
+                   os.path.normpath(os.path.join(path, 'weights.bin')))
 
     def __init__(self, config: BartConfig):
         super().__init__(config)

@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     import mgz.version_control as vc
     from mgz.models.nlp.led import LEDModel
 
+
 def create_accuray_metric() -> Dict:
     return {
         'name': 'accuracy',

@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 
+import transformers as hug
 from transformers import PreTrainedTokenizer
 
 from mgz.models.base_model import BaseModel
@@ -15,6 +16,19 @@ DEFAULT_INDEX_PATH = os.path.join(Path(__file__).resolve().parent.parent.parent,
                                   'index_dir/main/indexer.json').replace("\\",
                                                                          "/")
 
+
+def lookup_model(model_cls: Type[BaseTransformer], model_id: str,
+                 tokenizer_id: str = None) -> ModelNode:
+    assert tokenizer_id is not None, 'NLP Model needs tokenizer id'
+
+    model_node = \
+        CACHED_INDEXER.lookup_or_init(model_id,
+                                      load_model=model_cls.load_model,
+                                      load_tokenizer=model_cls.load_tokenizer,
+                                      init_save=model_cls.initial_save)
+    model_node.model.eval()
+    model_node.model.verify_tokenizer(model_node.tokenizer)
+    return model_node
 
 
 class Indexer:
@@ -78,27 +92,36 @@ class Indexer:
         self.save_as_json()
 
     def lookup_or_init(self, model_id: str,
-                       init_loader: Callable[[str], ModelNode],
-                       init_save: Callable[[str], None]) -> ModelNode:
+                       load_model: Callable[[str], BaseTransformer],
+                       load_tokenizer: Callable[[str], hug.PreTrainedTokenizer],
+                       init_save: Callable[[str, str], None]) -> ModelNode:
         self.check_state()
         loaded_successfully = False
 
+        model = None
+        tokenizer = None
         # root_path, child_path = find_parent_child(model)
         # so this relationship, you have a root and you have a child, there is a relationship between the two, you can define the child by the parent somehow. In our case because we hacky we just using this to distinguish the model vs the weights. model is parent, weights is child.
         if model_id in self.roots:
             try:
-                model_node: ModelNode = init_loader(self.full_path(model_id))
+                model: BaseTransformer = load_model(
+                    self.full_path(model_id))
+                tokenizer: hug.PreTrainedTokenizer = load_tokenizer(
+                    self.full_path(model_id))
                 loaded_successfully = True
             except FileNotFoundError as e:  # model has not been created yet and does not exist
                 raise e
         if not loaded_successfully:
             try:
-                init_save(self.full_path(model_id))
+                # mega dumb, change it later
+                init_save(model_id, self.full_path(model_id))
                 self.add_root(model_id)
-                model_node = init_loader(self.full_path(model_id))
+                model: BaseTransformer = load_model(
+                    self.full_path(model_id))
+                tokenizer: hug.PreTrainedTokenizer = load_tokenizer(model_id)
             except OSError as e:  # model has not been created yet and does not exist
                 raise e
-        return model_node
+        return ModelNode(model, tokenizer)
 
     def get_model_for(self, model_id: str):
         '''
@@ -121,7 +144,7 @@ class Indexer:
                 return None, None
             else:
                 logging.info('loading model {} into cache'.format(model_id))
-                model, tokenizer = model_cls.from_pretrained(model_id)
+                model, tokenizer = lookup_model(model_cls, model_id, model_id)
                 self.runtime_model_cache[model_id] = model
                 self.runtime_tokenizer_cache[model_id] = tokenizer
         return self.runtime_model_cache[model_id], \

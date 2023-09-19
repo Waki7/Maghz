@@ -296,12 +296,10 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
                             logging.warning(
                                 'Not enough samples with tag \'%s\' and training shot of %s, only %s present' % (
                                     pos_tag, self.n_shot, len(pos_sample_idxs)))
-                            if self.data_state == DataState.TRAIN:
-                                # We may want to skip this batch in the future
-                                logging.error(
-                                    'Not enough samples with tag \'%s\' and training shot of %s, only %s present' % (
-                                        pos_tag, self.n_shot,
-                                        len(pos_sample_idxs)))
+                            if len(pos_sample_idxs) < 2:
+                                # We need at least one support and one query example
+                                # TODO fix so we catch this earlier
+                                return None
 
                         pos_sample_idx = random.choice(pos_sample_idxs)
                         positive_examples.add(pos_sample_idx)

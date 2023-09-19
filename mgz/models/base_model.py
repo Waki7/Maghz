@@ -4,6 +4,7 @@ import torch.nn as nn
 
 
 class BaseModel(nn.Module):
+    pass
     # def __init__(self, in_space: sp.Tuple, out_space: sp.Tuple, **kwargs):
     #     super(BaseModel, self).__init__()
     #     if not (isinstance(in_space, sp.Space) and
@@ -21,9 +22,6 @@ class BaseModel(nn.Module):
     #     self.trainer: Optional[NetworkTrainer] = None
     #     self.temp_predictor = nn.Identity()
 
-    @classmethod
-    def from_pretrained(cls, name: str) -> BaseModel:
-        raise NotImplementedError
 
     # def __init__(self, **kwargs):
     #     super(BaseModel, self).__init__()

@@ -17,6 +17,7 @@ from mgz.ds.sentence_datasets.aus_legal_case_reports import \
 from mgz.model_running.learning_ops import LabelSmoothing
 from mgz.model_running import TaggingRoutine
 from mgz.version_control import ModelEdge, ModelNode
+from mgz.version_control.model_index import lookup_model
 
 '''
 input_ids tensor([[    0, 31414,   232,  1437,     2,     2]])
@@ -41,9 +42,8 @@ def led_main_train():
     model_name = 'allenai/led-base-16384-multi_lexsum-source-long'
     print('... loading model and tokenizer')
     with torch.cuda.amp.autocast():
-        model_node: ModelNode = LEDForBinaryTagging.from_pretrained(
-            model_name,
-            model_name)
+        model_node: ModelNode = lookup_model(LEDForBinaryTagging, model_name,
+                                             model_name)
         model_node.model.to(settings.DEVICE)
         cfg: hug.LEDConfig = model_node.model.config
         print(cfg.attention_window)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import random
 from enum import Enum
 
 import torch.utils.data
@@ -45,25 +46,73 @@ class Sent2TagMetaTaskBatch:
     """Object for holding a batch of data with mask during training."""
 
     def __init__(self,
-                 per_tag_pos_srcs: List[LongTensorT['NShot,SrcSeqLen']],
-                 per_tag_neg_srcs: List[LongTensorT['NShot,SrcSeqLen']],
+                 per_tag_pos_srcs: List[LongTensorT['TaskSize,SrcSeqLen']],
+                 per_tag_neg_srcs: List[LongTensorT['TaskSize,SrcSeqLen']],
                  tgt_tags: List[LongTensorT['TgtSeqLen']],
                  pad_idx=2):
+        task_sizes: List[int] = [pos_src.shape[0] + neg_src.shape[0] for
+                                 pos_src, neg_src
+                                 in zip(per_tag_pos_srcs, per_tag_neg_srcs)]
 
-        self.src_pos_masks = \
+        self.per_tag_src_ids: List[LongTensorT['TaskSize,SrcSeqLen']] = [
+            LongTensorT(torch.cat([pos_ids, neg_ids], dim=0))
+            for pos_ids, neg_ids in zip(per_tag_pos_srcs, per_tag_neg_srcs)]
+
+        self.per_tag_src_labels: List[LongTensorT['TaskSize']] = [
+            LongTensorT(torch.cat(
+                [torch.ones(pos_ids.shape[0]),
+                 torch.zeros(neg_ids.shape[0])]).to(pos_ids.device)).to(
+                torch.int32)
+            for pos_ids, neg_ids in zip(per_tag_pos_srcs, per_tag_neg_srcs)]
+
+        src_pos_masks = \
             [(p_src != pad_idx).long().to(p_src.device) for p_src in
              per_tag_pos_srcs]
-        self.src_neg_masks = \
+        src_neg_masks = \
             [(n_src != pad_idx).long().to(n_src.device) for n_src in
              per_tag_neg_srcs]
-        self.tgt_tag_masks = [(tgt != pad_idx).long().to(tgt.device) for tgt in
-                              tgt_tags]
+        self.per_tag_masks: List[IntTensorT['TaskSize,SrcSeqLen']] = [
+            IntTensorT(torch.cat([pos_mask, neg_mask], dim=0)) for
+            pos_mask, neg_mask in zip(src_pos_masks, src_neg_masks)]
 
-        self.per_tag_pos_srcs: List[
-            LongTensorT['B,SrcSeqLen']] = per_tag_pos_srcs
-        self.per_tag_neg_srcs: List[
-            LongTensorT['B,SrcSeqLen']] = per_tag_neg_srcs
-        self.tgt_tag = tgt_tags
+        self.tgt_tag_ids: List[LongTensorT['TaskSize,TgtSeqLen']] = \
+            [tag_ids.unsqueeze(0).repeat(task_size, 1) for
+             task_size, tag_ids in zip(task_sizes, tgt_tags)]
+        self.tgt_tag_masks = [(tgt != pad_idx).long().to(tgt.device) for tgt in
+                              self.tgt_tag_ids]
+
+    def sample_task_from_batch(self, embedding: FloatTensorT[
+        'TaskSize,EmbedLen'], tag_idx: int,
+                               query_batch_size: int) -> \
+            Tuple[FloatTensorT['NQuery,EmbedLen'], FloatTensorT[
+                'NClasses,EmbedLen'], LongTensorT['NQuery']]:
+        assert self.per_tag_src_ids[tag_idx].shape[0] == embedding.shape[
+            0], 'Embedding and src_ids for tag must have same batch size, ' \
+                'src_id_shape vs embedding_shape: {} vs {}'.format(
+            self.per_tag_src_ids[tag_idx].shape, embedding.shape)
+
+        all_idx = list(range(embedding.shape[0]))
+        random.shuffle(all_idx)
+
+        query_samples = all_idx[:query_batch_size]
+        pos_support_idxs = [i for i in all_idx if
+                            self.per_tag_src_labels[tag_idx][i] == 1]
+        neg_support_idxs = [i for i in all_idx if
+                            self.per_tag_src_labels[tag_idx][i] == 0]
+
+        queries: FloatTensorT['NQuery,EmbedLen'] = embedding[query_samples, :]
+        pos_supports: FloatTensorT['NSupport,EmbedLen'] = \
+            embedding[pos_support_idxs, :]
+        neg_supports: FloatTensorT['NSupport,EmbedLen'] = \
+            embedding[neg_support_idxs, :]
+
+        query_lbls: LongTensorT['NQuery'] = self.per_tag_src_labels[tag_idx][
+            query_samples]
+
+        support: FloatTensorT['NClasses,EmbedLen'] = FloatTensorT(torch.stack(
+            [pos_supports.detach().mean(0), neg_supports.detach().mean(0)],
+            dim=0))
+        return queries, support, query_lbls
 
     @staticmethod
     def collate_batch(
@@ -78,7 +127,6 @@ class Sent2TagMetaTaskBatch:
             max_src_len=128,
             max_tgt_len=128
     ) -> Sent2TagMetaTaskBatch:
-
         # ) -> Tuple[LongTensorT['B,SrcSeqLen'], LongTensorT['B,OutSeqLen']]:
         dtype = torch.int32
         bs_id = torch.tensor([0], device=device, dtype=dtype)  # <s> token id
@@ -86,8 +134,8 @@ class Sent2TagMetaTaskBatch:
         _src: SrcStringT
         _tgt: TgtStringT
 
-        per_tag_pos_srcs: List[LongTensorT['NShot,SrcSeqLen']] = []
-        per_tag_neg_srcs: List[LongTensorT['NShot,SrcSeqLen']] = []
+        per_tag_pos_srcs: List[LongTensorT['TaskSize,SrcSeqLen']] = []
+        per_tag_neg_srcs: List[LongTensorT['TaskSize,SrcSeqLen']] = []
         tgt_tags: List[LongTensorT['TgtSeqLen']] = []
         for tag, pos_neg_srcs in tag_task.items():
             src_pos_list: List[torch.Tensor('SrcSeqLen')] = []  # SrcSeqLen

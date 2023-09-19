@@ -15,11 +15,10 @@ from transformers.activations import ACT2FN
 from transformers.models.led.configuration_led import LEDConfig
 
 import settings
-from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext
+from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext, \
+    BinaryTaggerMixin
 from mgz.models.nlp.utils_attention import _attention
 from mgz.typing import *
-from mgz.version_control.model_index import CACHED_INDEXER
-from mgz.version_control.model_node import ModelNode
 
 
 def clones(module, N: int) -> nn.ModuleList:
@@ -1162,8 +1161,6 @@ class LEDEncoder(nn.Module):
         is_index_masked = src_mask == 0
         # todo, this never seems to be true, so we can probably remove it, understand why it was here
         is_index_global_attn = src_mask > 1
-        print('is_index_global_attn',
-              torch.unique(is_index_global_attn, return_counts=True))
         is_global_attn = is_index_global_attn.flatten().any().item()
 
         encoder_layer: LEDEncoderLayer
@@ -1328,39 +1325,30 @@ class LEDModel(LEDPretrainedModel):
 
 class LEDForConditionalGeneration(LEDPretrainedModel):
     @classmethod
-    def from_pretrained(cls, model_id: str = None,
-                        tokenizer_id: str = None) -> ModelNode:
-        assert tokenizer_id is not None, 'NLP Model needs tokenizer id'
+    def load_model(cls, path: str) -> LEDForConditionalGeneration:
+        with open(os.path.normpath(os.path.join(path, 'config.json')),
+                  'r') as f:
+            config = json.load(f)
+        model = LEDForConditionalGeneration(
+            LEDConfig.from_dict(config))
+        model.load_state_dict(torch.load(os.path.join(path, 'weights.bin')))
+        return model
 
-        def init_load(path: str):
-            with open(os.path.normpath(os.path.join(path, 'config.json')),
-                      'r') as f:
-                config = json.load(f)
-            model = LEDForConditionalGeneration(
-                LEDConfig.from_dict(config))
-            tokenizer = hug.LEDTokenizerFast.from_pretrained(tokenizer_id)
-            model.load_state_dict(torch.load(os.path.join(path, 'weights.bin')))
-            return ModelNode(model, tokenizer)
+    @classmethod
+    def load_tokenizer(cls, tokenizer_id: str) -> hug.LEDTokenizerFast:
+        return hug.LEDTokenizerFast.from_pretrained(tokenizer_id)
 
-        def init_save(path: str):
-            if not os.path.exists(path):
-                os.makedirs(path)
-            model_hug = hug.LEDForConditionalGeneration.from_pretrained(
-                model_id).to(settings.DEVICE)
-            with open(os.path.normpath(os.path.join(path, 'config.json')),
-                      'w') as f:
-                json.dump(model_hug.config.to_dict(), f)
-            torch.save(model_hug.state_dict(),
-                       os.path.normpath(os.path.join(path, 'weights.bin')))
-
-        model_node: ModelNode = \
-            CACHED_INDEXER.lookup_or_init(model_id, init_loader=init_load,
-                                          init_save=init_save)
-        model_node.model.eval()
-        tokenizer = hug.LEDTokenizerFast.from_pretrained(
-            tokenizer_id) if model_node.tokenizer is None else model_node.tokenizer
-        model_node.model.verify_tokenizer(tokenizer)
-        return model_node
+    @classmethod
+    def initial_save(cls, model_id: str, path: str):
+        if not os.path.exists(path):
+            os.makedirs(path)
+        model_hug = hug.LEDForConditionalGeneration.from_pretrained(
+            model_id).to(settings.DEVICE)
+        with open(os.path.normpath(os.path.join(path, 'config.json')),
+                  'w') as f:
+            json.dump(model_hug.config.to_dict(), f)
+        torch.save(model_hug.state_dict(),
+                   os.path.normpath(os.path.join(path, 'weights.bin')))
 
     def __init__(self, config: LEDConfig):
         super().__init__(config)
@@ -1461,41 +1449,32 @@ class LEDForConditionalGeneration(LEDPretrainedModel):
         return reordered_past
 
 
-class LEDForBinaryTagging(LEDPretrainedModel):
+class LEDForBinaryTagging(LEDPretrainedModel, BinaryTaggerMixin):
     @classmethod
-    def from_pretrained(cls, model_id: str = None,
-                        tokenizer_id: str = None) -> ModelNode:
-        assert tokenizer_id is not None, 'NLP Model needs tokenizer id'
+    def load_model(cls, path: str) -> LEDForBinaryTagging:
+        with open(os.path.normpath(os.path.join(path, 'config.json')),
+                  'r') as f:
+            config = json.load(f)
+        model = LEDForBinaryTagging(
+            LEDConfig.from_dict(config))
+        model.load_state_dict(torch.load(os.path.join(path, 'weights.bin')))
+        return model
 
-        def init_load(path: str):
-            with open(os.path.normpath(os.path.join(path, 'config.json')),
-                      'r') as f:
-                config = json.load(f)
-            model = LEDForConditionalGeneration(
-                LEDConfig.from_dict(config))
-            tokenizer = hug.LEDTokenizerFast.from_pretrained(tokenizer_id)
-            model.load_state_dict(torch.load(os.path.join(path, 'weights.bin')))
-            return ModelNode(model, tokenizer)
+    @classmethod
+    def load_tokenizer(cls, tokenizer_id: str) -> hug.LEDTokenizerFast:
+        return hug.LEDTokenizerFast.from_pretrained(tokenizer_id)
 
-        def init_save(path: str):
-            if not os.path.exists(path):
-                os.makedirs(path)
-            model_hug = hug.LEDForConditionalGeneration.from_pretrained(
-                model_id).to(settings.DEVICE)
-            with open(os.path.normpath(os.path.join(path, 'config.json')),
-                      'w') as f:
-                json.dump(model_hug.config.to_dict(), f)
-            torch.save(model_hug.state_dict(),
-                       os.path.normpath(os.path.join(path, 'weights.bin')))
-
-        model_node: ModelNode = \
-            CACHED_INDEXER.lookup_or_init(model_id, init_loader=init_load,
-                                          init_save=init_save)
-        model_node.model.eval()
-        tokenizer = hug.LEDTokenizerFast.from_pretrained(
-            tokenizer_id) if model_node.tokenizer is None else model_node.tokenizer
-        model_node.model.verify_tokenizer(tokenizer)
-        return model_node
+    @classmethod
+    def initial_save(cls, model_id: str, path: str):
+        if not os.path.exists(path):
+            os.makedirs(path)
+        model_hug = hug.LEDForConditionalGeneration.from_pretrained(
+            model_id).to(settings.DEVICE)
+        with open(os.path.normpath(os.path.join(path, 'config.json')),
+                  'w') as f:
+            json.dump(model_hug.config.to_dict(), f)
+        torch.save(model_hug.state_dict(),
+                   os.path.normpath(os.path.join(path, 'weights.bin')))
 
     def __init__(self, config: LEDConfig):
         super().__init__(config)
@@ -1567,7 +1546,7 @@ class LEDForBinaryTagging(LEDPretrainedModel):
             tgt_ids: LongTensorT['B,TgtSeqLen'],
             src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
             tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen']
-    ) -> FloatTensorT['B,TgtSeqLen,OutNClasses']:
+    ) -> FloatTensorT['B,EmbedLen']:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
             Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
@@ -1579,10 +1558,7 @@ class LEDForBinaryTagging(LEDPretrainedModel):
         output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.led.forward(
             src_ids=src_ids, src_mask=src_mask,
             tgt_ids=tgt_ids, tgt_mask=tgt_mask)
-
-        lm_logits = self.lm_head(output)
-        lm_logits = lm_logits + self.final_logits_bias.to(lm_logits.device)
-        return lm_logits
+        return output[:, -1, :]
 
     @staticmethod
     def _reorder_cache(past, beam_idx):

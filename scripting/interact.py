@@ -7,6 +7,7 @@ import transformers as hug
 import settings
 from mgz.model_running.run_ops import generate_controller, forward_controller
 from mgz.typing import *
+from mgz.version_control.model_index import lookup_model
 
 
 class Model(Enum):
@@ -27,7 +28,7 @@ def model_selectors(model_typ: Model, use_mgz: bool = False,
                 model_name)
         if use_mgz:
             from mgz.models.nlp.led import LEDForConditionalGeneration
-            model, tokenizer = LEDForConditionalGeneration.from_pretrained(
+            model, tokenizer = lookup_model(LEDForConditionalGeneration,
                 model_name, model_name)
     if model_typ == Model.BART:
         model_name = 'allenai/bart-large-multi_lexsum-long-short'
@@ -37,15 +38,12 @@ def model_selectors(model_typ: Model, use_mgz: bool = False,
                 model_name)
         if use_mgz:
             from mgz.models.nlp.bart import BartForConditionalGeneration
-            model, tokenizer = BartForConditionalGeneration.from_pretrained(
+            model, tokenizer = lookup_model(BartForConditionalGeneration,
                 model_name, model_name)
     return model.to(settings.DEVICE), tokenizer
 
 
 with torch.no_grad():
-    # print(mgz.models.nlp.led.LEDForConditionalGeneration(hug.LEDConfig.from_pretrained('allenai/led-base-16384-multi_lexsum-source-long')))
-    # exit(3)
-
     use_mgz = False
     use_hug = False
 

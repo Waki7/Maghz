@@ -245,10 +245,16 @@ class LogitsRuleEnforce:
 
 
 class BaseTransformer(BaseModel):
+    @classmethod
+    def load_model(cls, path: str) -> Self:
+        raise NotImplementedError
 
     @classmethod
-    def from_pretrained(cls, name: str, tokenizer_id: str = None) -> Tuple[
-        BaseTransformer, PreTrainedTokenizer]:
+    def load_tokenizer(cls, tokenizer_id: str) -> hug.PreTrainedTokenizer:
+        raise NotImplementedError
+
+    @classmethod
+    def initial_save(cls, model_id: str, path: str):
         raise NotImplementedError
 
     def __init__(self, config):
@@ -358,6 +364,32 @@ class BaseTransformer(BaseModel):
         seq_output: LongTensorT['B,TgtSeqLen'] = \
             beam_search.get_best_sequence(input_ids)
         return seq_output
+
+
+
+class BinaryTaggerMixin(BaseModel):
+    def forward(
+            self,
+            src_ids: LongTensorT['B,SrcSeqLen'],
+            tgt_ids: LongTensorT['B,TgtSeqLen'],
+            src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
+            tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen']
+    ) -> FloatTensorT['B,TgtSeqLen,EmbedLen']:
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
+            config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
+            (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
+
+        Returns:
+        """
+        output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.led.forward(
+            src_ids=src_ids, src_mask=src_mask,
+            tgt_ids=tgt_ids, tgt_mask=tgt_mask)
+
+        lm_logits = self.lm_head(output)
+        lm_logits = lm_logits + self.final_logits_bias.to(lm_logits.device)
+        return lm_logits
 
 # class BeamInference2:
 #     def __init__(self, n_beams: int, eos_token_id: int, max_seq_len: int,
