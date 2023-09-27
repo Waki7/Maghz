@@ -1,6 +1,6 @@
 from __future__ import annotations
-from __future__ import annotations
 
+import json
 import time
 
 import torch.utils.data
@@ -15,7 +15,6 @@ from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.typing import *
 
-
 class TrainState:
     """Track number of steps, examples, and tokens processed"""
 
@@ -24,14 +23,12 @@ class TrainState:
     samples: int = 0  # total # of examples used
     tokens: int = 0  # total # of tokens processed
 
-
-class TrainState:
-    """Track number of steps, examples, and tokens processed"""
-
-    step: int = 0  # Steps in the current epoch
-    accum_step: int = 0  # Number of gradient accumulation steps
-    samples: int = 0  # total # of examples used
-    tokens: int = 0  # total # of tokens processed
+    def to_json(self, as_str=False) -> Union[dict, str]:
+        obj_dict = {}
+        for k, v in sorted(self.__dict__.items()):
+            obj_dict[k] = v
+        return json.dumps(obj_dict, indent=4,
+                          separators=(',', ': ')) if as_str else obj_dict
 
 
 def run_epoch(
@@ -137,7 +134,7 @@ class BaseProtocol(object):
         pass
 
     def train(self, model_node: vc.ModelNode, ds: BaseDataset,
-              model_edge: vc.ModelEdge,
+              model_edge: vc.ModelTransitionEdge,
               batch_size=8, device=None, distributed: bool = False,
               turn_off_shuffle=False) -> vc.ModelNode:
         pass

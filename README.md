@@ -12,3 +12,10 @@ Lifelong State of the Art learning
 
     # LED
 'allenai/led-base-16384-multi_lexsum-source-long'
+
+
+running tensorboard 
+tensorboard --logdir=scripting/runs --bind_all
+
+
+

@@ -16,8 +16,7 @@ from mgz.ds.sentence_datasets.aus_legal_case_reports import \
     AusCaseReportsToTagGrouped
 from mgz.model_running.learning_ops import LabelSmoothing
 from mgz.model_running import TaggingRoutine
-from mgz.version_control import ModelEdge, ModelNode
-from mgz.version_control.model_index import lookup_model
+from mgz.version_control import ModelTransitionEdge, ModelNode
 
 '''
 input_ids tensor([[    0, 31414,   232,  1437,     2,     2]])
@@ -33,28 +32,32 @@ def dataset_memorization():
 
 
 def led_main_train():
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.WARNING)
     batch_size = 4
     # Initializing a BART facebook/bart-large style configuration
     # model_name = "facebook/bart-base"
     # model_name = 'allenai/bart-large-multi_lexsum-long-tiny'
     # model_name = 'allenai/bart-large-multi_lexsum-long-short'
     model_name = 'allenai/led-base-16384-multi_lexsum-source-long'
+    # model_name = 'allenai/led-base-16384-multi_lexsum-source-tiny'
+
     print('... loading model and tokenizer')
     with torch.cuda.amp.autocast():
-        model_node: ModelNode = lookup_model(LEDForBinaryTagging, model_name,
-                                             model_name)
+        model_node: ModelNode = ModelNode.load_from_id(LEDForBinaryTagging,
+                                                       model_name,
+                                                       model_name)
         model_node.model.to(settings.DEVICE)
         cfg: hug.LEDConfig = model_node.model.config
-        print(cfg.attention_window)
         model_node.model.train()
-
-        dataset = AusCaseReportsToTagGrouped(model_node.tokenizer,
-                                             max_src_len=cfg.max_encoder_position_embeddings)
+        ds = AusCaseReportsToTagGrouped(model_node.tokenizer,
+                                        max_src_len=cfg.max_encoder_position_embeddings,
+                                        n_episodes=1000, n_shot=5)
+        val_ds = AusCaseReportsToTagGrouped(model_node.tokenizer,
+                                            max_src_len=cfg.max_encoder_position_embeddings,
+                                            n_episodes=100, n_shot=5)
         routine = TaggingRoutine()
-        model_node = ModelNode(model_node.model, model_node.tokenizer)
         loss_fn = LabelSmoothing(
-            n_cls=dataset.tgt_vocab_len(),
+            n_cls=ds.tgt_vocab_len(),
             padding_idx=model_node.tokenizer.pad_token_id,
             smoothing=0.1
         ).to(settings.DEVICE)
@@ -62,13 +65,14 @@ def led_main_train():
             model_node.model.parameters(), lr=.00001, betas=(0.9, 0.98),
             eps=1e-4
         )
-        train_transition_edge = ModelEdge(model_node, loss_fn, optimizer)
 
-        routine.train(model_node=model_node, ds=dataset,
+        train_transition_edge = ModelTransitionEdge(model_node, loss_fn,
+                                                    optimizer, ds)
+
+        routine.train(model_node=model_node, ds=ds, val_ds=val_ds,
                       model_edge=train_transition_edge, batch_size=batch_size,
                       device=settings.DEVICE, distributed=False,
                       turn_off_shuffle=True)
-
         torch.cuda.empty_cache()
 
 

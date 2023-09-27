@@ -257,6 +257,10 @@ class BaseTransformer(BaseModel):
     def initial_save(cls, model_id: str, path: str):
         raise NotImplementedError
 
+    @abstractmethod
+    def save(self, path: DirPath):
+        raise NotImplementedError
+
     def __init__(self, config):
         super(BaseTransformer, self).__init__()
         self.config: hug.PretrainedConfig = config
@@ -364,7 +368,6 @@ class BaseTransformer(BaseModel):
         seq_output: LongTensorT['B,TgtSeqLen'] = \
             beam_search.get_best_sequence(input_ids)
         return seq_output
-
 
 
 class BinaryTaggerMixin(BaseModel):

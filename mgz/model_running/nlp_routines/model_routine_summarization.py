@@ -21,11 +21,11 @@ class SummarizationRoutine(BaseProtocol):
         assert isinstance(ds.target_space, sp.Sentence)
 
     def train(self, model_node: vc.ModelNode, ds: BaseDataset,
-              model_edge: vc.ModelEdge,
+              model_edge: vc.ModelTransitionEdge,
               batch_size=8, device=None, distributed: bool = False,
               turn_off_shuffle=False) -> vc.ModelNode:
         model_node.model.train()
-        if model_node.metrics is None:
+        if model_node.mean_metrics is None:
             pass
         self._check(ds)
 

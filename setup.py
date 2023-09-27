@@ -4,6 +4,7 @@ from distutils.core import setup
 from setuptools import find_packages
 
 # Usage
+# if timeout add this argument --default-timeout=100
 # in development: pip install -e C:\Users\ceyer\OneDrive\Documents\Projects\Maghz
 # in prod: pip install C:\Users\ceyer\OneDrive\Documents\Projects\Maghz
 
@@ -85,6 +86,7 @@ setup(
         'evaluate',
         'scikit-learn',
         'accelerate',
+        'bs4',
         'typing_extensions==4.4.0',
         # pip3 install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu116
         # pip3 install torchdata==0.5.1 torchtext==0.14.1 (use conda if you can)

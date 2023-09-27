@@ -245,7 +245,8 @@ class AusCaseReportsToPhraseTag(AusCaseReports):
 
 class AusCaseReportsToTagGrouped(AusCaseReports):
     def __init__(self, tokenizer: PreTrainedTokenizer,
-                 max_src_len: int, training_ratio=0.7, n_shot=5,
+                 max_src_len: int, n_episodes: Optional[int] = None,
+                 training_ratio=0.7, n_shot=5,
                  max_words_tag=5):
         assert max_src_len >= 1024
 
@@ -261,12 +262,13 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
         self.tag_to_sample_idx_map: Dict[str, List[int]] = {}
 
         # Meta Learning Sampling Parameters
-        self.n_shot = n_shot  # Will be roughly n_shot, not exact
+        self.n_shot = n_shot  # Will be roughly n_shot per class, not exact
+        self.n_episodes = n_episodes
 
     def __len__(self):
         'Denotes the total number of samples'
         assert self.loaded, "Dataset not loaded"
-        return len(self.data)
+        return len(self.data) if self.n_episodes is None else self.n_episodes
 
     @property
     @overrides(SentenceDataset)
@@ -280,39 +282,44 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
         positive_examples: set[int] = set()
         negative_examples: set[int] = set()
 
-        # For now we are going to randomly sample a tag and use that, but in the future I think we want to handle that differently
-        n_tgt = 1
-        pos_tags = [random.sample(sample[1], n_tgt)[0] for sample in batch]
-        for pos_tag in pos_tags:
-            # Based on the batch, we want to sample additional catchphrases to create a meta learning task out of the batch
-            for sample_text, pos_tags in batch:
-                timeout = 0  # catch when we can't find a negative example or other positive examples
-                while len(
-                        positive_examples) < self.n_shot and timeout < 2 * self.n_shot:
-                    if len(positive_examples) < self.n_shot:
-                        pos_sample_idxs: List[int] = self.tag_to_sample_idx_map[
-                            pos_tag]
-                        if len(pos_sample_idxs) < self.n_shot:
-                            logging.warning(
-                                'Not enough samples with tag \'%s\' and training shot of %s, only %s present' % (
-                                    pos_tag, self.n_shot, len(pos_sample_idxs)))
-                            if len(pos_sample_idxs) < 2:
-                                # We need at least one support and one query example
-                                # TODO fix so we catch this earlier
-                                return None
+        # For now we are going to randomly sample a tag and use that, but in
+        # the future I think we want to handle that differently
+        pos_tag = random.sample(batch[0][1], 1)[0]
 
-                        pos_sample_idx = random.choice(pos_sample_idxs)
-                        positive_examples.add(pos_sample_idx)
+        # catch when we can't find more pos/neg examples
+        timeout = 2 * self.n_shot
+        n_contrast_sample_attempts = 0
 
-                    # TODO: experiment with pulling negative samples that have very
-                    #  different embeddings
-                    if len(negative_examples) < self.n_shot:
-                        neg_sample_idx = random.randint(0, len(self.data) - 1)
-                        neg_tags = self.data[neg_sample_idx][
-                            SampleType.CATCHPHRASES]
-                        if pos_tag not in neg_tags:
-                            negative_examples.add(neg_sample_idx)
-                    timeout += 1
+        # Based on the batch, we want to sample additional catchphrases to
+        # create a meta learning task out of the batch
+        while (len(positive_examples) < self.n_shot or len(
+                negative_examples) < self.n_shot) and \
+                n_contrast_sample_attempts < timeout:
+            if len(positive_examples) < self.n_shot:
+                pos_sample_idxs: List[int] = self.tag_to_sample_idx_map[
+                    pos_tag]
+
+                if len(pos_sample_idxs) < self.n_shot:
+                    logging.info(
+                        'Not enough samples with tag \'%s\' and training shot of %s, only %s present' % (
+                            pos_tag, self.n_shot, len(pos_sample_idxs)))
+                    if len(pos_sample_idxs) < 2:
+                        # We need at least one support and one query example
+                        # TODO fix so we catch this earlier
+                        return None
+
+                pos_sample_idx = random.choice(pos_sample_idxs)
+                positive_examples.add(pos_sample_idx)
+
+            # TODO: experiment with pulling negative samples that have very
+            #  different embeddings
+            if len(negative_examples) < self.n_shot:
+                neg_sample_idx = random.randint(0, len(self.data) - 1)
+                neg_tags = self.data[neg_sample_idx][
+                    SampleType.CATCHPHRASES]
+                if pos_tag not in neg_tags:
+                    negative_examples.add(neg_sample_idx)
+            n_contrast_sample_attempts += 1
         assert self.data_state != DataState.NOT_LOADED, "Dataset not loaded"
 
         pos_batch: List[SrcStringT] = [self.data[i][SampleType.INPUT_TEXT] for i
@@ -339,13 +346,15 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
             return [self.vocab_tgt[token] for token in tokens]
 
         return Sent2TagMetaTaskBatch.collate_batch(
-            tag_task=tag_task,
+            sampled_tag_task=tag_task,
             src_tokenizer_pipeline=tokenize_src,
             tgt_tokenizer_pipeline=tokenize_tgt,
             src_vocab_pipeline=vocab_src,
             tgt_vocab_pipeline=vocab_tgt,
             device=device,
             pad_id=self.tokenizer_src.pad_token_id,
+            bos_id=self.tokenizer_src.bos_token_id,
+            eos_id=self.tokenizer_src.eos_token_id,
             max_src_len=self.max_src_len,
             max_tgt_len=self.max_tgt_len
         )
@@ -364,24 +373,31 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
         valid_sampler = (
             DistributedSampler(self) if is_distributed else data_sampler
         )
+        # TODO we should shuffle ahead of time so that it's consistent,
+        #  we can't have none shuffling for this dataset
+        shuffle = True  # not turn_off_shuffle and (valid_sampler is None)
         dataloader = DataLoader(
             self,
             batch_size=batch_size,
-            shuffle=not turn_off_shuffle and (valid_sampler is None),
+            shuffle=shuffle,
             sampler=valid_sampler,
             collate_fn=self.get_collate_fn(device)
         )
         return dataloader
 
     def _get_json_file_name(self):
-        return str(self.data_state) + '-' + str(
-            self.training_ratio) + '_' + str(
-            self.validation_ratio) + '_' + str(self.test_ratio) + '_' + str(
-            self.max_src_len) + '_' + str(self.max_words_tag) + '_' + str(
-            self.cosine_similarity_threshold) + '_' + str(
-            self.cosine_threshold_word) + '_' + str(
-            self.similar_enough_count_diff) + str(
-            self.punctuation_to_remove) + '.json'
+        # Windows doesn't support special characters in file names, so we
+        # convert them to ascii
+        ascii_converted_punctuation: str = ''.join(
+            str(ord(c)) for c in self.punctuation_to_remove)
+        return '-'.join([str(self.data_state), str(
+            self.training_ratio), str(
+            self.validation_ratio), str(self.test_ratio), str(
+            self.max_src_len), str(self.max_words_tag), str(
+            self.cosine_similarity_threshold), str(
+            self.cosine_threshold_word), str(
+            self.similar_enough_count_diff),
+                         ascii_converted_punctuation]) + '.json'
 
     def try_load_from_json(self):
         cache_dir = os.path.join(DATASET_DIR, 'cache')
@@ -429,8 +445,6 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
         if not loaded_from_json:
             super()._load(train, val, test)  # Only loads into self.data
             self.loaded = False
-            print(len(self.data))
-            print(self.data_state)
             # --- Remove punctuation ---
             if self.punctuation_to_remove:
                 for i in range(len(self.data)):
@@ -448,15 +462,22 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
             for i in range(len(self.data)):
                 self.data[i][SampleType.CATCHPHRASES] = grouped_tags[i]
 
-            # Drop sample types from data that aren't needed
+            new_data: List[Dict] = []
+            # ---  Drop sample types from data that aren't needed ---
             for i in range(len(self.data)):
                 catchphrases: List[str] = self.data[i][SampleType.CATCHPHRASES]
-                # Input text is joined because we want all sentences, it's a very long text encoding task
-                self.data[i] = {
+                if len(catchphrases) == 0 or len(
+                        self.data[i][SampleType.INPUT_TEXT]) == 0:
+                    logging.info(
+                        'Dropping sample with missing catchphrase or input text')
+                    continue
+                # Input text is joined because we want all sentences, it's a
+                # very long text encoding task
+                new_data.append({
                     SampleType.INPUT_TEXT: ' '.join(
                         self.data[i][SampleType.INPUT_TEXT]),
-                    SampleType.CATCHPHRASES: catchphrases}
-
+                    SampleType.CATCHPHRASES: catchphrases})
+            self.data = new_data
             cache_dir = os.path.join(DATASET_DIR, 'cache')
             if not os.path.exists(cache_dir):
                 os.makedirs(cache_dir)

@@ -1,4 +1,5 @@
 import copy
+import json
 from enum import Enum
 from functools import partial
 
@@ -43,6 +44,21 @@ class BaseDataset(Dataset):
     @property
     def target_space(self) -> Union[sp.Sentence, sp.RegressionTarget]:
         raise NotImplementedError
+
+    def to_json(self, as_str=False, as_summary_str=False) -> Union[dict, str]:
+        '''
+        Warning: This method only shows a subset of the dataset's information.
+        '''
+        obj_dict = {
+            "input_space": self.input_space.__repr__(),
+            "target_space": self.target_space.__repr__(),
+            "cls_name": self.__class__.__name__}
+        if as_summary_str:
+            # We probably want this to be a bit different in the future
+            return "data_cls-{}-".format(self.__class__.__name__)
+        if as_str:
+            json.dumps(obj_dict, indent=4, separators=(',', ': '))
+        return obj_dict
 
     def __add__(self, other: 'Dataset[T_co]') -> 'ConcatDataset[T_co]':
         raise NotImplementedError

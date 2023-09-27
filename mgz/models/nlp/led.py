@@ -1014,6 +1014,15 @@ class LEDDecoderLayer(nn.Module):
 
 
 class LEDPretrainedModel(BaseTransformer, ABC):
+    @classmethod
+    def load_tokenizer(cls, tokenizer_id: str) -> hug.LEDTokenizerFast:
+        return hug.LEDTokenizerFast.from_pretrained(tokenizer_id)
+
+    @overrides(BaseTransformer)
+    def save(self, path: DirPath):
+        torch.save(self.state_dict(),
+                   os.path.normpath(os.path.join(path, 'weights.bin')))
+
     def _init_weights(self, module):
         std = self.config.init_std
         if isinstance(module, nn.Linear):
@@ -1335,10 +1344,6 @@ class LEDForConditionalGeneration(LEDPretrainedModel):
         return model
 
     @classmethod
-    def load_tokenizer(cls, tokenizer_id: str) -> hug.LEDTokenizerFast:
-        return hug.LEDTokenizerFast.from_pretrained(tokenizer_id)
-
-    @classmethod
     def initial_save(cls, model_id: str, path: str):
         if not os.path.exists(path):
             os.makedirs(path)
@@ -1349,6 +1354,8 @@ class LEDForConditionalGeneration(LEDPretrainedModel):
             json.dump(model_hug.config.to_dict(), f)
         torch.save(model_hug.state_dict(),
                    os.path.normpath(os.path.join(path, 'weights.bin')))
+        tokenizer = hug.LEDTokenizerFast.from_pretrained(model_id)
+        tokenizer.save_pretrained(path)
 
     def __init__(self, config: LEDConfig):
         super().__init__(config)
@@ -1461,10 +1468,6 @@ class LEDForBinaryTagging(LEDPretrainedModel, BinaryTaggerMixin):
         return model
 
     @classmethod
-    def load_tokenizer(cls, tokenizer_id: str) -> hug.LEDTokenizerFast:
-        return hug.LEDTokenizerFast.from_pretrained(tokenizer_id)
-
-    @classmethod
     def initial_save(cls, model_id: str, path: str):
         if not os.path.exists(path):
             os.makedirs(path)
@@ -1475,6 +1478,8 @@ class LEDForBinaryTagging(LEDPretrainedModel, BinaryTaggerMixin):
             json.dump(model_hug.config.to_dict(), f)
         torch.save(model_hug.state_dict(),
                    os.path.normpath(os.path.join(path, 'weights.bin')))
+        tokenizer = hug.LEDTokenizerFast.from_pretrained(model_id)
+        tokenizer.save_pretrained(path)
 
     def __init__(self, config: LEDConfig):
         super().__init__(config)

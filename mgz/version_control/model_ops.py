@@ -1,4 +1,4 @@
-from mgz.version_control.model_edge import ModelEdge
+from mgz.version_control.model_edge import ModelTransitionEdge
 from mgz.models.base_model import BaseModel
 import spaces as sp
 
@@ -14,7 +14,7 @@ class ModelOps:
         pass
 
     def change_predictor(self, model: BaseModel,
-                         new_out_space: sp.Space) -> ModelEdge:
+                         new_out_space: sp.Space) -> ModelTransitionEdge:
         model.set_predictor()
 
 

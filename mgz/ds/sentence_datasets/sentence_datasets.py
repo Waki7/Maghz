@@ -12,7 +12,7 @@ from mgz.ds.base_dataset import BaseDataset, DataState
 from mgz.typing import *
 
 
-class SampleType(Enum):
+class SampleType(str, Enum):
     # MultiLexSum keys
     ID = 'id'
     INPUT_TEXT = 'sources'
@@ -50,6 +50,10 @@ class Sent2TagMetaTaskBatch:
                  per_tag_neg_srcs: List[LongTensorT['TaskSize,SrcSeqLen']],
                  tgt_tags: List[LongTensorT['TgtSeqLen']],
                  pad_idx=2):
+        assert len(per_tag_pos_srcs) == len(per_tag_neg_srcs) == len(
+            tgt_tags), 'per tag list lengths differ, pos %s vs neg %s vs tag %s' % (
+            len(per_tag_pos_srcs), len(per_tag_neg_srcs),
+            len(tgt_tags))
         task_sizes: List[int] = [pos_src.shape[0] + neg_src.shape[0] for
                                  pos_src, neg_src
                                  in zip(per_tag_pos_srcs, per_tag_neg_srcs)]
@@ -61,8 +65,8 @@ class Sent2TagMetaTaskBatch:
         self.per_tag_src_labels: List[LongTensorT['TaskSize']] = [
             LongTensorT(torch.cat(
                 [torch.ones(pos_ids.shape[0]),
-                 torch.zeros(neg_ids.shape[0])]).to(pos_ids.device)).to(
-                torch.int32)
+                 torch.zeros(neg_ids.shape[0])]).type(torch.LongTensor).to(
+                pos_ids.device))
             for pos_ids, neg_ids in zip(per_tag_pos_srcs, per_tag_neg_srcs)]
 
         src_pos_masks = \
@@ -86,6 +90,8 @@ class Sent2TagMetaTaskBatch:
                                query_batch_size: int) -> \
             Tuple[FloatTensorT['NQuery,EmbedLen'], FloatTensorT[
                 'NClasses,EmbedLen'], LongTensorT['NQuery']]:
+        total_supports = self.per_tag_src_ids[tag_idx].shape[0]
+        assert query_batch_size <  total_supports # TODO FIX N_SHOT VS QUERY
         assert self.per_tag_src_ids[tag_idx].shape[0] == embedding.shape[
             0], 'Embedding and src_ids for tag must have same batch size, ' \
                 'src_id_shape vs embedding_shape: {} vs {}'.format(
@@ -109,14 +115,15 @@ class Sent2TagMetaTaskBatch:
         query_lbls: LongTensorT['NQuery'] = self.per_tag_src_labels[tag_idx][
             query_samples]
 
+        # neg first since it's 0 and pos is 1
         support: FloatTensorT['NClasses,EmbedLen'] = FloatTensorT(torch.stack(
-            [pos_supports.detach().mean(0), neg_supports.detach().mean(0)],
+            [neg_supports.detach().mean(0), pos_supports.detach().mean(0)],
             dim=0))
         return queries, support, query_lbls
 
     @staticmethod
     def collate_batch(
-            tag_task: Dict[
+            sampled_tag_task: Dict[
                 TgtStringT, Tuple[List[SrcStringT], List[SrcStringT]]],
             src_tokenizer_pipeline: Callable[[SrcStringT], List[str]],
             tgt_tokenizer_pipeline: Callable[[TgtStringT], List[str]],
@@ -124,24 +131,24 @@ class Sent2TagMetaTaskBatch:
             tgt_vocab_pipeline: Callable[List[str], List[int]],
             device,
             pad_id: int,
-            max_src_len=128,
+            bos_id: int,
+            eos_id: int, max_src_len=128,
             max_tgt_len=128
     ) -> Sent2TagMetaTaskBatch:
-        # ) -> Tuple[LongTensorT['B,SrcSeqLen'], LongTensorT['B,OutSeqLen']]:
         dtype = torch.int32
-        bs_id = torch.tensor([0], device=device, dtype=dtype)  # <s> token id
-        eos_id = torch.tensor([1], device=device, dtype=dtype)  # </s> token id
+        bs_id = torch.tensor([bos_id], device=device, dtype=dtype)
+        eos_id = torch.tensor([eos_id], device=device, dtype=dtype)
         _src: SrcStringT
         _tgt: TgtStringT
 
         per_tag_pos_srcs: List[LongTensorT['TaskSize,SrcSeqLen']] = []
         per_tag_neg_srcs: List[LongTensorT['TaskSize,SrcSeqLen']] = []
         tgt_tags: List[LongTensorT['TgtSeqLen']] = []
-        for tag, pos_neg_srcs in tag_task.items():
+        for tag, pos_neg_srcs in sampled_tag_task.items():
             src_pos_list: List[torch.Tensor('SrcSeqLen')] = []  # SrcSeqLen
             src_neg_list: List[torch.Tensor('SrcSeqLen')] = []
 
-            # At the moment it's enforced that srcs_pos and srcs_neg are of
+            # At the moment it's not enforced that srcs_pos and srcs_neg are of
             # the same length, but this may change
             srcs_pos: List[SrcStringT] = pos_neg_srcs[0]
             srcs_neg: List[SrcStringT] = pos_neg_srcs[1]
@@ -152,7 +159,7 @@ class Sent2TagMetaTaskBatch:
                         src_vocab_pipeline((src_tokenizer_pipeline(src_pos))),
                         dtype=dtype, device=device), eos_id], dim=0)
                 src_pos_list.append(
-                    # warning - overwrites values for negative values of padding - len
+                    # todo? overwrites values < 0 of padding - len
                     pad(processed_src_pos,
                         pad=(0, max_src_len - len(processed_src_pos)),
                         value=pad_id))
@@ -163,7 +170,7 @@ class Sent2TagMetaTaskBatch:
                         src_vocab_pipeline((src_tokenizer_pipeline(src_neg))),
                         dtype=dtype, device=device), eos_id], dim=0)
                 src_neg_list.append(
-                    # warning - overwrites values for negative values of padding - len
+                    # todo? overwrites values < 0 of padding - len
                     pad(processed_src_neg,
                         pad=(0, max_src_len - len(processed_src_neg)),
                         value=pad_id))
@@ -172,7 +179,7 @@ class Sent2TagMetaTaskBatch:
                     [bs_id, torch.tensor(
                         tgt_vocab_pipeline(
                             (tgt_tokenizer_pipeline(tag))),
-                        dtype=dtype, device=device), eos_id, ], dim=0))
+                        dtype=dtype, device=device), eos_id], dim=0))
 
             per_tag_pos_srcs.append(
                 LongTensorT(torch.stack(src_pos_list)))
@@ -221,15 +228,14 @@ class Sent2SentBatch:
             tgt_vocab_pipeline: Callable[List[str], List[int]],
             device,
             pad_id: int,
+            bos_id: int,
+            eos_id: int,
             max_src_len=128,
             max_tgt_len=128
     ) -> Sent2SentBatch:
-        # ) -> Tuple[LongTensorT['B,SrcSeqLen'], LongTensorT['B,OutSeqLen']]:
         dtype = torch.int32
-        bs_id = torch.tensor([0], device=device,
-                             dtype=dtype)  # <s> token id
-        eos_id = torch.tensor([1], device=device,
-                              dtype=dtype)  # </s> token id
+        bs_id = torch.tensor([bos_id], device=device, dtype=dtype)
+        eos_id = torch.tensor([eos_id], device=device, dtype=dtype)
         src_list, tgt_list = [], []
         _src: SrcStringT
         _tgt: TgtStringT
@@ -286,6 +292,8 @@ class Sent2SentBatch:
             tgt_vocab_pipeline=vocab_tgt,
             device=device,
             pad_id=ds.tokenizer_src.pad_token_id,
+            bos_id=ds.tokenizer_src.bos_token_id,
+            eos_id=ds.tokenizer_src.eos_token_id,
             max_src_len=ds.max_src_len,
             max_tgt_len=ds.max_tgt_len
         )

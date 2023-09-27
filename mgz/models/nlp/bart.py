@@ -298,6 +298,15 @@ class BartDecoderLayer(nn.Module):
 
 
 class BartPretrainedModel(BaseTransformer, ABC):
+    @classmethod
+    def load_tokenizer(cls, tokenizer_id: str) -> hug.BartTokenizerFast:
+        return hug.BartTokenizerFast.from_pretrained(tokenizer_id)
+
+    @overrides(BaseTransformer)
+    def save(self, path: DirPath):
+        torch.save(self.state_dict(),
+                   os.path.normpath(os.path.join(path, 'weights.bin')))
+
     def _init_weights(self, module):
         std = self.config.init_std
         if isinstance(module, nn.Linear):
@@ -498,10 +507,6 @@ class BartModel(BartPretrainedModel):
         return model
 
     @classmethod
-    def load_tokenizer(cls, tokenizer_id: str) -> hug.BartTokenizer:
-        return hug.BartTokenizer.from_pretrained(tokenizer_id)
-
-    @classmethod
     def initial_save(cls, model_id: str, path: str):
         if not os.path.exists(path):
             os.makedirs(path)
@@ -512,6 +517,8 @@ class BartModel(BartPretrainedModel):
             json.dump(model_hug.config.to_dict(), f)
         torch.save(model_hug.state_dict(),
                    os.path.normpath(os.path.join(path, 'weights.bin')))
+        tokenizer = hug.BartTokenizerFast.from_pretrained(model_id)
+        tokenizer.save_pretrained(path)
 
     def __init__(self, config: BartConfig):
         super().__init__(config)
@@ -580,10 +587,6 @@ class BartForConditionalGeneration(BartPretrainedModel):
         return model
 
     @classmethod
-    def load_tokenizer(cls, tokenizer_id: str) -> hug.BartTokenizer:
-        return hug.BartTokenizer.from_pretrained(tokenizer_id)
-
-    @classmethod
     def initial_save(cls, model_id: str, path: str):
         if not os.path.exists(path):
             os.makedirs(path)
@@ -594,6 +597,8 @@ class BartForConditionalGeneration(BartPretrainedModel):
             json.dump(model_hug.config.to_dict(), f)
         torch.save(model_hug.state_dict(),
                    os.path.normpath(os.path.join(path, 'weights.bin')))
+        tokenizer = hug.BartTokenizerFast.from_pretrained(model_id)
+        tokenizer.save_pretrained(path)
 
     def __init__(self, config: BartConfig):
         super().__init__(config)
