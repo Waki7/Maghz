@@ -2,72 +2,37 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import os
-import time
 
 import GPUtil
 import torch.distributed as dist
 import torch.utils.data
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim.lr_scheduler import LambdaLR
-from tqdm import tqdm
 from transformers import PreTrainedTokenizer
 
-import mgz.models.nlp.metrics as metrics
 import settings
-from mgz.ds.sentence_datasets.multi_lex_sum import MultiLexSum
-from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch
+from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch, \
+    SentenceDataset
 from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask
+from mgz.model_running.base_routine import run_epoch, TrainState
 from mgz.model_running.learning_ops import LabelSmoothing, DummyOptimizer, \
     DummyScheduler, SimpleLossCompute, rate
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.models.nlp.bert_basic import make_model
+from mgz.models.nlp.led import LEDForBinaryTagging
 from mgz.typing import *
-from mgz.model_running.base_routine import run_epoch, TrainState
 
-
-# def pad(texts: List[str], tokenizer: PreTrainedTokenizer, max_len: int = None):
-#     tokenized_texts: List[List[str]] = [tokenizer(text) for text in tokenizer]
-#     if max_len == None:
-#         max_len = max()
-#     text_as_ids: List[torch.Tensor] = []
-#     def token_to_id(tokens: List[str]):
-#         return [tokenizer.get_vocab()[token] for token in tokens]
-#     for text in texts:
-#         processed_text = torch.cat(
-#             [
-#                 tokenizer.bos_token_id,
-#                 torch.tensor(
-#                     token_to_id(tokenizer(text)),
-#                     dtype=torch.int32,
-#                     device=settings.DEVICE,
-#                 ),
-#                 tokenizer.eos_token_id,
-#             ],
-#             0,
-#         )
-#         text_as_ids.append(
-#             # warning - overwrites values for negative values of padding - len
-#             pad(
-#                 processed_text,
-#                 (
-#                     0,
-#                     max_src_len - len(processed_src),
-#                 ),
-#                 value=tokenizer.pad_token_id,
-#             )
-#         )
-#     src: LongTensorT['B,SrcSeqLen'] = torch.stack(src_list)
 
 @torch.no_grad()
 def embedding_controller(model: BaseTransformer, text: List[str],
                          tokenizer: PreTrainedTokenizer,
-                         average: bool = True) -> FloatTensorT[
-    'B,EmbedLen,Opt[SrcSeqLen]']:
+                         get_last_embedding: bool = True) -> FloatTensorT[
+    'B,Opt[SrcSeqLen],EmbedLen']:
     batch_encoding = tokenizer(text, return_tensors="pt", padding=True)
     src_ids = batch_encoding.input_ids.to(settings.DEVICE)
     src_mask = batch_encoding.attention_mask.to(settings.DEVICE)
     embedding = model.encode(src_ids=src_ids, src_mask=src_mask)
-    return embedding.mean(1) if average else embedding
+    return embedding[:, -1, :] if get_last_embedding else embedding
 
 
 def forward_controller(model: BaseTransformer, text: List[str],
@@ -106,6 +71,27 @@ def generate_controller(model: BaseTransformer, text: List[str],
                           src_mask=src_mask)
 
 
+def tagging_embedding_controller(model: LEDForBinaryTagging, text: List[str],
+                                 tag_text: List[str],
+                                 tokenizer: PreTrainedTokenizer,
+                                 ) -> FloatTensorT['B,EmbedLen']:
+    batch_size = len(text)
+    src_encodings = tokenizer(text, return_tensors="pt")
+    src_ids: LongTensorT['B,SrcSeqLen'] = src_encodings.input_ids.to(
+        settings.DEVICE)
+
+    tgt_encodings = tokenizer(tag_text, return_tensors="pt")
+    tgt_ids: LongTensorT['EmbedLen'] = tgt_encodings.input_ids.to(
+        settings.DEVICE)
+    tgt_mask = tgt_encodings.attention_mask.to(settings.DEVICE)
+
+    src_mask = src_encodings.attention_mask.to(settings.DEVICE)
+    src_ids, src_mask = model._pre_encode_pad_if_needed(src_ids, src_mask,
+                                                        tokenizer.pad_token_id)
+
+    # don't need tgt_mask because you are generating one token at a time
+    return model.forward(src_ids=src_ids, tgt_ids=tgt_ids,
+                         src_mask=src_mask, tgt_mask=tgt_mask)
 
 
 def train_worker(
@@ -114,11 +100,14 @@ def train_worker(
         config,
         is_distributed=False,
 ):
+    from mgz.ds.sentence_datasets.multi_lex_sum import MultiLexSum
     print(f"Train worker process using GPU: {gpu} for training", flush=True)
     torch.cuda.set_device(gpu)
 
-    train_ds = MultiLexSum(config["max_padding"]).load_training_data()
-    valid_ds = MultiLexSum(config["max_padding"]).load_validation_data()
+    train_ds: SentenceDataset = MultiLexSum(
+        config["max_padding"]).load_training_data()
+    valid_ds: SentenceDataset = MultiLexSum(
+        config["max_padding"]).load_validation_data()
 
     train_dataloader = train_ds.create_dataloaders(gpu, config[
         "batch_size"] // ngpus_per_node, is_distributed)

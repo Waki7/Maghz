@@ -15,7 +15,7 @@ from mgz.model_running.base_routine import BaseProtocol
 from mgz.model_running.run_ops import run_epoch, TrainState
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.typing import *
-from mgz.version_control import Metrics
+from mgz.version_control.metrics import Metrics
 
 if TYPE_CHECKING:
     from mgz.version_control import ModelNode, ModelTransitionEdge
@@ -66,7 +66,6 @@ def run_epoch(
                 src_mask=batch.per_tag_masks[tag_idx],
                 tgt_mask=batch.tgt_tag_masks[tag_idx]
             )
-
             loss = torch.tensor(0.0).to(all_embeddings.device)
             for task_iter in range(iter_per_tags):
                 support: FloatTensorT['NClasses,EmbedLen']
@@ -117,7 +116,6 @@ def run_epoch(
                       i, n_tags_trained_on, loss,
                       model_edge.train_state.step / elapsed,
                       lr))
-
 
         if (i + 1) % val_interval == 0:
             settings.empty_cache()

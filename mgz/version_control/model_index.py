@@ -5,10 +5,10 @@ from pathlib import Path
 import transformers as hug
 from transformers import PreTrainedTokenizer
 
-import mgz.version_control as vc
 from mgz.models.base_model import BaseModel
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.typing import *
+from mgz.version_control.model_node import ModelNode
 
 
 class ModelDatabase:
@@ -18,10 +18,14 @@ class ModelDatabase:
     '''
 
     @staticmethod
-    def led_source_to_long() -> vc.ModelNode:
+    def led_source_to_long_id() -> str:
+        return 'allenai/led-base-16384-multi_lexsum-source-long'
+
+    @staticmethod
+    def led_source_to_long() -> ModelNode:
         return lookup_model(ModelDatabase.LEDForBinaryTagging,
-                            'allenai/led-base-16384-multi_lexsum-source-long',
-                            'allenai/led-base-16384-multi_lexsum-source-long')
+                            ModelDatabase.led_source_to_long_id(),
+                            ModelDatabase.led_source_to_long_id())
 
 
 # DEFAULTS
@@ -32,7 +36,7 @@ DEFAULT_INDEX_PATH = os.path.join(Path(__file__).resolve().parent.parent.parent,
 
 
 def lookup_model(model_cls: Type[BaseTransformer], model_id: str,
-                 tokenizer_id: str = None) -> vc.ModelNode:
+                 tokenizer_id: str = None) -> ModelNode:
     assert tokenizer_id is not None, 'NLP Model needs tokenizer id'
     model_node = \
         CACHED_INDEXER.lookup_or_init(model_id,
@@ -105,51 +109,48 @@ class Indexer:
             os.makedirs(model_dir)
         return model_dir
 
-    def add_root(self, model_id: str):
+    def get_or_add_to_root(self, model_id: str):
         """ Warning, this will create a direcotry, even if something else
         fails downstream"""
-        self.roots[model_id] = []
-        self.roots = dict(sorted(self.roots.items()))
-        self.save_as_json()
+        if model_id not in self.roots:
+            self.roots[model_id] = []
+            self.roots = dict(sorted(self.roots.items()))
+            self.save_as_json()
         return self.path_from_id(model_id, create_if_not_exist=True)
 
     def lookup_or_init(self, model_id: str,
                        load_model: Callable[[str], BaseTransformer],
                        load_tokenizer: Callable[[str], hug.PreTrainedTokenizer],
-                       init_save: Callable[[str, str], None]) -> vc.ModelNode:
+                       init_save: Callable[[str, str], None]) -> ModelNode:
         self.check_state()
         loaded_successfully = False
-        model_dir: DirPath = self.add_root(model_id)
+        model_dir: DirPath = self.get_or_add_to_root(model_id)
 
-        model = None
-        tokenizer = None
-        # so this relationship, you have a root and you have a child,
-        # there is a relationship between the two, you can define the child
-        # by the parent somehow. In our case because we hacky we just using
-        # this to distinguish the model vs the weights. model is parent,
-        # weights is child.
-        if model_id in self.roots:
-            try:
-                model: BaseTransformer = load_model(model_dir)
-                tokenizer: hug.PreTrainedTokenizer = load_tokenizer(model_dir)
-                loaded_successfully = True
-            except FileNotFoundError as e:  # model has not been created yet and does not exist
-                os.rmdir(model_dir)
-                raise e
+        # TODO, cleaner way to distinguish the models that are available to load
+        model: Optional[BaseTransformer] = load_model(model_dir)
+        tokenizer: Optional[hug.PreTrainedTokenizer] = load_tokenizer(
+            model_dir)
+        loaded_successfully = model is not None and tokenizer is not None
         if not loaded_successfully:
-            try:
-                # try to change it later
-                init_save(model_id, model_dir)
-                model: BaseTransformer = load_model(model_dir)
-                tokenizer: hug.PreTrainedTokenizer = load_tokenizer(model_id)
-            except OSError as e:  # model has not been created yet and does not exist
-                os.rmdir(model_dir)
-                raise e
-        return vc.ModelNode(model, tokenizer, model_id)
+            logging.warning('Model was in roots but not found in directory',
+                            model_dir)
 
-    def save_to_index(self, model_node: vc.ModelNode) -> DirPath:
+        if not loaded_successfully:
+            # Now we try to load the model from some other source
+            init_save(model_id, model_dir)
+            model: Optional[BaseTransformer] = load_model(model_dir)
+            tokenizer: Optional[hug.PreTrainedTokenizer] = load_tokenizer(
+                model_id)
+        if model is None or tokenizer is None:
+            raise FileNotFoundError(
+                'Model {} not found. Checked in directory {}'.format(model_id,
+                                                                     os.path.abspath(
+                                                                         model_dir)))
+        return ModelNode(model, tokenizer, model_id)
+
+    def save_to_index(self, model_node: ModelNode) -> DirPath:
         self.check_state()
-        model_dir: DirPath = self.add_root(model_node.model_id)
+        model_dir: DirPath = self.get_or_add_to_root(model_node.model_id)
         return model_dir
 
     def get_model_for(self, model_id: str):

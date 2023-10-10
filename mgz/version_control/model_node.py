@@ -9,10 +9,10 @@ import mgz.version_control as vc
 from mgz.models.base_model import BaseModel
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.typing import *
-from mgz.version_control import Metrics
+from mgz.version_control.metrics import Metrics
 
 if TYPE_CHECKING:
-    from mgz.models.nlp.led import LEDModel
+    from mgz.models.nlp.led import LEDModel, LEDForBinaryTagging
     from mgz.version_control.model_edge import ModelTransitionEdge
 
 
@@ -29,7 +29,8 @@ def x() -> Dict:
 class ModelNode:
     # Union thing is messy, what's a better way, probably pass a type to
     # ModelNode
-    def __init__(self, model: Union[BaseModel, BaseTransformer, LEDModel],
+    def __init__(self, model: Union[
+        BaseModel, BaseTransformer, LEDModel, LEDForBinaryTagging],
                  tokenizer: PreTrainedTokenizer, model_id: str,
                  metrics: Dict[Metrics, Union[List[float], float]] = None):
         """

@@ -13,7 +13,8 @@ import torch
 B = TypeVar("Batch")
 N = TypeVar("N")  # arbitrary count
 NHeads = int  # NewType("NHeads", int)  # something like n attention heads
-SrcSeqLen = int  # NewType("SeqLen", int)  # or input sequence length
+SrcSeqLen = TypeVar(
+    "SrcSeqLen")  # NewType("SeqLen", int)  # or input sequence length
 TgtSeqLen = int  # NewType("OutSeqLen", int)  # or output sequence length
 TgtSeqStep = int  # NewType("OutSeqStep", int)  # or output sequence length
 NClasses = int  # NewType("NClasses", int)  # or output sequence length
@@ -30,7 +31,7 @@ NSupport = TypeVar("NSupport")
 C = int  # NewType("Channel", int)
 H = int  # NewType("Height", int)
 W = int  # NewType("Width", int)
-EmbedLen = int  # NewType("EmbeddingSize", int)
+EmbedLen = TypeVar("EmbedLen")  # NewType("EmbeddingSize", int)
 Shape = TypeVar("Shape")
 DType = TypeVar("DType")
 
@@ -109,7 +110,7 @@ class FloatTensorT(torch.Tensor, Generic[Shape]):
 
     def __new__(cls, tensor, shape: Generic[Shape] = None):
         # todo assert shape
-        return tensor
+        return torch.as_tensor(tensor)
 
 
 class LongTensorT(torch.Tensor, Generic[Shape]):

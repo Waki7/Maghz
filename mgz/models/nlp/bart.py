@@ -299,11 +299,18 @@ class BartDecoderLayer(nn.Module):
 
 class BartPretrainedModel(BaseTransformer, ABC):
     @classmethod
-    def load_tokenizer(cls, tokenizer_id: str) -> hug.BartTokenizerFast:
-        return hug.BartTokenizerFast.from_pretrained(tokenizer_id)
+    def load_tokenizer(cls, tokenizer_id: str) -> Optional[
+        hug.BartTokenizerFast]:
+        try:
+            return hug.BartTokenizerFast.from_pretrained(tokenizer_id)
+        except (FileNotFoundError, EnvironmentError) as e:
+            return None
 
     @overrides(BaseTransformer)
     def save(self, path: DirPath):
+        with open(os.path.normpath(os.path.join(path, 'config.json')),
+                  'w') as f:
+            json.dump(self.config.to_dict(), f)
         torch.save(self.state_dict(),
                    os.path.normpath(os.path.join(path, 'weights.bin')))
 
@@ -497,14 +504,18 @@ class BartDecoder(nn.Module):
 
 class BartModel(BartPretrainedModel):
     @classmethod
-    def load_model(cls, path: str) -> BartModel:
-        with open(os.path.normpath(os.path.join(path, 'config.json')),
-                  'r') as f:
-            config = json.load(f)
-        model = BartModel(
-            hug.BartConfig.from_dict(config))
-        model.load_state_dict(torch.load(os.path.join(path, 'weights.bin')))
-        return model
+    def load_model(cls, path: str) -> Optional[BartModel]:
+        try:
+            with open(os.path.normpath(os.path.join(path, 'config.json')),
+                      'r') as f:
+                config = json.load(f)
+            model = BartModel(
+                hug.BartConfig.from_dict(config))
+            model.load_state_dict(torch.load(os.path.join(path, 'weights.bin'),
+                                             map_location=torch.device('cpu')))
+            return model
+        except FileNotFoundError:
+            return None
 
     @classmethod
     def initial_save(cls, model_id: str, path: str):
@@ -577,14 +588,18 @@ class BartModel(BartPretrainedModel):
 
 class BartForConditionalGeneration(BartPretrainedModel):
     @classmethod
-    def load_model(cls, path: str) -> BartModel:
-        with open(os.path.normpath(os.path.join(path, 'config.json')),
-                  'r') as f:
-            config = json.load(f)
-        model = BartForConditionalGeneration(
-            hug.BartConfig.from_dict(config))
-        model.load_state_dict(torch.load(os.path.join(path, 'weights.bin')))
-        return model
+    def load_model(cls, path: str) -> Optional[BartModel]:
+        try:
+            with open(os.path.normpath(os.path.join(path, 'config.json')),
+                      'r') as f:
+                config = json.load(f)
+            model = BartForConditionalGeneration(
+                hug.BartConfig.from_dict(config))
+            model.load_state_dict(torch.load(os.path.join(path, 'weights.bin'),
+                                             map_location=torch.device('cpu')))
+            return model
+        except FileNotFoundError:
+            return None
 
     @classmethod
     def initial_save(cls, model_id: str, path: str):

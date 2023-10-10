@@ -1015,11 +1015,18 @@ class LEDDecoderLayer(nn.Module):
 
 class LEDPretrainedModel(BaseTransformer, ABC):
     @classmethod
-    def load_tokenizer(cls, tokenizer_id: str) -> hug.LEDTokenizerFast:
-        return hug.LEDTokenizerFast.from_pretrained(tokenizer_id)
+    def load_tokenizer(cls, tokenizer_id: str) -> Optional[
+        hug.LEDTokenizerFast]:
+        try:
+            return hug.LEDTokenizerFast.from_pretrained(tokenizer_id)
+        except (FileNotFoundError, EnvironmentError) as e:
+            return None
 
     @overrides(BaseTransformer)
     def save(self, path: DirPath):
+        with open(os.path.normpath(os.path.join(path, 'config.json')),
+                  'w') as f:
+            json.dump(self.config.to_dict(), f)
         torch.save(self.state_dict(),
                    os.path.normpath(os.path.join(path, 'weights.bin')))
 
@@ -1334,14 +1341,18 @@ class LEDModel(LEDPretrainedModel):
 
 class LEDForConditionalGeneration(LEDPretrainedModel):
     @classmethod
-    def load_model(cls, path: str) -> LEDForConditionalGeneration:
-        with open(os.path.normpath(os.path.join(path, 'config.json')),
-                  'r') as f:
-            config = json.load(f)
-        model = LEDForConditionalGeneration(
-            LEDConfig.from_dict(config))
-        model.load_state_dict(torch.load(os.path.join(path, 'weights.bin')))
-        return model
+    def load_model(cls, path: str) -> Optional[LEDForConditionalGeneration]:
+        try:
+            with open(os.path.normpath(os.path.join(path, 'config.json')),
+                      'r') as f:
+                config = json.load(f)
+            model = LEDForConditionalGeneration(
+                LEDConfig.from_dict(config))
+            model.load_state_dict(torch.load(os.path.join(path, 'weights.bin'),
+                                             map_location=torch.device('cpu')))
+            return model
+        except FileNotFoundError:
+            return None
 
     @classmethod
     def initial_save(cls, model_id: str, path: str):
@@ -1458,14 +1469,18 @@ class LEDForConditionalGeneration(LEDPretrainedModel):
 
 class LEDForBinaryTagging(LEDPretrainedModel, BinaryTaggerMixin):
     @classmethod
-    def load_model(cls, path: str) -> LEDForBinaryTagging:
-        with open(os.path.normpath(os.path.join(path, 'config.json')),
-                  'r') as f:
-            config = json.load(f)
-        model = LEDForBinaryTagging(
-            LEDConfig.from_dict(config))
-        model.load_state_dict(torch.load(os.path.join(path, 'weights.bin')))
-        return model
+    def load_model(cls, path: str) -> Optional[LEDForBinaryTagging]:
+        try:
+            with open(os.path.normpath(os.path.join(path, 'config.json')),
+                      'r') as f:
+                config = json.load(f)
+            model = LEDForBinaryTagging(
+                LEDConfig.from_dict(config))
+            model.load_state_dict(torch.load(os.path.join(path, 'weights.bin'),
+                                             map_location=torch.device('cpu')))
+            return model
+        except FileNotFoundError:
+            return None
 
     @classmethod
     def initial_save(cls, model_id: str, path: str):
@@ -1563,6 +1578,7 @@ class LEDForBinaryTagging(LEDPretrainedModel, BinaryTaggerMixin):
         output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.led.forward(
             src_ids=src_ids, src_mask=src_mask,
             tgt_ids=tgt_ids, tgt_mask=tgt_mask)
+        # get the last embedding, not an average of the embeddings
         return output[:, -1, :]
 
     @staticmethod

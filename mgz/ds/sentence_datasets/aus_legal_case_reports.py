@@ -174,7 +174,7 @@ class AusCaseReports(SentenceDataset):
                 # sentences are used as input text
                 input_text: List[str] = [entry.text for entry in
                                          sentences_xml]
-                data_entry[SampleType.INPUT_TEXT] = input_text
+                data_entry[SampleType.INPUT_TEXT] = ' '.join(input_text)
 
                 # check if citation_summ and citation_class files exist,
                 # we can add some additional fields here
@@ -198,9 +198,9 @@ class AusCaseReports(SentenceDataset):
 
 class AusCaseReportsToPhraseTag(AusCaseReports):
     def __init__(self, tokenizer: PreTrainedTokenizer,
-                 max_position_embeddings: int, training_ratio=0.7):
-        assert max_position_embeddings >= 1024
-        super(AusCaseReportsToPhraseTag, self).__init__(tokenizer, 1024,
+                 max_src_len: int = 1024, training_ratio=0.7):
+        assert max_src_len >= 1024
+        super(AusCaseReportsToPhraseTag, self).__init__(tokenizer, max_src_len,
                                                         256,
                                                         training_ratio=training_ratio)
 
@@ -231,6 +231,8 @@ class AusCaseReportsToPhraseTag(AusCaseReports):
             if len(catchphrases) == 0:
                 continue
             self.data[i] = {
+                # Input text is joined because we want all sentences, it's a
+                # very long text encoding task
                 SampleType.INPUT_TEXT: self.data[i][SampleType.INPUT_TEXT],
                 SampleType.CATCHPHRASES: catchphrases}
         self.loaded = True
@@ -245,13 +247,13 @@ class AusCaseReportsToPhraseTag(AusCaseReports):
 
 class AusCaseReportsToTagGrouped(AusCaseReports):
     def __init__(self, tokenizer: PreTrainedTokenizer,
-                 max_src_len: int, n_episodes: Optional[int] = None,
+                 max_src_len: int = 1024, n_episodes: Optional[int] = None,
                  training_ratio=0.7, n_shot=5,
                  max_words_tag=5):
         assert max_src_len >= 1024
 
         super(AusCaseReportsToTagGrouped, self).__init__(tokenizer,
-                                                         max_src_len=1024,
+                                                         max_src_len=max_src_len,
                                                          max_tgt_len=max_words_tag,
                                                          training_ratio=training_ratio)
         self.cosine_similarity_threshold = 0.94
@@ -474,8 +476,7 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
                 # Input text is joined because we want all sentences, it's a
                 # very long text encoding task
                 new_data.append({
-                    SampleType.INPUT_TEXT: ' '.join(
-                        self.data[i][SampleType.INPUT_TEXT]),
+                    SampleType.INPUT_TEXT: self.data[i][SampleType.INPUT_TEXT],
                     SampleType.CATCHPHRASES: catchphrases})
             self.data = new_data
             cache_dir = os.path.join(DATASET_DIR, 'cache')
@@ -492,7 +493,7 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
         self.loaded = True
 
     @overrides(AusCaseReports)
-    def __getitem__(self, idx) -> (SourceListT, SummaryT):
+    def __getitem__(self, idx) -> (SrcTextT, TgtTextT):
         input_text = self.data[idx][SampleType.INPUT_TEXT]
         catchphrase = self.data[idx][SampleType.CATCHPHRASES]
         return input_text, catchphrase
@@ -598,14 +599,32 @@ def investigate_catchphrase_differences(ds: AusCaseReports,
                     phrase.print_diff()
 
 
-def main():
+def inspect_catchphrase_diffs():
     # please install HuggingFace ds by pip install ds
     from transformers import BartTokenizer
     tokenizer = BartTokenizer.from_pretrained("facebook/bart-large")
+
     ds = AusCaseReportsToTagGrouped(tokenizer=tokenizer,
-                                    max_src_len=10000,
                                     training_ratio=1.0).load_training_data()
     investigate_catchphrase_differences(ds, tokenizer)
+
+
+def inspect_src_test():
+    from transformers import BartTokenizer
+    tokenizer = BartTokenizer.from_pretrained("facebook/bart-large")
+    ds = AusCaseReports(tokenizer=tokenizer, max_src_len=17000, max_tgt_len=256,
+                                   training_ratio=0.1).load_training_data()
+
+    def print_n_docs(n):
+        for i in range(n):
+            print('Data Sample {}:'.format(i))
+            print(ds.data[n][SampleType.NAME] + '\n')
+
+    print_n_docs(10)
+
+
+def main():
+    inspect_src_test()
 
 
 if __name__ == '__main__':
