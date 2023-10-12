@@ -95,6 +95,7 @@ class MultiLexSum(SentenceDataset):
             examples: Dataset = multi_lexsum["test"]
             self.data_state = DataState.TEST
 
+
         src_tgt_type: Tuple[SampleType, SampleType] = self._get_source_types()
         src_type, tgt_type = src_tgt_type
         sample: Dict[str, Union[SummaryT, SourceListT]]

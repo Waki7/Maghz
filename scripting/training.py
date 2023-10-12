@@ -51,11 +51,9 @@ def led_main_train():
         model_node.model.train()
         ds = AusCaseReportsToTagGrouped(model_node.tokenizer,
                                         max_src_len=cfg.max_encoder_position_embeddings,
-                                        max_tgt_len=cfg.max_decoder_position_embeddings,
                                         n_episodes=1000, n_shot=5)
         val_ds = AusCaseReportsToTagGrouped(model_node.tokenizer,
                                             max_src_len=cfg.max_encoder_position_embeddings,
-                                            max_tgt_len=cfg.max_decoder_position_embeddings,
                                             n_episodes=100, n_shot=5)
         routine = TaggingRoutine()
         loss_fn = LabelSmoothing(
