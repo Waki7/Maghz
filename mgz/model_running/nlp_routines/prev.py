@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 import time
 
 import torch.utils.data
@@ -27,7 +28,7 @@ def run_epoch(
         val_data_loader: torch.utils.data.DataLoader[Sent2TagMetaTaskBatch],
         model_edge: ModelTransitionEdge,
         log_interval=5,
-        val_interval=50,
+        val_interval=40,
 ) -> ModelNode:
     """Train a single epoch"""
     model, tokenizer = model_node.model, model_node.tokenizer
@@ -36,15 +37,10 @@ def run_epoch(
     start = time.time()
     n_tags_trained_on = 0
     loss = 0
-    iter_per_tags = 2
-    n_query = 2
+    iter_per_tags = 3
+    n_query = 3
     i: int
     batch: Sent2TagMetaTaskBatch
-    loss_fn = torch.nn.CrossEntropyLoss()
-    # loss_interval = 5
-    # loss_fn = LabelSmoothing(
-    #     n_cls=2, padding_idx=model_node.tokenizer.pad_token_id,
-    #     smoothing=0.1).to(settings.DEVICE)
 
     if not model_node.has_initial_metrics():
         val_model(val_data_loader, model)
@@ -57,6 +53,7 @@ def run_epoch(
             })
 
     for i, batch in tqdm(enumerate(data_loader), total=len(data_loader)):
+        model.train()
         if batch is None:
             logging.warning(
                 'batch is None... need to fix issue of tags are super sparse')
@@ -65,26 +62,56 @@ def run_epoch(
 
         # treat each tag as a separate task
         for tag_idx in range(len(tgt_tags)):
-            all_embeddings: FloatTensorT[
+            pos_shot = random.choice([1, 2, 3])
+            neg_shot = 5 - pos_shot
+            task_size = len(batch.per_tag_src_ids[tag_idx])
+            if n_query > (task_size - (pos_shot + neg_shot)):
+                if pos_shot > 1:
+                    pos_shot -= 1
+                if neg_shot > 1:
+                    neg_shot -= 1
+            if n_query > (task_size - (pos_shot + neg_shot)):
+                n_query -= 1
+            assert n_query <= (task_size - (
+                    pos_shot + neg_shot)), \
+                'n_query must be less than {}, pos shot {} neg shot {}'.format(
+                    task_size - (pos_shot + neg_shot), pos_shot, neg_shot)
+
+            pos_support_idxs, neg_support_idxs, all_query_idxs, all_query_lbls = \
+                batch.pick_supports(tag_idx, pos_shot, neg_shot)
+            support_idxs = neg_support_idxs + pos_support_idxs
+            with torch.no_grad():
+                suppport_embeds: FloatTensorT[
+                    'TaskSize,EmbedLen'] = model.forward(
+                    src_ids=batch.per_tag_src_ids[tag_idx][support_idxs, :],
+                    tgt_ids=batch.tgt_tag_ids[tag_idx][support_idxs, :],
+                    src_mask=batch.per_tag_masks[tag_idx][support_idxs, :],
+                    tgt_mask=batch.tgt_tag_masks[tag_idx][support_idxs, :]
+                )
+                neg_supports = suppport_embeds[:len(neg_support_idxs), :]
+                pos_supports = suppport_embeds[len(neg_support_idxs):, :]
+                supports = torch.stack(
+                    [neg_supports.mean(0), pos_supports.mean(0)], dim=0)
+            all_query_embed: FloatTensorT[
                 'TaskSize,EmbedLen'] = model.forward(
-                src_ids=batch.per_tag_src_ids[tag_idx],
-                tgt_ids=batch.tgt_tag_ids[tag_idx],
-                src_mask=batch.per_tag_masks[tag_idx],
-                tgt_mask=batch.tgt_tag_masks[tag_idx]
+                src_ids=batch.per_tag_src_ids[tag_idx][all_query_idxs, :],
+                tgt_ids=batch.tgt_tag_ids[tag_idx][all_query_idxs, :],
+                src_mask=batch.per_tag_masks[tag_idx][all_query_idxs, :],
+                tgt_mask=batch.tgt_tag_masks[tag_idx][all_query_idxs, :]
             )
-            loss = torch.tensor(0.0).to(all_embeddings.device)
+            loss = torch.tensor(0.0).to(all_query_embed.device)
             for task_iter in range(iter_per_tags):
-                support: FloatTensorT['NClasses,EmbedLen']
-                queries, support, query_lbls = batch.sample_task_from_batch(
-                    all_embeddings, tag_idx,
-                    n_query)
+                query_idxs = torch.randperm(len(all_query_idxs))[:n_query].to(
+                    all_query_embed.device)
+                queries = all_query_embed[query_idxs, :]
+                query_lbls = all_query_lbls[query_idxs]
 
                 distance_to_supports_per_cls: List[FloatTensorT['NQuery']] = []
                 # TODO can probably do this in a batched way
-                for cls in range(support.shape[0]):
+                for cls in range(supports.shape[0]):
                     distance_to_supports_per_cls.append(
                         torch.linalg.norm(
-                            queries - support[cls, :], dim=-1, ord=2))
+                            queries - supports[cls, :], dim=-1, ord=2))
                 distance_to_supports_per_cls: FloatTensorT['NQuery,NClasses'] = \
                     FloatTensorT(torch.stack(
                         distance_to_supports_per_cls, dim=-1))
@@ -97,16 +124,18 @@ def run_epoch(
                 log_utils.exp_tracker.add_scalar(Metrics.TRAIN_ACC_MEAN, (
                         predictions == query_lbls).float().mean().item(),
                                                  track_mean=True)
-                loss += loss_fn.__call__(distance_to_supports_per_cls_probs,
-                                         query_lbls) / (
-                                support.shape[0] + queries.shape[0])
+                log_utils.exp_tracker.add_scalar(Metrics.TRAIN_AVG_PRED, (
+                    predictions).float().mean().item(),
+                                                 track_mean=False)
 
+                loss += torch.nn.CrossEntropyLoss()(
+                    distance_to_supports_per_cls_probs,
+                    query_lbls) / (supports.shape[0] + queries.shape[0])
 
                 model_edge.train_state.step += 1
-            log_utils.exp_tracker.add_scalar(Metrics.TRAIN_LOSS_MEAN,
-                                             loss.cpu().item(),
-                                             track_mean=False)
-            loss.backward(retain_graph=False)
+
+            loss.backward()
+
             model_edge.optimizer.step()
             model_edge.optimizer.zero_grad(set_to_none=True)
 
@@ -115,15 +144,14 @@ def run_epoch(
 
         if model_edge.scheduler is not None: model_edge.scheduler.step()
         if (i + 1) % log_interval == 0:
-            lr = model_edge.optimizer.param_groups[0]["lr"]
             elapsed = time.time() - start
             print(("Epoch Step: %6d | Accumulation Step: %3d | Loss: %6.2f "
                    + "| Tasks / Sec: %7.1f | Learning Rate: %6.1e")
                   % (
                       i, n_tags_trained_on, loss,
                       model_edge.train_state.step / elapsed,
-                      lr))
-
+                      model_edge.optimizer.param_groups[-1]['lr']))
+        # Run Validation
         if (i + 1) % val_interval == 0:
             settings.empty_cache()
             val_model(val_data_loader, model)
@@ -132,6 +160,8 @@ def run_epoch(
                     Metrics.VAL_ACC: log_utils.exp_tracker.pop_scalars(
                         Metrics.VAL_ACC)
                 })
+    if model_edge.scheduler is not None:
+        model_edge.scheduler.step()
     model_edge.record_metric(Metrics.TRAIN_LOSS_MEAN,
                              log_utils.exp_tracker.get_mean_scalar(loss))
     model_edge.record_metric(Metrics.VAL_ACC,
@@ -149,12 +179,12 @@ def val_model(
 
     i: int
     batch: Sent2TagMetaTaskBatch
-    n_query = 2
 
     # Number of times to sample per tag, there may be
     # different combinations of support and queries, so a higher number willg
     # give you a better idea of the accuracy per tag.
-    iter_per_tags = 2
+    iter_per_tags = 3
+    n_query = 3
     accuracies: List[float] = []
 
     batch: Sent2TagMetaTaskBatch
@@ -166,24 +196,55 @@ def val_model(
 
         # treat each tag as a separate task
         for tag_idx in range(len(batch.tgt_tag_ids)):
-            all_embeddings: FloatTensorT[
-                'TaskSize,EmbedLen'] = model.forward(
-                src_ids=batch.per_tag_src_ids[tag_idx],
-                tgt_ids=batch.tgt_tag_ids[tag_idx],
-                src_mask=batch.per_tag_masks[tag_idx],
-                tgt_mask=batch.tgt_tag_masks[tag_idx]
-            )
+            pos_shot = random.choice([1, 2, 3])
+            neg_shot = 4 - pos_shot
+            task_size = len(batch.per_tag_src_ids[tag_idx])
+            if n_query > (task_size - (pos_shot + neg_shot)):
+                if pos_shot > 1:
+                    pos_shot -= 1
+                if neg_shot > 1:
+                    neg_shot -= 1
+            if n_query > (task_size - (pos_shot + neg_shot)):
+                n_query -= 1
+            assert n_query <= (task_size - (
+                    pos_shot + neg_shot)), \
+                'n_query must be less than {}, pos shot {} neg shot {}'.format(
+                    task_size - (pos_shot + neg_shot), pos_shot, neg_shot)
 
+            pos_support_idxs, neg_support_idxs, all_query_idxs, all_query_lbls = \
+                batch.pick_supports(tag_idx, pos_shot, neg_shot)
+            support_idxs = neg_support_idxs + pos_support_idxs
+            with torch.no_grad():
+                suppport_embeds: FloatTensorT[
+                    'TaskSize,EmbedLen'] = model.forward(
+                    src_ids=batch.per_tag_src_ids[tag_idx][support_idxs, :],
+                    tgt_ids=batch.tgt_tag_ids[tag_idx][support_idxs, :],
+                    src_mask=batch.per_tag_masks[tag_idx][support_idxs, :],
+                    tgt_mask=batch.tgt_tag_masks[tag_idx][support_idxs, :]
+                )
+                neg_supports = suppport_embeds[:len(neg_support_idxs), :]
+                pos_supports = suppport_embeds[len(neg_support_idxs):, :]
+                supports = torch.stack(
+                    [neg_supports.mean(0), pos_supports.mean(0)], dim=0)
+            all_query_embed: FloatTensorT[
+                'TaskSize,EmbedLen'] = model.forward(
+                src_ids=batch.per_tag_src_ids[tag_idx][all_query_idxs, :],
+                tgt_ids=batch.tgt_tag_ids[tag_idx][all_query_idxs, :],
+                src_mask=batch.per_tag_masks[tag_idx][all_query_idxs, :],
+                tgt_mask=batch.tgt_tag_masks[tag_idx][all_query_idxs, :]
+            )
             for task_iter in range(iter_per_tags):
-                support: FloatTensorT['NClasses,EmbedLen']
-                queries, support, query_lbls = batch.sample_task_from_batch(
-                    all_embeddings, tag_idx, n_query)
+                query_idxs = torch.randperm(len(all_query_idxs))[:n_query].to(
+                    all_query_embed.device)
+                queries = all_query_embed[query_idxs, :]
+                query_lbls = all_query_lbls[query_idxs]
+
                 distance_to_supports_per_cls: List[FloatTensorT['NQuery']] = []
                 # TODO can probably do this in a batched way
-                for cls in range(support.shape[0]):
+                for cls in range(supports.shape[0]):
                     distance_to_supports_per_cls.append(
                         torch.linalg.norm(
-                            queries - support[cls, :], dim=-1, ord=2))
+                            queries - supports[cls, :], dim=-1, ord=2))
                 distance_to_supports_per_cls: FloatTensorT['NQuery,NClasses'] = \
                     FloatTensorT(torch.stack(
                         distance_to_supports_per_cls, dim=-1))
@@ -193,7 +254,7 @@ def val_model(
                     -1 * distance_to_supports_per_cls, dim=-1).argmax(-1)
                 accuracy = (predictions == query_lbls).float().mean()
                 accuracies.append(accuracy.item())
-            print(f'Val Accuracy: {np.mean(accuracies)}')
+            print(f'Val Accuracy: {accuracies[-iter_per_tags:]}')
     log_utils.exp_tracker.add_scalars(Metrics.VAL_ACC, accuracies,
                                       track_mean=True)
     if started_training:
@@ -215,7 +276,21 @@ class TaggingRoutine(BaseProtocol):
               model_edge: vc.ModelTransitionEdge,
               batch_size=8, device=None, distributed: bool = False,
               turn_off_shuffle=False,
-              val_ds: BaseDataset = None, n_epochs=1) -> vc.ModelNode:
+              val_ds: BaseDataset = None, n_epochs=1,
+              scheduler: Optional[
+                  torch.optim.lr_scheduler.LambdaLR] = None, ) -> vc.ModelNode:
+        """
+        :param model_node:
+        :param ds:
+        :param model_edge:
+        :param batch_size:
+        :param device:
+        :param distributed:
+        :param turn_off_shuffle:
+        :param val_ds: If not set, will use ds to generate validation data, should set when you want non default parameters passed to the val_ds
+        :param n_epochs:
+        :return:
+        """
         # from mgz.ds.sentence_datasets.aus_legal_case_reports import TagGroupedSampler
         model_node.model.train()
         if model_node.mean_metrics is None:
@@ -243,7 +318,7 @@ class TaggingRoutine(BaseProtocol):
                 model_node,
                 data_loader=train_dl,
                 val_data_loader=val_dl,
-                model_edge=model_edge
+                model_edge=model_edge,
             )
         return model_node
 

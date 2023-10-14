@@ -15,6 +15,7 @@ from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.typing import *
 
+
 class TrainState:
     """Track number of steps, examples, and tokens processed"""
 
@@ -136,7 +137,7 @@ class BaseProtocol(object):
     def train(self, model_node: vc.ModelNode, ds: BaseDataset,
               model_edge: vc.ModelTransitionEdge,
               batch_size=8, device=None, distributed: bool = False,
-              turn_off_shuffle=False) -> vc.ModelNode:
+              turn_off_shuffle=False,) -> vc.ModelNode:
         pass
 
     def evaluate(self):

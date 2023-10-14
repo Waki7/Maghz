@@ -57,6 +57,7 @@ class Sent2TagMetaTaskBatch:
         task_sizes: List[int] = [pos_src.shape[0] + neg_src.shape[0] for
                                  pos_src, neg_src
                                  in zip(per_tag_pos_srcs, per_tag_neg_srcs)]
+        self.task_sizes = task_sizes
 
         self.per_tag_src_ids: List[LongTensorT['TaskSize,SrcSeqLen']] = [
             LongTensorT(torch.cat([pos_ids, neg_ids], dim=0))
@@ -85,41 +86,90 @@ class Sent2TagMetaTaskBatch:
         self.tgt_tag_masks = [(tgt != pad_idx).long().to(tgt.device) for tgt in
                               self.tgt_tag_ids]
 
+    def pick_supports(self, tag_idx, pos_shot, neg_shot):
+        all_idx = list(range(self.task_sizes[tag_idx]))
+        random.shuffle(all_idx)
+
+        pos_support_idxs: List[int] = []
+        neg_support_idxs: List[int] = []
+        query_idxs: List[int] = []
+
+        for i in all_idx:
+            if len(pos_support_idxs) < pos_shot and \
+                    self.per_tag_src_labels[tag_idx][i] == 1:
+                pos_support_idxs.append(i)
+            elif len(neg_support_idxs) < neg_shot and \
+                    self.per_tag_src_labels[tag_idx][i] == 0:
+                neg_support_idxs.append(i)
+            else:
+                query_idxs.append(i)
+        query_lbls: LongTensorT['NQuery'] = self.per_tag_src_labels[tag_idx][
+            query_idxs]
+        return pos_support_idxs, neg_support_idxs, query_idxs, query_lbls
+
     def sample_task_from_batch(self, embedding: FloatTensorT[
         'TaskSize,EmbedLen'], tag_idx: int,
                                query_batch_size: int) -> \
             Tuple[FloatTensorT['NQuery,EmbedLen'], FloatTensorT[
                 'NClasses,EmbedLen'], LongTensorT['NQuery']]:
         total_supports = self.per_tag_src_ids[tag_idx].shape[0]
-        assert query_batch_size <  total_supports # TODO FIX N_SHOT VS QUERY
+        if query_batch_size > total_supports - 2:
+            logging.warning(
+                'Query batch size %s is smaller than total task size'.format(
+                    query_batch_size))
+            query_batch_size = total_supports - 2
         assert self.per_tag_src_ids[tag_idx].shape[0] == embedding.shape[
             0], 'Embedding and src_ids for tag must have same batch size, ' \
                 'src_id_shape vs embedding_shape: {} vs {}'.format(
             self.per_tag_src_ids[tag_idx].shape, embedding.shape)
 
+        n_supports = total_supports - query_batch_size
         all_idx = list(range(embedding.shape[0]))
         random.shuffle(all_idx)
 
-        query_samples = all_idx[:query_batch_size]
-        pos_support_idxs = [i for i in all_idx if
-                            self.per_tag_src_labels[tag_idx][i] == 1]
-        neg_support_idxs = [i for i in all_idx if
-                            self.per_tag_src_labels[tag_idx][i] == 0]
-
-        queries: FloatTensorT['NQuery,EmbedLen'] = embedding[query_samples, :]
+        pos_support_idxs: List[int] = []
+        neg_support_idxs: List[int] = []
+        query_idxs: List[int] = []
+        for i in all_idx:
+            if len(pos_support_idxs) < (n_supports // 2) and \
+                    self.per_tag_src_labels[tag_idx][i] == 1:
+                pos_support_idxs.append(i)
+            elif len(neg_support_idxs) < (n_supports // 2) and \
+                    self.per_tag_src_labels[tag_idx][i] == 0:
+                neg_support_idxs.append(i)
+            else:
+                query_idxs.append(i)
+        queries: FloatTensorT['NQuery,EmbedLen'] = embedding[query_idxs, :]
         pos_supports: FloatTensorT['NSupport,EmbedLen'] = \
             embedding[pos_support_idxs, :]
         neg_supports: FloatTensorT['NSupport,EmbedLen'] = \
             embedding[neg_support_idxs, :]
 
         query_lbls: LongTensorT['NQuery'] = self.per_tag_src_labels[tag_idx][
-            query_samples]
+            query_idxs]
 
         # neg first since it's 0 and pos is 1
         support: FloatTensorT['NClasses,EmbedLen'] = FloatTensorT(torch.stack(
             [neg_supports.detach().mean(0), pos_supports.detach().mean(0)],
             dim=0))
-        return queries, support, query_lbls
+        #
+        # queries: FloatTensorT['NQuery,EmbedLen'] = embedding[query_idxs, :]
+        # query_lbls: LongTensorT['NQuery'] = self.per_tag_src_labels[tag_idx][
+        #     query_idxs]
+        #
+        # with torch.no_grad():  # Not 100% sure this makes a difference
+        #     pos_supports: FloatTensorT['NSupport,EmbedLen'] = \
+        #         embedding[pos_support_idxs, :]
+        #     neg_supports: FloatTensorT['NSupport,EmbedLen'] = \
+        #         embedding[neg_support_idxs, :]
+        #
+        #     # neg first since it's 0 and pos is 1
+        #     support: FloatTensorT['NClasses,EmbedLen'] = FloatTensorT(
+        #         torch.stack(
+        #             [neg_supports.detach().mean(0),
+        #              pos_supports.detach().mean(0)],
+        #             dim=0)).detach()
+        return queries, support.detach(), query_lbls
 
     @staticmethod
     def collate_batch(
@@ -159,7 +209,6 @@ class Sent2TagMetaTaskBatch:
                         src_vocab_pipeline((src_tokenizer_pipeline(src_pos))),
                         dtype=dtype, device=device), eos_id], dim=0)
                 src_pos_list.append(
-                    # todo? overwrites values < 0 of padding - len
                     pad(processed_src_pos,
                         pad=(0, max_src_len - len(processed_src_pos)),
                         value=pad_id))
@@ -170,7 +219,6 @@ class Sent2TagMetaTaskBatch:
                         src_vocab_pipeline((src_tokenizer_pipeline(src_neg))),
                         dtype=dtype, device=device), eos_id], dim=0)
                 src_neg_list.append(
-                    # todo? overwrites values < 0 of padding - len
                     pad(processed_src_neg,
                         pad=(0, max_src_len - len(processed_src_neg)),
                         value=pad_id))
@@ -180,7 +228,6 @@ class Sent2TagMetaTaskBatch:
                         tgt_vocab_pipeline(
                             (tgt_tokenizer_pipeline(tag))),
                         dtype=dtype, device=device), eos_id], dim=0))
-
             per_tag_pos_srcs.append(
                 LongTensorT(torch.stack(src_pos_list)))
             per_tag_neg_srcs.append(
@@ -348,3 +395,13 @@ class SentenceDataset(BaseDataset):
     def gen_testing_data(self):
         assert self.data_state == DataState.NOT_LOADED
         return copy.deepcopy(self).load_testing_data()
+
+    def pad_idx(self) -> int:
+        return self.tokenizer_src.pad_token_id
+
+    def src_vocab_len(self) -> int:
+        return len(self.vocab_src)
+
+    def tgt_vocab_len(self) -> int:
+        return len(self.vocab_tgt)
+

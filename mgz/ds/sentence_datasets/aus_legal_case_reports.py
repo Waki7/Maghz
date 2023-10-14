@@ -288,23 +288,26 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
         # the future I think we want to handle that differently
         pos_tag = random.sample(batch[0][1], 1)[0]
 
+        # n_shot = random.choice((self.n_shot, self.n_shot + 1))
+        n_shot = self.n_shot
+
         # catch when we can't find more pos/neg examples
-        timeout = 2 * self.n_shot
+        timeout = 2 * n_shot
         n_contrast_sample_attempts = 0
 
         # Based on the batch, we want to sample additional catchphrases to
         # create a meta learning task out of the batch
-        while (len(positive_examples) < self.n_shot or len(
-                negative_examples) < self.n_shot) and \
+        while (len(positive_examples) < n_shot or len(
+                negative_examples) < n_shot) and \
                 n_contrast_sample_attempts < timeout:
-            if len(positive_examples) < self.n_shot:
+            if len(positive_examples) < n_shot:
                 pos_sample_idxs: List[int] = self.tag_to_sample_idx_map[
                     pos_tag]
 
-                if len(pos_sample_idxs) < self.n_shot:
+                if len(pos_sample_idxs) < n_shot:
                     logging.info(
                         'Not enough samples with tag \'%s\' and training shot of %s, only %s present' % (
-                            pos_tag, self.n_shot, len(pos_sample_idxs)))
+                            pos_tag, n_shot, len(pos_sample_idxs)))
                     if len(pos_sample_idxs) < 2:
                         # We need at least one support and one query example
                         # TODO fix so we catch this earlier
@@ -315,7 +318,7 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
 
             # TODO: experiment with pulling negative samples that have very
             #  different embeddings
-            if len(negative_examples) < self.n_shot:
+            if len(negative_examples) < n_shot:
                 neg_sample_idx = random.randint(0, len(self.data) - 1)
                 neg_tags = self.data[neg_sample_idx][
                     SampleType.CATCHPHRASES]
@@ -329,7 +332,9 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
 
         neg_srcs: List[SrcStringT] = [self.data[i][SampleType.INPUT_TEXT]
                                       for i in negative_examples]
-
+        # TODO fix so we catch this earlier
+        if len(neg_srcs) < 2 or len(pos_batch) < 2:
+            return None
         tag_task: Dict[
             TgtStringT, Tuple[List[SrcStringT], List[SrcStringT]]] = {
             pos_tag: (pos_batch, neg_srcs)
@@ -613,7 +618,7 @@ def inspect_src_test():
     from transformers import BartTokenizer
     tokenizer = BartTokenizer.from_pretrained("facebook/bart-large")
     ds = AusCaseReports(tokenizer=tokenizer, max_src_len=17000, max_tgt_len=256,
-                                   training_ratio=0.1).load_training_data()
+                        training_ratio=0.1).load_training_data()
 
     def print_n_docs(n):
         for i in range(n):

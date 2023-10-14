@@ -1,19 +1,20 @@
 from __future__ import annotations
 
+import email
 import os
+import random
 import re
 from functools import partial
 from pathlib import Path
 
 import torch.utils.data
-from bs4 import BeautifulSoup, ResultSet
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
 
 import spaces as sp
 from mgz.ds.base_dataset import BaseDataset, DataState
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
-    Sent2SentBatch, SampleType
+    Sent2SentBatch, SampleType, Sent2TagMetaTaskBatch
 from mgz.typing import *
 
 DATASET_DIR = os.path.join(
@@ -21,40 +22,40 @@ DATASET_DIR = os.path.join(
     'datasets/enron_with_categories/').replace("\\", "/")
 CATEGORIES = {
     1: {
-        1: "Company Business, Strategy, etc.",
+        1: "Company Business or strategy",
         2: "Purely Personal",
         3: "Personal but in professional context",
         4: "Logistic Arrangements",
         5: "Employment arrangements",
-        6: "Document editing/checking (collaboration)",
-        7: "Empty message (due to missing attachment)",
+        6: "Document editing or checking collaboration",
+        7: "missing attachment",
         8: "Empty message",
     },
     2: {
         1: "Includes new text in addition to forwarded material",
         2: "Forwarded emails including replies",
-        3: "Business letters / documents",
+        3: "Business letters or documents",
         4: "News articles",
-        5: "Government / academic reports",
-        6: "Government actions (such as results of a hearing, etc)",
+        5: "Government or academic reports",
+        6: "Government actions",
         7: "Press releases",
-        8: "Legal documents (complaints, lawsuits, advice)",
+        8: "Legal documents",
         9: "Pointers to urls",
         10: "Newsletters",
-        11: "Jokes, humor (related to business)",
-        12: "Jokes, humor (unrelated to business)",
-        13: "Attachment(s) (assumed missing)",
+        11: "Jokes, humor related to business",
+        12: "Jokes, humor unrelated to business",
+        13: "Attachments",
     },
     3: {
-        1: "regulations and regulators (includes price caps)",
-        2: "internal projects -- progress and strategy",
-        3: "company image -- current",
-        4: "company image -- changing / influencing",
-        5: "political influence / contributions / contacts",
-        6: "california energy crisis / california politics",
-        7: "internal company policy",
-        8: "internal company operations",
-        9: "alliances / partnerships",
+        1: "regulations and regulators",
+        2: "internal projects",
+        3: "current company image",
+        4: "changing company image",
+        5: "political influence or contributions or contacts",
+        6: "california energy crisis or politics",
+        7: "company policy",
+        8: "company operations",
+        9: "alliances or partnerships",
         10: "legal advice",
         11: "talking points",
         12: "meeting minutes",
@@ -62,24 +63,24 @@ CATEGORIES = {
     },
     4: {
         1: "jubilation",
-        2: "hope / anticipation",
+        2: "hope or anticipation",
         3: "humor",
         4: "camaraderie",
         5: "admiration",
         6: "gratitude",
-        7: "friendship / affection",
-        8: "sympathy / support",
+        7: "friendship or affection",
+        8: "sympathy or support",
         9: "sarcasm",
-        10: "secrecy / confidentiality",
-        11: "worry / anxiety",
+        10: "secrecy or confidentiality",
+        11: "worry or anxiety",
         12: "concern",
-        13: "competitiveness / aggressiveness",
-        14: "triumph / gloating",
+        13: "competitiveness or aggressiveness",
+        14: "triumph or gloating",
         15: "pride",
-        16: "anger / agitation",
-        17: "sadness / despair",
+        16: "anger or agitation",
+        17: "sadness or despair",
         18: "shame",
-        19: "dislike / scorn",
+        19: "dislike or scorn",
     },
 }
 
@@ -140,11 +141,23 @@ class EnronEmails(SentenceDataset):
         assert self.loaded, "Dataset not loaded"
         return partial(Sent2SentBatch.default_collate_fn, self, device)
 
-    def _pre_load_set_state_data_range(self, train: bool,
-                                       val: bool,
-                                       test: bool) -> Tuple[
+    def _pre_load_paths_data_range(self, train: bool,
+                                   val: bool,
+                                   test: bool) -> Tuple[
         List[FilePath], List[FilePath]]:
-        n_files = len(os.listdir(os.path.join(DATASET_DIR, 'fulltext')))
+        email_file_paths: List[FilePath] = []
+        label_file_paths: List[FilePath] = []
+        directories = [os.path.join(DATASET_DIR, str(i)) for i in range(1, 9)]
+        for dir in directories:
+            for file in os.listdir(dir):
+                if file.endswith('.txt'):
+                    email_file_paths.append(os.path.join(dir, file))
+                if file.endswith('.cats'):
+                    label_file_paths.append(os.path.join(dir, file))
+        assert len(email_file_paths) == len(
+            label_file_paths), 'expect lengths to be the same instead they are {} vs {}'.format(
+            len(email_file_paths), len(label_file_paths))
+        n_files = len(email_file_paths)
         n_train = (int)(n_files * self.training_ratio)
         n_val = (int)(n_files * self.validation_ratio)
         n_test = (int)(n_files * self.test_ratio)
@@ -160,93 +173,36 @@ class EnronEmails(SentenceDataset):
             self.data_state = DataState.TEST
         if sample_range is None:
             raise ValueError("No dataset split selected")
-        return sample_range
+        return email_file_paths[sample_range[0]: sample_range[-1]], \
+            label_file_paths[sample_range[0]: sample_range[-1]]
 
     @overrides(BaseDataset)
     def _load(self, train: bool = False, val: bool = False, test: bool = False):
-
+        logging.info('Reading data from: ' + DATASET_DIR)
         email_file_paths, label_file_paths = self._pre_load_paths_data_range(
             train, val, test)
-        logging.info('Loading data from: ' + DATASET_DIR)
-        email_file_paths: List[FilePath] = []
-        label_file_paths: List[FilePath] = []
-        directories = [os.path.join(DATASET_DIR, str(i)) for i in range(1, 9)]
-        for dir in directories:
-            for file in os.listdir(dir):
-                if file.endswith('.txt'):
-                    email_file_paths.append(os.path.join(dir, file))
-                if file.endswith('.cats'):
-                    label_file_paths.append(os.path.join(dir, file))
-        assert len(email_file_paths) == len(
-            label_file_paths), 'expect lengths to be the same instead they are {} vs {}'.format(
-            len(email_file_paths), len(label_file_paths))
+
         for email_path, label_path in tqdm(
                 zip(email_file_paths, label_file_paths)):
-            print(label_path)
             with open(label_path) as f:
                 # label shows up as 'int,int,int\n'
                 labels: List[str] = f.readlines()
                 categories: List[Tuple[int, ...]] = [
-                    Tuple(map(int, re.findall(r'\d+', label))) for
+                    tuple(map(int, re.findall(r'\d+', label))) for
                     label in labels]
                 tags_for_email: List[str] = \
                     [CATEGORIES[c[0]][c[1]] for c in categories]
 
-            print(categories)
-
-            def get_text_from_email(msg):
-                '''To get the content from email objects'''
-                parts = []
-                for part in msg.walk():
-                    if part.get_content_type() == 'text/plain':
-                        parts.append(part.get_payload())
-                return ''.join(parts)
-
-            def split_email_addresses(line):
-                '''To separate multiple email addresses'''
-                if line:
-                    addrs = line.split(',')
-                    addrs = frozenset(map(lambda x: x.strip(), addrs))
-                else:
-                    addrs = None
-                return addrs
+            # Read txt file formatted as e-mail with library email
+            emails: email.message.Message = email.message_from_file(
+                open(email_path))
 
             data_entry: Dict[SampleType, Union[str, List[str]]] = \
-                {SampleType.KEY: None,
-                 SampleType.NAME: None,
-                 SampleType.CATCHPHRASES: [],
-                 SampleType.INPUT_TEXT: []}
-            try:
-                soup = BeautifulSoup(fp, 'html.parser')
-            except UnicodeDecodeError as e:
-                logging.info(
-                    "Error parsing file non utf-8 character found: " + file)
-                continue
-            case_name_xml: ResultSet = soup.find('name')
-            catchphrases_xml: List[ResultSet] = soup.find_all(
-                'catchphrase')
-            sentences_xml: List[ResultSet] = soup.find_all('sentence')
-
-            data_entry[SampleType.KEY] = (file.split(".")[0])
-            data_entry[SampleType.NAME] = (case_name_xml.text)
-
-            # catchphrases are used as gold standard for summarization
-            catchphrases: List[str] = [entry.text for entry in
-                                       catchphrases_xml]
-            data_entry[SampleType.CATCHPHRASES] = catchphrases
-
-            # sentences are used as input text
-            input_text: List[str] = [entry.text for entry in
-                                     sentences_xml]
-            data_entry[SampleType.INPUT_TEXT] = ' '.join(input_text)
-
-            # check if citation_summ and citation_class files exist,
-            # we can add some additional fields here
-            if os.path.exists(os.path.join(citation_sum_dir, file)):
-                pass
-            if os.path.exists(os.path.join(citation_cls_dir, file)):
-                pass
-
+                {SampleType.KEY: emails.get('Message-ID'),
+                 SampleType.NAME: emails.get('Subject'),
+                 SampleType.CATCHPHRASES: tags_for_email,
+                 SampleType.INPUT_TEXT: '\n'.join([emails.get('Subject'),
+                                                   emails.get_payload()])}
             self.data.append(data_entry)
         self.loaded = True
 
@@ -262,23 +218,128 @@ class EnronEmails(SentenceDataset):
 
 class EnronEmailsTagging(EnronEmails):
     def __init__(self, tokenizer: PreTrainedTokenizer,
-                 max_src_len: int = 1024, training_ratio=0.7):
-        assert max_src_len >= 1024
-        super(EnronEmailsTagging, self).__init__(tokenizer, max_src_len,
-                                                 256,
-                                                 training_ratio=training_ratio)
+                 max_src_len: SrcSeqLen, n_shot: int = 5,
+                 n_episodes: int = 100,
+                 training_ratio: float = 0.75):
+        all_tags = []
+        [all_tags.extend(subcategories.values()) for subcategories in
+         CATEGORIES.values()]
+        max_tgt_len = max([len(tokenizer.tokenize(tag)) for tag in all_tags])
+        super(EnronEmails, self).__init__(tokenizer=tokenizer,
+                                          max_src_len=max_src_len,
+                                          max_tgt_len=max_tgt_len)
+        # --- Initialization flags ---
+        self.training_ratio = training_ratio
+        self.validation_ratio = .25
+        self.test_ratio = .0
 
+        self.tag_to_sample_idx_map: Dict[str, List[int]] = {}
         self.sample_map: Dict[int, Tuple[int, int]] = {}
+
+        # Meta Learning Sampling Parameters
+        self.n_shot = n_shot  # Will be roughly n_shot per class, not exact
+        self.n_episodes = n_episodes
 
     def __len__(self):
         'Denotes the total number of samples'
         assert self.loaded, "Dataset not loaded"
-        return len(self.sample_map)
+        return len(self.data) if self.n_episodes is None else min(
+            self.n_episodes, len(self.data))
+
+    @property
+    @overrides(SentenceDataset)
+    def target_space(self) -> sp.Tagging:
+        return sp.BinaryTagging()
+
+    def _collate_fn(self, device: Union[int, torch.device],
+                    batch: List[Tuple[SrcStringT, List[TgtStringT]]]):
+        assert len(batch) == 1, "Batch size must be 1 for meta-learning for now"
+        # Examples that do and don't have the tag respectively
+        positive_examples: set[int] = set()
+        negative_examples: set[int] = set()
+
+        # For now we are going to randomly sample a tag and use that, but in
+        # the future I think we want to handle that differently
+        pos_tag = random.sample(batch[0][1], 1)[0]
+        # n_shot = random.choice((self.n_shot, self.n_shot + 1))
+        n_shot = random.choice((self.n_shot, self.n_shot ))
+        # catch when we can't find more pos/neg examples
+        timeout = 2 * n_shot
+        n_contrast_sample_attempts = 0
+
+        pos_sample_idxs: List[int] = self.tag_to_sample_idx_map[
+            pos_tag]
+        if len(pos_sample_idxs) < n_shot:
+            logging.info(
+                'Not enough samples with tag \'%s\' and training shot of %s, only %s present' % (
+                    pos_tag, n_shot, len(pos_sample_idxs)))
+            if len(pos_sample_idxs) < 2:
+                # We need at least one support and one query example
+                # TODO fix so we catch this earlier
+                return None
+        random.shuffle(pos_sample_idxs)
+        positive_examples = set(pos_sample_idxs[:n_shot])
+
+        # Based on the batch, we want to sample additional catchphrases to
+        # create a meta learning task out of the batch
+        while (len(negative_examples) < n_shot) and \
+                n_contrast_sample_attempts < timeout:
+            # TODO: experiment with pulling negative samples that have very
+            #  different embeddings
+            if len(negative_examples) < n_shot:
+                neg_sample_idx = random.randint(0, len(self.data) - 1)
+                neg_tags = self.data[neg_sample_idx][
+                    SampleType.CATCHPHRASES]
+                if pos_tag not in neg_tags:
+                    negative_examples.add(neg_sample_idx)
+            n_contrast_sample_attempts += 1
+        assert self.data_state != DataState.NOT_LOADED, "Dataset not loaded"
+        pos_batch: List[SrcStringT] = [self.data[i][SampleType.INPUT_TEXT] for i
+                                       in positive_examples]
+
+        neg_srcs: List[SrcStringT] = [self.data[i][SampleType.INPUT_TEXT]
+                                      for i in negative_examples]
+        # TODO fix so we catch this earlier
+        if len(neg_srcs) < 2 or len(pos_batch) < 2:
+            return None
+        tag_task: Dict[
+            TgtStringT, Tuple[List[SrcStringT], List[SrcStringT]]] = {
+            pos_tag: (pos_batch, neg_srcs)
+        }
+
+        def tokenize_src(src_text: SrcTextT) -> List[str]:
+            return self.tokenizer_tgt.tokenize(src_text)
+
+        def tokenize_tgt(text: TgtTextT) -> List[str]:
+            return self.tokenizer_tgt.tokenize(text)
+
+        def vocab_src(tokens: List[str]) -> List[int]:
+            return [self.vocab_src[token] for token in tokens]
+
+        def vocab_tgt(tokens: List[str]) -> List[int]:
+            return [self.vocab_tgt[token] for token in tokens]
+
+        return Sent2TagMetaTaskBatch.collate_batch(
+            sampled_tag_task=tag_task,
+            src_tokenizer_pipeline=tokenize_src,
+            tgt_tokenizer_pipeline=tokenize_tgt,
+            src_vocab_pipeline=vocab_src,
+            tgt_vocab_pipeline=vocab_tgt,
+            device=device,
+            pad_id=self.tokenizer_src.pad_token_id,
+            bos_id=self.tokenizer_src.bos_token_id,
+            eos_id=self.tokenizer_src.eos_token_id,
+            max_src_len=self.max_src_len,
+            max_tgt_len=self.max_tgt_len
+        )
+
+    def get_collate_fn(self, device: Union[int, torch.device]):
+        assert self.data_state != DataState.NOT_LOADED, "Dataset not loaded"
+        return partial(self._collate_fn, device)
 
     def _load(self, train: bool = False, val: bool = False, test: bool = False):
-        super()._load(train, val, test)
+        super()._load(train, val, test)  # Only loads into self.data
         self.loaded = False
-
         # Create a map from sample index to (case index, catchphrase index),
         # this is used if you would like to treat every catchphrase as a
         # separate sample
@@ -288,24 +349,18 @@ class EnronEmailsTagging(EnronEmails):
             for j in range(len(catchphrases)):
                 self.sample_map[total_count] = (i, j)
                 total_count += 1
-
-        # Drop sample types from data that aren't needed
+        # Map from tag to sample idx, to know which samples each tag apply to
         for i in range(len(self.data)):
-            catchphrases: List[str] = self.data[i][SampleType.CATCHPHRASES]
-            if len(catchphrases) == 0:
-                continue
-            self.data[i] = {
-                # Input text is joined because we want all sentences, it's a
-                # very long text encoding task
-                SampleType.INPUT_TEXT: self.data[i][SampleType.INPUT_TEXT],
-                SampleType.CATCHPHRASES: catchphrases}
+            for catchphrase in self.data[i][SampleType.CATCHPHRASES]:
+                if catchphrase not in self.tag_to_sample_idx_map:
+                    self.tag_to_sample_idx_map[catchphrase] = []
+                self.tag_to_sample_idx_map[catchphrase].append(i)
         self.loaded = True
 
     @overrides(EnronEmails)
-    def __getitem__(self, idx) -> (SourceListT, SummaryT):
-        sample_idx, catchphrase_idx = self.sample_map[idx]
-        input_text = self.data[sample_idx][SampleType.INPUT_TEXT]
-        catchphrase = self.data[catchphrase_idx][SampleType.CATCHPHRASES]
+    def __getitem__(self, idx) -> (SrcTextT, TgtTextT):
+        input_text = self.data[idx][SampleType.INPUT_TEXT]
+        catchphrase = self.data[idx][SampleType.CATCHPHRASES]
         return input_text, catchphrase
 
 
@@ -319,17 +374,30 @@ def inspect_catchphrase_diffs():
 
 
 def inspect_src_test():
-    from transformers import BartTokenizer
-    tokenizer = BartTokenizer.from_pretrained("facebook/bart-large")
-    ds = EnronEmailsTagging(tokenizer=tokenizer, max_src_len=17000,
-                            training_ratio=0.1).load_training_data()
-
-    def print_n_docs(n):
-        for i in range(n):
-            print('Data Sample {}:'.format(i))
-            print(ds.data[n][SampleType.NAME] + '\n')
-
-    print_n_docs(10)
+    from transformers import LEDTokenizer
+    tokenizer = LEDTokenizer.from_pretrained(
+        "allenai/primera-multi_lexsum-source-long")
+    ds = EnronEmailsTagging(tokenizer,
+                            max_src_len=2000,
+                            n_episodes=1000,
+                            task_size_per_cls=2).load_training_data()
+    max_lens = []
+    max_emails = []
+    i: Tuple[str, str]
+    for i in ds:
+        lent = len(tokenizer.tokenize(i[0]))
+        email = i[0]
+        if len(max_emails) < 10:
+            max_emails.append(email)
+            max_lens.append(lent)
+        else:
+            lowest_high_val = np.argmin(max_lens)
+            if lent > max_lens[lowest_high_val]:
+                max_lens.pop(lowest_high_val)
+                max_emails.pop(lowest_high_val)
+                max_lens.append(lent)
+                max_emails.append(email)
+    print(max_lens)
 
 
 def main():

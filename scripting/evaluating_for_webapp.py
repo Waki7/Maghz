@@ -28,7 +28,8 @@ else:
 
 TOKENIZERS: Dict[str, PreTrainedTokenizer] = {}
 MODELS: Dict[str, BaseTransformer] = {}
-MODEL_NAME = "/Users/ceyer/Documents/Projects/Maghz/index_dir/main/allenai/led-base-16384-multi_lexsum-source-long/train_step_18215_data_data_cls-AusCaseReportsToTagGrouped-_valacc_None/"
+MODEL_NAME = "allenai/led-base-16384-multi_lexsum-source-long/train_step_18215_data_data_cls-AusCaseReportsToTagGrouped-_valacc_None"
+MODEL_NAME = "allenai/primera-multi_lexsum-source-long/epoch4"
 
 
 def load_models():
@@ -97,11 +98,11 @@ def importing_sample_data() -> List[Dict[str, Union[int, str, FloatTensorT]]]:
     from transformers import BartTokenizer
     import transformers as hug
     cfg: hug.LEDConfig = MODELS[MODEL_NAME].config
-    tokenizer = BartTokenizer.from_pretrained("facebook/bart-large")
-    # tokenizer = TOKENIZERS[MODEL_NAME].config
+    # tokenizer = BartTokenizer.from_pretrained("facebook/bart-large")
+    tokenizer = TOKENIZERS[MODEL_NAME]
 
     ds = AusCaseReportsToTagGrouped(tokenizer,
-                                    max_src_len=cfg.max_encoder_position_embeddings,
+                                    max_src_len=1024,
                                     n_episodes=1000,
                                     n_shot=5).load_validation_data()
     ds_samples = ds.data
@@ -162,7 +163,7 @@ def main():
     correct = 0
     total = 0
     sample_data = importing_sample_data()
-    sampling = 10
+    sampling = 100
     for _ in tqdm(range(0, sampling)):
         # select random positive
         rand_pos = random.choice(sample_data)
@@ -188,7 +189,7 @@ def main():
                 total += 1
                 pred = predict_tag(embedding, pos_center, neg_center)
                 correct += int(pred == (random_tag in sample['tags']))
-
+    print(f"Accuracy: {correct / total}")
     load_models()
 
 

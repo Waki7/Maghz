@@ -1,26 +1,15 @@
 from __future__ import annotations
 
-import multiprocessing as mp
 import os
 
 os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
-import time
 
-import GPUtil
 import altair as alt
 import pandas as pd
-import torch.distributed as dist
 import torch.nn as nn
-from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim.lr_scheduler import LambdaLR
-from torch.utils.data import DataLoader
-from torch.utils.data.distributed import DistributedSampler
 
-from mgz.ds.sentence_datasets.multi_lex_sum import MultiLexSum
-from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch, \
-    SentenceDataset
-from mgz.models.nlp.bert_basic import subsequent_mask, EncoderDecoder, \
-    PredictorHead, make_model
+from mgz.models.nlp.bert_basic import PredictorHead
 from mgz.typing import *
 
 
@@ -116,7 +105,7 @@ class LabelSmoothing(nn.Module):
         assert x.size(1) == self.n_cls
         assert x.size(0) <= target.size(0), f'{x.size(0)} <= {target.size(0)}'
         true_dist: FloatTensorT['B*SrcSeqLen,OutNClasses'] = torch.ones_like(x)
-        true_dist *= (self.smoothing / (self.n_cls - 2))
+        true_dist *= (self.smoothing / (self.n_cls - 2 + 1e-4))
         true_dist.scatter_(1, target.data.unsqueeze(1).long(), self.confidence)
         true_dist[:, self.padding_idx] = 0
         mask = torch.nonzero(target.data == self.padding_idx)

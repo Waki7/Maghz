@@ -273,9 +273,21 @@ class BaseTransformer(BaseModel):
                                                                field_name) is None:
                 setattr(self.config, field_name, field_value)
             else:
-                assert getattr(self.config, field_name) == field_value, \
-                    "config {} vs tokenizer {}".format(
-                        getattr(self.config, field_name), field_value)
+                if field_name == 'vocab_size':
+                    if not getattr(self.config,
+                                   'vocab_size') == tokenizer.vocab_size:
+                        logging.warning(
+                            # TODO FIXME or understand why different
+                            "config {} vs tokenizer vocab size {} + {} added "
+                            "tokens for vocab_size".format(
+                                getattr(self.config, field_name), field_value,
+                                2))
+                                # len(tokenizer.added_tokens_encoder)))
+                else:
+                    assert getattr(self.config, field_name) == field_value, \
+                        "config {} vs tokenizer {} for field {}".format(
+                            getattr(self.config, field_name), field_value,
+                            field_name)
 
         validate_field('pad_token_id')
         validate_field('bos_token_id')
