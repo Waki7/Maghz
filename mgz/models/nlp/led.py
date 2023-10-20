@@ -1014,6 +1014,7 @@ class LEDDecoderLayer(nn.Module):
 
 
 class LEDPretrainedModel(BaseTransformer, ABC):
+
     @classmethod
     def load_tokenizer(cls, tokenizer_id: str) -> Optional[
         hug.LEDTokenizerFast]:
@@ -1164,7 +1165,6 @@ class LEDEncoder(nn.Module):
 
                 [What are attention masks?](../glossary#attention-mask)
         """
-
         inputs_embeds = self.embed_tokens(src_ids) * self.embed_scale
         embed_pos = self.embed_positions(src_ids)
         embed_pos = embed_pos.to(inputs_embeds.device)
@@ -1340,6 +1340,18 @@ class LEDModel(LEDPretrainedModel):
 
 
 class LEDForConditionalGeneration(LEDPretrainedModel):
+    def get_encoder(self):
+        return self.led.encoder
+
+    def get_max_encoder_positions(self):
+        return self.get_encoder().embed_positions.weight.shape[0]
+
+    def get_decoder(self):
+        return self.led.decoder
+
+    def get_max_decoder_positions(self):
+        return self.get_decoder().embed_positions.weight.shape[0]
+
     @classmethod
     def load_model(cls, path: str) -> Optional[LEDForConditionalGeneration]:
         try:
@@ -1378,12 +1390,6 @@ class LEDForConditionalGeneration(LEDPretrainedModel):
 
         # Initialize weights and apply final processing
         self.apply(self._init_weights)
-
-    def get_encoder(self):
-        return self.led.get_encoder()
-
-    def get_decoder(self):
-        return self.led.get_decoder()
 
     def resize_token_embeddings(self, new_num_tokens: int) -> nn.Embedding:
         new_embeddings = super().resize_token_embeddings(new_num_tokens)
@@ -1468,6 +1474,19 @@ class LEDForConditionalGeneration(LEDPretrainedModel):
 
 
 class LEDForBinaryTagging(LEDPretrainedModel, BinaryTaggerMixin):
+
+    def get_encoder(self):
+        return self.led.encoder
+
+    def get_max_encoder_positions(self):
+        return self.get_encoder().embed_positions.weight.shape[0]
+
+    def get_decoder(self):
+        return self.led.decoder
+
+    def get_max_decoder_positions(self):
+        return self.get_decoder().embed_positions.weight.shape[0]
+
     @classmethod
     def load_model(cls, path: str) -> Optional[LEDForBinaryTagging]:
         try:
@@ -1506,12 +1525,6 @@ class LEDForBinaryTagging(LEDPretrainedModel, BinaryTaggerMixin):
 
         # Initialize weights and apply final processing
         self.apply(self._init_weights)
-
-    def get_encoder(self):
-        return self.led.get_encoder()
-
-    def get_decoder(self):
-        return self.led.get_decoder()
 
     def resize_token_embeddings(self, new_num_tokens: int) -> nn.Embedding:
         new_embeddings = super().resize_token_embeddings(new_num_tokens)

@@ -1,14 +1,11 @@
-from mgz.typing import *
-from mgz.models.base_model import BaseModel
 from mgz.ds.base_dataset import BaseDataset
 import spaces as sp
 from mgz.models.base_model import BaseModel
-from mgz.models.mobile_net import MobileNetV2
 from mgz.version_control.model_index import Indexer
 from mgz.version_control.model_node import ModelNode
 
 
-class Manager():
+class Manager:
     def __init__(self, index: Indexer):
         self.index = index
         self.current_pointer = None

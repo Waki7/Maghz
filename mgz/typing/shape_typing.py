@@ -46,14 +46,15 @@ GermanT = NewType("GermanSentence", str)
 
 CaseSourceT = str  # NewType("LegalDocumentCaseSource", str)
 SourceListT = List[CaseSourceT]
-SrcTextT = str  # NewType("SourceText", str) # tokenized
-TgtTextT = str  # NewType("SourceText", str) # tokenized
 SummaryT = str  # NewType("SummaryOfCase", str)
+
 SentenceT = str
 TokenT = str
+SrcTokenT = TokenT
+TgtTokenT = TokenT
 
-SrcStringT = Union[SourceListT, GermanT, EnglishT]  # untokenized
-TgtStringT = Union[SourceListT, GermanT, EnglishT]  # untokenized
+SrcStringT = str #Union[SourceListT, GermanT, EnglishT]  # untokenized
+TgtStringT = str #Union[SourceListT, GermanT, EnglishT]  # untokenized
 
 Opt = Optional
 

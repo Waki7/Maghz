@@ -123,7 +123,6 @@ class Indexer:
                        load_tokenizer: Callable[[str], hug.PreTrainedTokenizer],
                        init_save: Callable[[str, str], None]) -> ModelNode:
         self.check_state()
-        loaded_successfully = False
         model_dir: DirPath = self.get_or_add_to_root(model_id)
 
         # TODO, cleaner way to distinguish the models that are available to load

@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import random
-from collections import defaultdict
 from functools import partial
 from pathlib import Path
 
@@ -14,11 +12,10 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
 
-import mgz.models.nlp.metrics as metrics
 import spaces as sp
 from mgz.ds.base_dataset import BaseDataset, DataState
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
-    Sent2TagMetaTaskBatch, Sent2SentBatch, SampleType
+    SampleType, MetaLearningMixIn
 from mgz.ds.sentence_datasets.task_creation import \
     tagging_with_semantic_grouping
 from mgz.typing import *
@@ -79,10 +76,6 @@ class AusCaseReports(SentenceDataset):
     def target_space(self) -> sp.Sentence:
         return sp.Sentence(len((self.vocab_tgt)),
                            shape=(self.max_tgt_len,))
-
-    def get_collate_fn(self, device: Union[int, torch.device]):
-        assert self.loaded, "Dataset not loaded"
-        return partial(Sent2SentBatch.default_collate_fn, self, device)
 
     def _pre_load_set_state_data_range(self, train: bool,
                                        val: bool,
@@ -245,13 +238,11 @@ class AusCaseReportsToPhraseTag(AusCaseReports):
         return input_text, catchphrase
 
 
-class AusCaseReportsToTagGrouped(AusCaseReports):
+class AusCaseReportsToTagGrouped(AusCaseReports, MetaLearningMixIn):
     def __init__(self, tokenizer: PreTrainedTokenizer,
-                 max_src_len: int = 1024, n_episodes: Optional[int] = None,
-                 training_ratio=0.7, n_shot=5,
-                 max_words_tag=5):
-        assert max_src_len >= 1024
-
+                 n_episodes: Optional[int], n_queries_per_cls: List[int],
+                 n_supports_per_cls: List[int],
+                 max_src_len: int = 1024, training_ratio=0.7, max_words_tag=5):
         super(AusCaseReportsToTagGrouped, self).__init__(tokenizer,
                                                          max_src_len=max_src_len,
                                                          max_tgt_len=max_words_tag,
@@ -259,12 +250,13 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
         self.cosine_similarity_threshold = 0.94
         self.cosine_threshold_word = 0.88
         self.similar_enough_count_diff = 1
-        self.punctuation_to_remove = r"""!?,.:;?"""
+        self.punctuation_to_remove = r"""!? ,.:;?"""
         self.max_words_tag = max_words_tag
-        self.tag_to_sample_idx_map: Dict[str, List[int]] = {}
+        self._tag_to_sample_idx_map: Dict[str, List[int]] = {}
 
         # Meta Learning Sampling Parameters
-        self.n_shot = n_shot  # Will be roughly n_shot per class, not exact
+        self._n_supports_per_cls = n_queries_per_cls
+        self._n_supports_per_cls = n_supports_per_cls
         self.n_episodes = n_episodes
 
     def __len__(self):
@@ -276,95 +268,6 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
     @overrides(SentenceDataset)
     def target_space(self) -> sp.Tagging:
         return sp.BinaryTagging()
-
-    def _collate_fn(self, device: Union[int, torch.device],
-                    batch: List[Tuple[SrcStringT, List[TgtStringT]]]):
-        assert len(batch) == 1, "Batch size must be 1 for meta-learning for now"
-        # Examples that do and don't have the tag respectively
-        positive_examples: set[int] = set()
-        negative_examples: set[int] = set()
-
-        # For now we are going to randomly sample a tag and use that, but in
-        # the future I think we want to handle that differently
-        pos_tag = random.sample(batch[0][1], 1)[0]
-
-        # n_shot = random.choice((self.n_shot, self.n_shot + 1))
-        n_shot = self.n_shot
-
-        # catch when we can't find more pos/neg examples
-        timeout = 2 * n_shot
-        n_contrast_sample_attempts = 0
-
-        # Based on the batch, we want to sample additional catchphrases to
-        # create a meta learning task out of the batch
-        while (len(positive_examples) < n_shot or len(
-                negative_examples) < n_shot) and \
-                n_contrast_sample_attempts < timeout:
-            if len(positive_examples) < n_shot:
-                pos_sample_idxs: List[int] = self.tag_to_sample_idx_map[
-                    pos_tag]
-
-                if len(pos_sample_idxs) < n_shot:
-                    logging.info(
-                        'Not enough samples with tag \'%s\' and training shot of %s, only %s present' % (
-                            pos_tag, n_shot, len(pos_sample_idxs)))
-                    if len(pos_sample_idxs) < 2:
-                        # We need at least one support and one query example
-                        # TODO fix so we catch this earlier
-                        return None
-
-                pos_sample_idx = random.choice(pos_sample_idxs)
-                positive_examples.add(pos_sample_idx)
-
-            # TODO: experiment with pulling negative samples that have very
-            #  different embeddings
-            if len(negative_examples) < n_shot:
-                neg_sample_idx = random.randint(0, len(self.data) - 1)
-                neg_tags = self.data[neg_sample_idx][
-                    SampleType.CATCHPHRASES]
-                if pos_tag not in neg_tags:
-                    negative_examples.add(neg_sample_idx)
-            n_contrast_sample_attempts += 1
-        assert self.data_state != DataState.NOT_LOADED, "Dataset not loaded"
-
-        pos_batch: List[SrcStringT] = [self.data[i][SampleType.INPUT_TEXT] for i
-                                       in positive_examples]
-
-        neg_srcs: List[SrcStringT] = [self.data[i][SampleType.INPUT_TEXT]
-                                      for i in negative_examples]
-        # TODO fix so we catch this earlier
-        if len(neg_srcs) < 2 or len(pos_batch) < 2:
-            return None
-        tag_task: Dict[
-            TgtStringT, Tuple[List[SrcStringT], List[SrcStringT]]] = {
-            pos_tag: (pos_batch, neg_srcs)
-        }
-
-        def tokenize_src(src_text: SrcTextT) -> List[str]:
-            return self.tokenizer_tgt.tokenize(src_text)
-
-        def tokenize_tgt(text: TgtTextT) -> List[str]:
-            return self.tokenizer_tgt.tokenize(text)
-
-        def vocab_src(tokens: List[str]) -> List[int]:
-            return [self.vocab_src[token] for token in tokens]
-
-        def vocab_tgt(tokens: List[str]) -> List[int]:
-            return [self.vocab_tgt[token] for token in tokens]
-
-        return Sent2TagMetaTaskBatch.collate_batch(
-            sampled_tag_task=tag_task,
-            src_tokenizer_pipeline=tokenize_src,
-            tgt_tokenizer_pipeline=tokenize_tgt,
-            src_vocab_pipeline=vocab_src,
-            tgt_vocab_pipeline=vocab_tgt,
-            device=device,
-            pad_id=self.tokenizer_src.pad_token_id,
-            bos_id=self.tokenizer_src.bos_token_id,
-            eos_id=self.tokenizer_src.eos_token_id,
-            max_src_len=self.max_src_len,
-            max_tgt_len=self.max_tgt_len
-        )
 
     def get_collate_fn(self, device: Union[int, torch.device]):
         assert self.data_state != DataState.NOT_LOADED, "Dataset not loaded"
@@ -424,7 +327,7 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
                 self.data[-1][SampleType(key)] = val
         return True
 
-    def save_to_json(self):
+    def save_tag_grouping_cache(self):
         cache_dir = os.path.join(DATASET_DIR, 'cache')
         if not os.path.exists(cache_dir):
             os.makedirs(cache_dir)
@@ -487,131 +390,17 @@ class AusCaseReportsToTagGrouped(AusCaseReports):
             cache_dir = os.path.join(DATASET_DIR, 'cache')
             if not os.path.exists(cache_dir):
                 os.makedirs(cache_dir)
-            self.save_to_json()
+            self.save_tag_grouping_cache()
 
-        # Map from tag to sample idx, to know which samples each tag apply to
-        for i in range(len(self.data)):
-            for catchphrase in self.data[i][SampleType.CATCHPHRASES]:
-                if catchphrase not in self.tag_to_sample_idx_map:
-                    self.tag_to_sample_idx_map[catchphrase] = []
-                self.tag_to_sample_idx_map[catchphrase].append(i)
+        self._tag_to_sample_idx_map: Dict[
+            str, List[int]] = self.create_tag_to_sample_idx_map()
         self.loaded = True
 
     @overrides(AusCaseReports)
-    def __getitem__(self, idx) -> (SrcTextT, TgtTextT):
+    def __getitem__(self, idx) -> (SrcStringT, TgtStringT):
         input_text = self.data[idx][SampleType.INPUT_TEXT]
         catchphrase = self.data[idx][SampleType.CATCHPHRASES]
         return input_text, catchphrase
-
-
-class PhrasePairDifference:
-    def __init__(self, phrase1: str, phrase2: str,
-                 tokenizer: PreTrainedTokenizer,
-                 word_diff: int = None,
-                 bleu_score: float = None, cosine_similarity: float = None):
-        ''' phrase1 and phrase2 are lists of words, setting word_diff and
-        bleu_score are completely optional, they will be computed if not set'''
-        self.phrase1 = phrase1
-        self.phrase2 = phrase2
-        self.phrase1_tokenized = tokenizer.tokenize(phrase1)
-        self.phrase2_tokenized = tokenizer.tokenize(phrase2)
-        self.word_diff: int = metrics.word_count_diff(self.phrase1_tokenized,
-                                                      self.phrase2_tokenized) if word_diff is None else word_diff
-        self.bleu_score: float = bleu_score
-        self.cosine_similarity: float = cosine_similarity
-
-    def _load_scores(self):
-        if self.bleu_score is None:
-            self.bleu_score = \
-                metrics.bleu_from_tokenized_sentences(self.phrase1_tokenized,
-                                                      self.phrase2_tokenized,
-                                                      max_n=2)
-        if self.cosine_similarity is None:
-            self.cosine_similarity = \
-                metrics.cosine_similarity_from_raw_sentences(self.phrase1,
-                                                             self.phrase2)[0]
-
-    def __getitem__(self, item) -> List[str]:
-        if item == 0:
-            return self.phrase1
-        elif item == 1:
-            return self.phrase2
-        else:
-            raise IndexError("PhrasePairDifference only has two phrases")
-
-    def n_total_tokens(self):
-        return len(self.phrase1_tokenized) + len(self.phrase2_tokenized)
-
-    def print_diff(self):
-        self._load_scores()
-        print('----\n\t',
-              "Phrase: \n\t\t {} ...tokenized as: {}  \n\t differs from: \n\t\t {} ...tokenized as: {} \n\t by "
-              "{} words with a score of {} and cosine similarity of {}".format(
-                  self.phrase1, self.phrase1_tokenized, self.phrase2,
-                  self.phrase2_tokenized, self.word_diff, self.bleu_score,
-                  self.cosine_similarity))
-
-
-def investigate_catchphrase_differences(ds: AusCaseReports,
-                                        tokenizer: PreTrainedTokenizer):
-    # We are arbitrarily looking at the first sample as a reference
-    catchphrases = ds.data[0][SampleType.CATCHPHRASES]
-    total = 0
-    phrase_pair_diff_count: Dict[int, int] = defaultdict(lambda: 0)
-    phrase_pair_differences: Dict[
-        int, List[PhrasePairDifference]] = defaultdict(
-        lambda: [])
-    # --- Go through every other sample and for each sample, get the most
-    # similar catchphrase pair between the reference sample and the sample
-    # being searched over. ---
-    for idx, d in enumerate(ds.data):
-        other_catchphrases = d[SampleType.CATCHPHRASES]
-        if len(other_catchphrases) == 0:
-            continue
-        for phrase in catchphrases:
-            tokenized_phrase = tokenizer.tokenize(phrase)
-            closest_diff = float('inf')
-            phrase_pair_closest: Tuple[str, str] = None
-            for other_catchphrase in other_catchphrases:
-                tokenized_other_catchphrase = tokenizer.tokenize(
-                    other_catchphrase)
-                word_diff = metrics.word_count_diff(tokenized_phrase,
-                                                    tokenized_other_catchphrase)
-                if closest_diff > word_diff:
-                    phrase_pair_closest = (phrase, other_catchphrase)
-                    closest_diff = word_diff
-            total += 1
-            phrase_pair_diff_count[closest_diff] += 1
-            phrase_pair_differences[closest_diff].append(
-                PhrasePairDifference(phrase_pair_closest[0],
-                                     phrase_pair_closest[1],
-                                     tokenizer, closest_diff))
-
-    print(
-        'Analysis of catchphrase differences. We are using just first '
-        'sample\'s catchphrases as reference. We take each of the first '
-        'samples catchphrase and comapre it to every other catchphrase, '
-        'this is how often the exact same catch phrase is used or a small '
-        'deviation, measured as how many words differ.')
-    for diff, count in phrase_pair_diff_count.items():
-        print(
-            'Number of catchphrases with {} word difference: {}'.format(diff,
-                                                                        count))
-        print('multi word phrases that differ by <3 words: ')
-        if diff < 3:
-            for phrase in phrase_pair_differences[diff]:
-                if phrase.n_total_tokens() >= 3:
-                    phrase.print_diff()
-
-
-def inspect_catchphrase_diffs():
-    # please install HuggingFace ds by pip install ds
-    from transformers import BartTokenizer
-    tokenizer = BartTokenizer.from_pretrained("facebook/bart-large")
-
-    ds = AusCaseReportsToTagGrouped(tokenizer=tokenizer,
-                                    training_ratio=1.0).load_training_data()
-    investigate_catchphrase_differences(ds, tokenizer)
 
 
 def inspect_src_test():
@@ -624,6 +413,8 @@ def inspect_src_test():
         for i in range(n):
             print('Data Sample {}:'.format(i))
             print(ds.data[n][SampleType.NAME] + '\n')
+            print(ds.data[n][SampleType.INPUT_TEXT] + '\n')
+            print(ds.data[n][SampleType.CATCHPHRASES] + '\n')
 
     print_n_docs(10)
 

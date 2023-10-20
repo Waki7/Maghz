@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import email
 import os
-import random
 import re
 from functools import partial
 from pathlib import Path
@@ -14,7 +13,7 @@ from transformers import PreTrainedTokenizer
 import spaces as sp
 from mgz.ds.base_dataset import BaseDataset, DataState
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
-    Sent2SentBatch, SampleType, Sent2TagMetaTaskBatch
+    Sent2SentBatch, SampleType, MetaLearningMixIn, Sent2TagMetaTaskBatch
 from mgz.typing import *
 
 DATASET_DIR = os.path.join(
@@ -110,8 +109,38 @@ class EnronEmails(SentenceDataset):
                                           max_tgt_len=max_tgt_len)
         # --- Initialization flags ---
         self.training_ratio = training_ratio
-        self.validation_ratio = .15
-        self.test_ratio = .15
+        self.validation_ratio = .2
+        self.test_ratio = .1
+
+    @overrides(BaseDataset)
+    def _load(self, train: bool = False, val: bool = False, test: bool = False):
+        logging.info('Reading data from: ' + DATASET_DIR)
+        email_file_paths, label_file_paths = self._pre_load_paths_data_range(
+            train, val, test)
+
+        for email_path, label_path in tqdm(
+                zip(email_file_paths, label_file_paths)):
+            with open(label_path) as f:
+                # label shows up as 'int,int,int\n'
+                labels: List[str] = f.readlines()
+                categories: List[Tuple[int, ...]] = [
+                    tuple(map(int, re.findall(r'\d+', label))) for
+                    label in labels]
+                tags_for_email: List[str] = \
+                    [CATEGORIES[c[0]][c[1]] for c in categories]
+
+            # Read txt file formatted as e-mail with library email
+            emails: email.message.Message = email.message_from_file(
+                open(email_path))
+
+            data_entry: Dict[SampleType, Union[str, List[str]]] = \
+                {SampleType.KEY: emails.get('Message-ID'),
+                 SampleType.NAME: emails.get('Subject'),
+                 SampleType.CATCHPHRASES: tags_for_email,
+                 SampleType.INPUT_TEXT: '\n'.join([emails.get('Subject'),
+                                                   emails.get_payload()])}
+            self.data.append(data_entry)
+        self.loaded = True
 
     def __len__(self):
         'Denotes the total number of samples'
@@ -176,36 +205,6 @@ class EnronEmails(SentenceDataset):
         return email_file_paths[sample_range[0]: sample_range[-1]], \
             label_file_paths[sample_range[0]: sample_range[-1]]
 
-    @overrides(BaseDataset)
-    def _load(self, train: bool = False, val: bool = False, test: bool = False):
-        logging.info('Reading data from: ' + DATASET_DIR)
-        email_file_paths, label_file_paths = self._pre_load_paths_data_range(
-            train, val, test)
-
-        for email_path, label_path in tqdm(
-                zip(email_file_paths, label_file_paths)):
-            with open(label_path) as f:
-                # label shows up as 'int,int,int\n'
-                labels: List[str] = f.readlines()
-                categories: List[Tuple[int, ...]] = [
-                    tuple(map(int, re.findall(r'\d+', label))) for
-                    label in labels]
-                tags_for_email: List[str] = \
-                    [CATEGORIES[c[0]][c[1]] for c in categories]
-
-            # Read txt file formatted as e-mail with library email
-            emails: email.message.Message = email.message_from_file(
-                open(email_path))
-
-            data_entry: Dict[SampleType, Union[str, List[str]]] = \
-                {SampleType.KEY: emails.get('Message-ID'),
-                 SampleType.NAME: emails.get('Subject'),
-                 SampleType.CATCHPHRASES: tags_for_email,
-                 SampleType.INPUT_TEXT: '\n'.join([emails.get('Subject'),
-                                                   emails.get_payload()])}
-            self.data.append(data_entry)
-        self.loaded = True
-
     def pad_idx(self) -> int:
         return self.vocab_tgt['<blank>']
 
@@ -216,9 +215,10 @@ class EnronEmails(SentenceDataset):
         return len(self.vocab_tgt)
 
 
-class EnronEmailsTagging(EnronEmails):
+class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
     def __init__(self, tokenizer: PreTrainedTokenizer,
-                 max_src_len: SrcSeqLen, n_shot: int = 5,
+                 max_src_len: SrcSeqLen, n_query_per_cls: List[int] = 5,
+                 n_support_per_cls: List[int] = 5,
                  n_episodes: int = 100,
                  training_ratio: float = 0.75):
         all_tags = []
@@ -230,15 +230,22 @@ class EnronEmailsTagging(EnronEmails):
                                           max_tgt_len=max_tgt_len)
         # --- Initialization flags ---
         self.training_ratio = training_ratio
-        self.validation_ratio = .25
-        self.test_ratio = .0
+        self.validation_ratio = .2
+        self.test_ratio = .1
 
-        self.tag_to_sample_idx_map: Dict[str, List[int]] = {}
-        self.sample_map: Dict[int, Tuple[int, int]] = {}
+        self._tag_to_sample_idx_map: Dict[str, List[int]] = {}
 
         # Meta Learning Sampling Parameters
-        self.n_shot = n_shot  # Will be roughly n_shot per class, not exact
+        self._n_query_per_cls = n_query_per_cls  # Will be roughly n_shot per class, not exact
+        self._n_support_per_cls = n_support_per_cls  # Will be roughly n_shot per class, not exact
         self.n_episodes = n_episodes
+
+    def _load(self, train: bool = False, val: bool = False, test: bool = False):
+        super()._load(train, val, test)  # Only loads into self.data
+        self.loaded = False
+        self._tag_to_sample_idx_map: Dict[
+            str, List[int]] = self.create_tag_to_sample_idx_map()
+        self.loaded = True
 
     def __len__(self):
         'Denotes the total number of samples'
@@ -251,114 +258,12 @@ class EnronEmailsTagging(EnronEmails):
     def target_space(self) -> sp.Tagging:
         return sp.BinaryTagging()
 
-    def _collate_fn(self, device: Union[int, torch.device],
-                    batch: List[Tuple[SrcStringT, List[TgtStringT]]]):
-        assert len(batch) == 1, "Batch size must be 1 for meta-learning for now"
-        # Examples that do and don't have the tag respectively
-        positive_examples: set[int] = set()
-        negative_examples: set[int] = set()
-
-        # For now we are going to randomly sample a tag and use that, but in
-        # the future I think we want to handle that differently
-        pos_tag = random.sample(batch[0][1], 1)[0]
-        # n_shot = random.choice((self.n_shot, self.n_shot + 1))
-        n_shot = random.choice((self.n_shot, self.n_shot ))
-        # catch when we can't find more pos/neg examples
-        timeout = 2 * n_shot
-        n_contrast_sample_attempts = 0
-
-        pos_sample_idxs: List[int] = self.tag_to_sample_idx_map[
-            pos_tag]
-        if len(pos_sample_idxs) < n_shot:
-            logging.info(
-                'Not enough samples with tag \'%s\' and training shot of %s, only %s present' % (
-                    pos_tag, n_shot, len(pos_sample_idxs)))
-            if len(pos_sample_idxs) < 2:
-                # We need at least one support and one query example
-                # TODO fix so we catch this earlier
-                return None
-        random.shuffle(pos_sample_idxs)
-        positive_examples = set(pos_sample_idxs[:n_shot])
-
-        # Based on the batch, we want to sample additional catchphrases to
-        # create a meta learning task out of the batch
-        while (len(negative_examples) < n_shot) and \
-                n_contrast_sample_attempts < timeout:
-            # TODO: experiment with pulling negative samples that have very
-            #  different embeddings
-            if len(negative_examples) < n_shot:
-                neg_sample_idx = random.randint(0, len(self.data) - 1)
-                neg_tags = self.data[neg_sample_idx][
-                    SampleType.CATCHPHRASES]
-                if pos_tag not in neg_tags:
-                    negative_examples.add(neg_sample_idx)
-            n_contrast_sample_attempts += 1
-        assert self.data_state != DataState.NOT_LOADED, "Dataset not loaded"
-        pos_batch: List[SrcStringT] = [self.data[i][SampleType.INPUT_TEXT] for i
-                                       in positive_examples]
-
-        neg_srcs: List[SrcStringT] = [self.data[i][SampleType.INPUT_TEXT]
-                                      for i in negative_examples]
-        # TODO fix so we catch this earlier
-        if len(neg_srcs) < 2 or len(pos_batch) < 2:
-            return None
-        tag_task: Dict[
-            TgtStringT, Tuple[List[SrcStringT], List[SrcStringT]]] = {
-            pos_tag: (pos_batch, neg_srcs)
-        }
-
-        def tokenize_src(src_text: SrcTextT) -> List[str]:
-            return self.tokenizer_tgt.tokenize(src_text)
-
-        def tokenize_tgt(text: TgtTextT) -> List[str]:
-            return self.tokenizer_tgt.tokenize(text)
-
-        def vocab_src(tokens: List[str]) -> List[int]:
-            return [self.vocab_src[token] for token in tokens]
-
-        def vocab_tgt(tokens: List[str]) -> List[int]:
-            return [self.vocab_tgt[token] for token in tokens]
-
-        return Sent2TagMetaTaskBatch.collate_batch(
-            sampled_tag_task=tag_task,
-            src_tokenizer_pipeline=tokenize_src,
-            tgt_tokenizer_pipeline=tokenize_tgt,
-            src_vocab_pipeline=vocab_src,
-            tgt_vocab_pipeline=vocab_tgt,
-            device=device,
-            pad_id=self.tokenizer_src.pad_token_id,
-            bos_id=self.tokenizer_src.bos_token_id,
-            eos_id=self.tokenizer_src.eos_token_id,
-            max_src_len=self.max_src_len,
-            max_tgt_len=self.max_tgt_len
-        )
-
     def get_collate_fn(self, device: Union[int, torch.device]):
-        assert self.data_state != DataState.NOT_LOADED, "Dataset not loaded"
-        return partial(self._collate_fn, device)
-
-    def _load(self, train: bool = False, val: bool = False, test: bool = False):
-        super()._load(train, val, test)  # Only loads into self.data
-        self.loaded = False
-        # Create a map from sample index to (case index, catchphrase index),
-        # this is used if you would like to treat every catchphrase as a
-        # separate sample
-        total_count = 0
-        for i in range(len(self.data)):
-            catchphrases: List[str] = self.data[i][SampleType.CATCHPHRASES]
-            for j in range(len(catchphrases)):
-                self.sample_map[total_count] = (i, j)
-                total_count += 1
-        # Map from tag to sample idx, to know which samples each tag apply to
-        for i in range(len(self.data)):
-            for catchphrase in self.data[i][SampleType.CATCHPHRASES]:
-                if catchphrase not in self.tag_to_sample_idx_map:
-                    self.tag_to_sample_idx_map[catchphrase] = []
-                self.tag_to_sample_idx_map[catchphrase].append(i)
-        self.loaded = True
+        assert self.loaded, "Dataset not loaded"
+        return partial(Sent2TagMetaTaskBatch.default_collate_fn, self, device)
 
     @overrides(EnronEmails)
-    def __getitem__(self, idx) -> (SrcTextT, TgtTextT):
+    def __getitem__(self, idx) -> (SrcStringT, TgtStringT):
         input_text = self.data[idx][SampleType.INPUT_TEXT]
         catchphrase = self.data[idx][SampleType.CATCHPHRASES]
         return input_text, catchphrase

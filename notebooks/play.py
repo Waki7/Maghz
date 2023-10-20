@@ -1,10 +1,7 @@
-from mgz.ds.image_datasets.spaceship_dataset import Spaceship
-from mgz.version_control.manager import Manager
-from mgz.version_control.model_node import ModelNode
-from mgz.version_control.model_index import Indexer
-from mgz.models.mobile_net import MobileNetV2
+from archive.image_datasets.spaceship_dataset import Spaceship
+from archive.models.mobile_net import MobileNetV2
 import spaces as sp
-from mgz.models.default_layers import *
+from archive.models.default_layers import *
 
 if __name__ == '__main__':
     space_ds = Spaceship()

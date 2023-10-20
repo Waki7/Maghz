@@ -65,7 +65,7 @@ class BaseDataset(Dataset):
 
     def __len__(self):
         'Denotes the total number of samples'
-        return len(self.img_index)
+        raise NotImplementedError
 
     def gen(self) -> Generator[T, None, None]:
         raise NotImplementedError
@@ -101,15 +101,14 @@ class BaseDataset(Dataset):
         )
         return dataloader
 
-    def pad_idx(self) -> int:
-        raise NotImplementedError
-
     @abstractmethod
     def _load(self, train: bool = False, val: bool = False,
               test: bool = False):
         raise NotImplementedError
 
     def load_training_data(self):
+        if self.data_state == DataState.TRAIN:
+            return self
         self._load(train=True)
         return self
 
@@ -118,6 +117,8 @@ class BaseDataset(Dataset):
         return copy.deepcopy(self).load_training_data()
 
     def load_validation_data(self):
+        if self.data_state == DataState.VAL:
+            return self
         self._load(val=True)
         return self
 
@@ -126,48 +127,11 @@ class BaseDataset(Dataset):
         return copy.deepcopy(self).load_validation_data()
 
     def load_testing_data(self):
+        if self.data_state == DataState.TEST:
+            return self
         self._load(test=True)
         return self
 
     def gen_testing_data(self):
         assert self.data_state == DataState.NOT_LOADED
         return copy.deepcopy(self).load_testing_data()
-
-    # class _MapStyleDataset(torch.utils.data.Dataset):
-
-    # def __init__(self, iter_data) -> None:
-    #     # TODO Avoid list issue #1296
-    #     self._data = list(iter_data)
-    #
-    # def __len__(self):
-    #     return len(self._data)
-    #
-    # def __getitem__(self, idx):
-    #     return self._data[idx]
-
-    # def read_file(self, file: str) -> torch.Tensor:
-    #     '''
-    #     >>> img = self.read_file('test_path')
-    #     >>> img.shape
-    #     (3, 100, 100)
-    #     :param file: full path to image
-    #     :return:
-    #     '''
-    #     img = torch_io.read_image(file)
-    #     new_shape = [img.shape[1] // self.downsample_ratio,
-    #                  img.shape[2] // self.downsample_ratio]
-    #     img = torch_f.resize(img=img,
-    #                          interpolation=torch_f.InterpolationMode.BILINEAR,
-    #                          size=new_shape)
-    #     return img
-    #
-    # def __getitem__(self, idx) -> Tuple[NDArray, NDArray]:
-    #     img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0])
-    #     image = read_image(img_path)
-    #     label = self.img_labels.iloc[idx, 1]
-    #     if self.transform:
-    #         image = self.transform(image)
-    #     if self.target_transform:
-    #         label = self.target_transform(label)
-    #     ds = DataSample(features=(image,), labels=(label,))
-    #     return ds

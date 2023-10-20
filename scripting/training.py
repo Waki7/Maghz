@@ -45,19 +45,23 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
     if aus:
         ds = AusCaseReportsToTagGrouped(model_node.tokenizer,
                                         max_src_len=3000,
-                                        n_episodes=1000, n_shot=2)
+                                        n_episodes=1000, n_queries_per_cls=[2],
+                                        n_supports_per_cls=[2])
         val_ds = AusCaseReportsToTagGrouped(model_node.tokenizer,
                                             max_src_len=3000,
-                                            n_episodes=100, n_shot=2)
+                                            n_episodes=100,
+                                            n_queries_per_cls=[2],
+                                            n_supports_per_cls=[2])
     if enron:
         ds = EnronEmailsTagging(model_node.tokenizer,
-                                max_src_len=2000,
+                                max_src_len=4096,
                                 n_episodes=2000,
-                                n_shot=2)
+                                n_query_per_cls=[3], n_support_per_cls=[2])
         val_ds = EnronEmailsTagging(model_node.tokenizer,
-                                    max_src_len=2000,
+                                    max_src_len=4096,
                                     n_episodes=50,
-                                    n_shot=2)
+                                    n_query_per_cls=[3],
+                                    n_support_per_cls=[2])
     return ds, val_ds
 
 
@@ -68,14 +72,13 @@ def led_main_train():
     # model_name = "facebook/bart-base"
     # model_name = 'allenai/bart-large-multi_lexsum-long-tiny'
     # model_name = 'allenai/bart-large-multi_lexsum-long-short'
-    # model_name = 'allenai/led-base-16384-multi_lexsum-source-long'
+    model_name = 'allenai/led-base-16384-multi_lexsum-source-long'
     # model_name = 'allenai/led-base-16384-multi_lexsum-source-tiny'
-    model_name = 'allenai/primera-multi_lexsum-source-long/epoch4'
+    # model_name = 'allenai/primera-multi_lexsum-source-long'
 
     # model_name = 'allenai/led-base-16384'
     # model_name = 'allenai/led-large-16384'
     # model_name = 'allenai/led-base-16384-multi_lexsum-source-long'
-
 
     # model_name = 'facebook/bart-large-cnn'
     # model_cls = BartForBinaryTagging
@@ -94,8 +97,8 @@ def led_main_train():
             smoothing=0.1
         ).to(settings.DEVICE)
         optimizer = torch.optim.Adam(
-            model_node.model.parameters(), lr=0.0001,
-            # weight_decay=0.0001,
+            model_node.model.parameters(), lr=0.0005,
+            weight_decay=0.0001,
             betas=(0.9, 0.98),
             eps=1e-4
         )
@@ -103,7 +106,7 @@ def led_main_train():
         train_transition_edge = ModelTransitionEdge(model_node, loss_fn,
                                                     optimizer, ds)
         routine.train(model_node=model_node, ds=ds, val_ds=val_ds,
-                      model_edge=train_transition_edge, batch_size=batch_size,
+                      model_edge=train_transition_edge,
                       device=settings.DEVICE, distributed=False,
                       turn_off_shuffle=False, n_epochs=10, )
         torch.cuda.empty_cache()

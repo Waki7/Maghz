@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from functools import partial
-
 from datasets import load_dataset
 from datasets.arrow_dataset import Dataset
 from datasets.dataset_dict import DatasetDict
@@ -12,7 +10,7 @@ from transformers import PreTrainedTokenizer
 import spaces as sp
 from mgz.ds.base_dataset import T, DataState, BaseDataset
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
-    SampleType, Sent2SentBatch
+    SampleType
 from mgz.typing import *
 
 KEY_FOR_SAMPLE_TYPES = {
@@ -41,7 +39,6 @@ class MultiLexSum(SentenceDataset):
 
         self.dataset_keys: List[str] = []
         self.entry_keys: List[str] = []
-
 
     def __len__(self):
         'Denotes the total number of samples'
@@ -72,10 +69,6 @@ class MultiLexSum(SentenceDataset):
     def gen(self) -> Generator[T, None, None]:
         raise NotImplementedError
 
-    def get_collate_fn(self, device: Union[int, torch.device]):
-        assert self.loaded, "Dataset not loaded"
-        return partial(Sent2SentBatch.default_collate_fn, self, device)
-
     @overrides(BaseDataset)
     def _load(self, train: bool = False, val: bool = False, test: bool = False):
         iter: DatasetDict
@@ -94,7 +87,6 @@ class MultiLexSum(SentenceDataset):
         elif test:
             examples: Dataset = multi_lexsum["test"]
             self.data_state = DataState.TEST
-
 
         src_tgt_type: Tuple[SampleType, SampleType] = self._get_source_types()
         src_type, tgt_type = src_tgt_type

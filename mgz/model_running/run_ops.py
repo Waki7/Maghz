@@ -74,20 +74,25 @@ def generate_controller(model: BaseTransformer, text: List[str],
 def tagging_embedding_controller(model: LEDForBinaryTagging, text: List[str],
                                  tag_text: List[str],
                                  tokenizer: PreTrainedTokenizer,
+                                 max_src_len: int = None,
+                                 max_tgt_len: int = None
                                  ) -> FloatTensorT['B,EmbedLen']:
-    batch_size = len(text)
-    src_encodings = tokenizer(text, return_tensors="pt")
+    if max_src_len is None:
+        max_src_len = model.get_max_encoder_positions()
+    if max_tgt_len is None:
+        max_tgt_len = model.get_max_decoder_positions()
+
+    src_encodings = tokenizer(text, return_tensors="pt",
+                              max_length=max_src_len, truncation=True)
     src_ids: LongTensorT['B,SrcSeqLen'] = src_encodings.input_ids.to(
         settings.DEVICE)
+    src_mask = src_encodings.attention_mask.to(settings.DEVICE)
 
-    tgt_encodings = tokenizer(tag_text, return_tensors="pt")
+    tgt_encodings = tokenizer(tag_text, return_tensors="pt",
+                              max_length=max_tgt_len, truncation=True)
     tgt_ids: LongTensorT['EmbedLen'] = tgt_encodings.input_ids.to(
         settings.DEVICE)
     tgt_mask = tgt_encodings.attention_mask.to(settings.DEVICE)
-
-    src_mask = src_encodings.attention_mask.to(settings.DEVICE)
-    src_ids, src_mask = model._pre_encode_pad_if_needed(src_ids, src_mask,
-                                                        tokenizer.pad_token_id)
 
     # don't need tgt_mask because you are generating one token at a time
     return model.forward(src_ids=src_ids, tgt_ids=tgt_ids,

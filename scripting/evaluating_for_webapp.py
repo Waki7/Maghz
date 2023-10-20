@@ -3,6 +3,9 @@ import random
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
 
+import settings
+from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagging
+from mgz.model_running.nlp_routines.model_routine_tagging import TaggingRoutine
 from mgz.model_running.run_ops import embedding_controller, \
     tagging_embedding_controller
 from mgz.models.nlp.base_transformer import BaseTransformer
@@ -12,24 +15,12 @@ from mgz.version_control import ModelNode, lookup_model
 
 # from transformers import BartConfig, LEDConfig
 
-if torch.backends.mps.is_available():
-    print('MPS available, will be running on apple GPU')
-    torch.backends.mps.is_available()
-    DEVICE = torch.device("mps")
-elif torch.cuda.is_available():
-    DEVICE_NUM = 0
-    print('{} gpus available, will be using gpu {}'.format(
-        torch.cuda.device_count(), DEVICE_NUM))
-    DEVICE = torch.device('cuda:{}'.format(DEVICE_NUM))
-    torch.cuda.set_device(DEVICE)
-else:
-    print('using cpu')
-    DEVICE = torch.device('cpu')
+DEVICE = settings.DEVICE
 
 TOKENIZERS: Dict[str, PreTrainedTokenizer] = {}
 MODELS: Dict[str, BaseTransformer] = {}
-MODEL_NAME = "allenai/led-base-16384-multi_lexsum-source-long/train_step_18215_data_data_cls-AusCaseReportsToTagGrouped-_valacc_None"
-MODEL_NAME = "allenai/primera-multi_lexsum-source-long/epoch4"
+# MODEL_NAME = "allenai/led-base-16384-multi_lexsum-source-long/train_step_18215_data_data_cls-AusCaseReportsToTagGrouped-_valacc_None"
+MODEL_NAME = "allenai/primera-multi_lexsum-source-long/train_step_10255_data_data_cls-EnronEmailsTagging-_valacc_None"
 
 
 def load_models():
@@ -93,70 +84,70 @@ def predict_tag(association_embedding: NDArray['EmbedLen'],
 
 
 def importing_sample_data() -> List[Dict[str, Union[int, str, FloatTensorT]]]:
-    from mgz.ds.sentence_datasets.aus_legal_case_reports import SampleType, \
-        AusCaseReportsToTagGrouped
-    from transformers import BartTokenizer
+    from mgz.ds.sentence_datasets.enron_emails import SampleType, \
+        EnronEmailsTagging
     import transformers as hug
     cfg: hug.LEDConfig = MODELS[MODEL_NAME].config
     # tokenizer = BartTokenizer.from_pretrained("facebook/bart-large")
     tokenizer = TOKENIZERS[MODEL_NAME]
 
-    ds = AusCaseReportsToTagGrouped(tokenizer,
-                                    max_src_len=1024,
-                                    n_episodes=1000,
-                                    n_shot=5).load_validation_data()
+    ds = EnronEmailsTagging(tokenizer,
+                            max_src_len=2000,
+                            n_episodes=50,
+                            n_query_per_cls=[3],
+                            n_support_per_cls=[2]).load_validation_data()
     ds_samples = ds.data
-
+    strt_idx = 300
     return [
         {
             "id": 0,
-            "source_text": ds_samples[1][SampleType.INPUT_TEXT],
-            "tags": ds_samples[1][SampleType.CATCHPHRASES]
+            "source_text": ds_samples[strt_idx + 1][SampleType.INPUT_TEXT],
+            "tags": ds_samples[strt_idx + 1][SampleType.CATCHPHRASES]
         },
         {
             "id": 1,
-            "source_text": ds_samples[2][SampleType.INPUT_TEXT],
-            "tags": ds_samples[2][SampleType.CATCHPHRASES]
+            "source_text": ds_samples[strt_idx + 2][SampleType.INPUT_TEXT],
+            "tags": ds_samples[strt_idx + 2][SampleType.CATCHPHRASES]
         },
         {
             "id": 2,
-            "source_text": ds_samples[3][SampleType.INPUT_TEXT],
-            "tags": ds_samples[3][SampleType.CATCHPHRASES]
+            "source_text": ds_samples[strt_idx + 3][SampleType.INPUT_TEXT],
+            "tags": ds_samples[strt_idx + 3][SampleType.CATCHPHRASES]
         },
         {
             "id": 3,
-            "source_text": ds_samples[4][SampleType.INPUT_TEXT],
-            "tags": ds_samples[4][SampleType.CATCHPHRASES]
+            "source_text": ds_samples[strt_idx + 4][SampleType.INPUT_TEXT],
+            "tags": ds_samples[strt_idx + 4][SampleType.CATCHPHRASES]
         },
         {
             "id": 4,
-            "source_text": ds_samples[5][SampleType.INPUT_TEXT],
-            "tags": ds_samples[5][SampleType.CATCHPHRASES]
+            "source_text": ds_samples[strt_idx + 5][SampleType.INPUT_TEXT],
+            "tags": ds_samples[strt_idx + 5][SampleType.CATCHPHRASES]
         },
         {
             "id": 5,
-            "source_text": ds_samples[6][SampleType.INPUT_TEXT],
-            "tags": ds_samples[6][SampleType.CATCHPHRASES]
+            "source_text": ds_samples[strt_idx + 6][SampleType.INPUT_TEXT],
+            "tags": ds_samples[strt_idx + 6][SampleType.CATCHPHRASES]
         },
         {
             "id": 6,
-            "source_text": ds_samples[7][SampleType.INPUT_TEXT],
-            "tags": ds_samples[7][SampleType.CATCHPHRASES]
+            "source_text": ds_samples[strt_idx + 7][SampleType.INPUT_TEXT],
+            "tags": ds_samples[strt_idx + 7][SampleType.CATCHPHRASES]
         },
         {
             "id": 7,
-            "source_text": ds_samples[8][SampleType.INPUT_TEXT],
-            "tags": ds_samples[8][SampleType.CATCHPHRASES]
+            "source_text": ds_samples[strt_idx + 8][SampleType.INPUT_TEXT],
+            "tags": ds_samples[strt_idx + 8][SampleType.CATCHPHRASES]
         },
         {
             "id": 8,
-            "source_text": ds_samples[9][SampleType.INPUT_TEXT],
-            "tags": ds_samples[9][SampleType.CATCHPHRASES]
+            "source_text": ds_samples[strt_idx + 9][SampleType.INPUT_TEXT],
+            "tags": ds_samples[strt_idx + 9][SampleType.CATCHPHRASES]
         },
     ]
 
 
-def main():
+def hand_select():
     load_models()
     sample_tags = []
     [sample_tags.extend(sample['tags']) for sample in importing_sample_data()]
@@ -167,16 +158,23 @@ def main():
     for _ in tqdm(range(0, sampling)):
         # select random positive
         rand_pos = random.choice(sample_data)
-        pos_id = rand_pos['id']
         random_tag = random.choice(rand_pos['tags'])
 
         # select random negative
         rand_neg = random.choice(sample_data)
-        neg_id = rand_neg['id']
-        while random_tag not in rand_neg['tags'] and rand_neg != rand_pos:
+        timeout = 10
+        tries = 0
+        while random_tag in rand_neg['tags']:
             rand_neg = random.choice(sample_data)
+            tries += 1
+            if tries > timeout:
+                rand_pos = random.choice(sample_data)
+                random_tag = random.choice(rand_pos['tags'])
+                break
 
-        random_tag = random.choice(sample_tags)
+        neg_id = rand_neg['id']
+        pos_id = rand_pos['id']
+
         embeddings = [get_tag_apply_embedding(sample['source_text'],
                                               random_tag) for sample in
                       sample_data]
@@ -190,7 +188,24 @@ def main():
                 pred = predict_tag(embedding, pos_center, neg_center)
                 correct += int(pred == (random_tag in sample['tags']))
     print(f"Accuracy: {correct / total}")
-    load_models()
+
+
+def validation():
+    routine = TaggingRoutine()
+    model_node: ModelNode = ModelNode.load_from_id(LEDForBinaryTagging,
+                                                   MODEL_NAME,
+                                                   MODEL_NAME)
+    model_node.model.to(DEVICE)
+    val_ds = EnronEmailsTagging(model_node.tokenizer,
+                                max_src_len=2000,
+                                n_episodes=50,
+                                n_query_per_cls=[3],
+                                n_support_per_cls=[2])
+    routine.evaluate(model_node=model_node, val_ds=val_ds, )
+
+
+def main():
+    hand_select()
 
 
 if __name__ == '__main__':
