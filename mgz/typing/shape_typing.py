@@ -61,14 +61,16 @@ Opt = Optional
 StateDictT = Dict[str, torch.Tensor]
 
 
-class NDArray(np.ndarray, Generic[Shape, DType]):
+class NDArrayT(np.ndarray, Generic[Shape, DType]):
     """
     Use this to type-annotate numpy arrays, e.g.
         image: Array['H,W,3', np.uint8]
         xy_points: Array['N,2', float]
         nd_mask: Array['...', bool]
     """
-    pass
+    def __new__(cls, tensor, shape: Generic[Shape] = None):
+        # todo assert shape
+        return tensor
 
 
 class ShapedTensorT(torch.Tensor, Generic[Shape, DType]):

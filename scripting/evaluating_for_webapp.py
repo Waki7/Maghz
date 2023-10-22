@@ -37,7 +37,7 @@ def load_models():
 
 
 def encode(text: str) -> Tuple[
-    NDArray['EmbedLen'], NDArray['SrcSeqLen*EmbedLen']]:
+    NDArrayT['EmbedLen'], NDArrayT['SrcSeqLen*EmbedLen']]:
     with torch.no_grad():
         torch.manual_seed(5)
         logits: FloatTensorT['B,SrcSeqLen,EmbedLen'] = \
@@ -49,7 +49,7 @@ def encode(text: str) -> Tuple[
         return last_embedding.cpu().numpy(), embedding.flatten().cpu().numpy()
 
 
-def get_tag_apply_embedding(doc_text: str, tag_text: str) -> NDArray[
+def get_tag_apply_embedding(doc_text: str, tag_text: str) -> NDArrayT[
     'EmbedLen']:
     with torch.no_grad():
         model: LEDForBinaryTagging = MODELS[MODEL_NAME]
@@ -62,9 +62,9 @@ def get_tag_apply_embedding(doc_text: str, tag_text: str) -> NDArray[
         return embedding.cpu().numpy()
 
 
-def predict_tag(association_embedding: NDArray['EmbedLen'],
-                positive_embedding: NDArray[
-                    'EmbedLen'], negative_embedding: NDArray[
+def predict_tag(association_embedding: NDArrayT['EmbedLen'],
+                positive_embedding: NDArrayT[
+                    'EmbedLen'], negative_embedding: NDArrayT[
             'EmbedLen']) -> bool:
     association_embedding = FloatTensorT(association_embedding)
     positive_embedding = FloatTensorT(positive_embedding)

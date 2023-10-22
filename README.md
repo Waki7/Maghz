@@ -1,5 +1,30 @@
-# Maghz
-Lifelong State of the Art learning
+# Installation:
+
+Create a python environment, I like using conda. 
+
+pip install -e C:\Users\ceyer\OneDrive\Documents\Projects\Maghz
+
+If you have a gpu:
+    
+    pip3 install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0 13.1 --extra-index-url https://download.pytorch.org/whl/cu116
+    
+    pip3 install torchdata==0.5.1 torchtext==0.14.1
+
+download datasets: 
+enron: https://bailando.berkeley.edu/enron/enron_with_categories.tar.gz
+aus legal case reports: https://archive.ics.uci.edu/static/public/239/legal+case+reports.zip
+
+
+
+
+running tensorboard 
+tensorboard --logdir=scripting/runs --bind_all
+
+
+
+
+
+
 
 
 
@@ -13,9 +38,6 @@ Lifelong State of the Art learning
     # LED
 'allenai/led-base-16384-multi_lexsum-source-long'
 
-
-running tensorboard 
-tensorboard --logdir=scripting/runs --bind_all
 
 
 

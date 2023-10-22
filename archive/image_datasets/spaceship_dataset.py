@@ -134,7 +134,7 @@ class Spaceship(ImageDataset):
         return img, label
 
     def __getitem__(self, index) -> \
-            Tuple[NDArray['C,H,W', np.float],
+            Tuple[NDArrayT['C,H,W', np.float],
                   sp.RegressionTargetT['5,', np.float]]:
         '''
         Generates one sample of data
