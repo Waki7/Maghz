@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 import transformers as hug
-from transformers import PreTrainedTokenizer
+from transformers import PreTrainedTokenizer, BitsAndBytesConfig
 
 from mgz.models.base_model import BaseModel
 from mgz.models.nlp.base_transformer import BaseTransformer
@@ -36,13 +36,14 @@ DEFAULT_INDEX_PATH = os.path.join(Path(__file__).resolve().parent.parent.parent,
 
 
 def lookup_model(model_cls: Type[BaseTransformer], model_id: str,
-                 tokenizer_id: str = None) -> ModelNode:
+                 tokenizer_id: str = None,
+                 quantization_config: Union[
+                     BitsAndBytesConfig, None] = None) -> ModelNode:
     assert tokenizer_id is not None, 'NLP Model needs tokenizer id'
     model_node = \
         CACHED_INDEXER.lookup_or_init(model_id,
-                                      load_model=model_cls.load_model,
-                                      load_tokenizer=model_cls.load_tokenizer,
-                                      init_save=model_cls.initial_save)
+                                      model_cls=model_cls,
+                                      quantization_config=quantization_config)
     model_node.model.eval()
     model_node.model.verify_tokenizer(model_node.tokenizer)
     return model_node
@@ -119,15 +120,16 @@ class Indexer:
         return self.path_from_id(model_id, create_if_not_exist=True)
 
     def lookup_or_init(self, model_id: str,
-                       load_model: Callable[[str], BaseTransformer],
-                       load_tokenizer: Callable[[str], hug.PreTrainedTokenizer],
-                       init_save: Callable[[str, str], None]) -> ModelNode:
+                       model_cls: Type[BaseTransformer],
+                       quantization_config: Union[
+                           BitsAndBytesConfig, None] = None) -> ModelNode:
         self.check_state()
         model_dir: DirPath = self.get_or_add_to_root(model_id)
 
         # TODO, cleaner way to distinguish the models that are available to load
-        model: Optional[BaseTransformer] = load_model(model_dir)
-        tokenizer: Optional[hug.PreTrainedTokenizer] = load_tokenizer(
+        model: Optional[BaseTransformer] = \
+            model_cls.load_model(model_dir)
+        tokenizer: Optional[hug.PreTrainedTokenizer] = model_cls.load_tokenizer(
             model_dir)
         loaded_successfully = model is not None and tokenizer is not None
         if not loaded_successfully:
@@ -137,15 +139,23 @@ class Indexer:
 
         if not loaded_successfully:
             # Now we try to load the model from some other source
-            init_save(model_id, model_dir)
-            model: Optional[BaseTransformer] = load_model(model_dir)
-            tokenizer: Optional[hug.PreTrainedTokenizer] = load_tokenizer(
+            model_cls.initial_save(model_id, model_dir)
+            model: Optional[BaseTransformer] = \
+                model_cls.load_model(model_dir)
+            tokenizer: Optional[
+                hug.PreTrainedTokenizer] = model_cls.load_tokenizer(
                 model_id)
         if model is None or tokenizer is None:
             raise FileNotFoundError(
                 'Model {} not found. Checked in directory {}'.format(model_id,
                                                                      os.path.abspath(
                                                                          model_dir)))
+        if quantization_config is not None:
+            from optimum.gptq import GPTQQuantizer
+            quantizer = GPTQQuantizer.from_dict(
+                quantization_config.to_dict())
+            quantizer.quantize_model(model, tokenizer)
+            model.config.quantization_config = quantization_config
         return ModelNode(model, tokenizer, model_id)
 
     def save_to_index(self, model_node: ModelNode) -> DirPath:

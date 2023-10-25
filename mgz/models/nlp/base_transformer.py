@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import transformers as hug
-from transformers import PreTrainedTokenizer
+from transformers import PreTrainedTokenizer, BitsAndBytesConfig
 from transformers.generation.utils import MinLengthLogitsProcessor, \
     ForcedEOSTokenLogitsProcessor, \
     NoRepeatNGramLogitsProcessor, LogitsProcessorList, MaxLengthCriteria, \
@@ -282,7 +282,7 @@ class BaseTransformer(BaseModel):
                             "tokens for vocab_size".format(
                                 getattr(self.config, field_name), field_value,
                                 2))
-                                # len(tokenizer.added_tokens_encoder)))
+                        # len(tokenizer.added_tokens_encoder)))
                 else:
                     assert getattr(self.config, field_name) == field_value, \
                         "config {} vs tokenizer {} for field {}".format(

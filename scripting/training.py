@@ -3,6 +3,8 @@ from __future__ import annotations
 # from mgz.models.nlp.bart_interface import BARTHubInterface
 import os
 
+from transformers import BitsAndBytesConfig
+
 from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagging
 from mgz.typing import *
 
@@ -84,11 +86,14 @@ def led_main_train():
     # model_cls = BartForBinaryTagging
     print('... loading model and tokenizer')
     with torch.cuda.amp.autocast():
-        model_node: ModelNode = ModelNode.load_from_id(LEDForBinaryTagging,
-                                                       model_name,
-                                                       model_name)
+        model_node: ModelNode = \
+            ModelNode.load_from_id(LEDForBinaryTagging, model_name, model_name,
+                                   quantization_config=BitsAndBytesConfig(
+                                       load_in_4bit=True))
+
         model_node.model.to(settings.DEVICE)
         model_node.model.train()
+        exit(3)
         ds, val_ds = dataset_select(model_node, aus=False, enron=True)
         routine = TaggingRoutine()
         loss_fn = LabelSmoothing(

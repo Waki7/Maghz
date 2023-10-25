@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 
-from transformers import PreTrainedTokenizer
+from transformers import PreTrainedTokenizer, BitsAndBytesConfig
 
 import mgz.version_control as vc
 from mgz.models.base_model import BaseModel
@@ -61,8 +61,10 @@ class ModelNode:
 
     @classmethod
     def load_from_id(cls, model_cls: Type[BaseTransformer], model_id: str,
-                     tokenizer_id: str = None):
-        node = vc.lookup_model(model_cls, model_id, tokenizer_id)
+                     tokenizer_id: str = None,
+                     quantization_config: Optional[BitsAndBytesConfig] = None):
+        node = vc.lookup_model(model_cls, model_id, tokenizer_id,
+                               quantization_config)
         node.load_metrics()
         return node
 

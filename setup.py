@@ -88,9 +88,13 @@ setup(
         'accelerate',
         'bs4',
         'typing_extensions==4.4.0',
+        'peft',
+        'bitsandbytes',
+        # python -m pip install bitsandbytes --prefer-binary --extra-index-url=https://jllllll.github.io/bitsandbytes-windows-webui
+        'bitsandbytes-cuda116',
+        'optimum',
         # pip3 install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu116
         # pip3 install torchdata==0.5.1 torchtext==0.14.1 (use conda if you can)
-
 
         # python -m spacy download de_core_news_sm
         # python -m spacy download en_core_web_sm

@@ -11,6 +11,7 @@ from abc import ABC
 import torch.utils.checkpoint
 import transformers as hug
 from torch import nn
+from transformers import BitsAndBytesConfig, GPTQConfig
 from transformers.activations import ACT2FN
 from transformers.models.led.configuration_led import LEDConfig
 
@@ -1497,7 +1498,6 @@ class LEDForBinaryTagging(LEDPretrainedModel, BinaryTaggerMixin):
                 LEDConfig.from_dict(config))
             model.load_state_dict(torch.load(os.path.join(path, 'weights.bin'),
                                              map_location=torch.device('cpu')))
-            return model
         except FileNotFoundError:
             return None
 
@@ -1506,7 +1506,7 @@ class LEDForBinaryTagging(LEDPretrainedModel, BinaryTaggerMixin):
         if not os.path.exists(path):
             os.makedirs(path)
         model_hug = hug.LEDForConditionalGeneration.from_pretrained(
-            model_id).to(settings.DEVICE)
+            model_id, load_in_4bit=True).to(settings.DEVICE)
         with open(os.path.normpath(os.path.join(path, 'config.json')),
                   'w') as f:
             json.dump(model_hug.config.to_dict(), f)
