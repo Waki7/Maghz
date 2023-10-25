@@ -7,7 +7,7 @@ import transformers as hug
 import settings
 from mgz.model_running.run_ops import generate_controller, forward_controller
 from mgz.typing import *
-from mgz.version_control.model_node import lookup_model
+from mgz.version_control import lookup_model
 
 
 class Model(Enum):

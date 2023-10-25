@@ -8,7 +8,7 @@ import torch.distributed as dist
 import torch.utils.data
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim.lr_scheduler import LambdaLR
-from transformers import PreTrainedTokenizer
+from transformers import PreTrainedTokenizerBase
 
 import settings
 from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch, \
@@ -25,7 +25,7 @@ from mgz.typing import *
 
 @torch.no_grad()
 def embedding_controller(model: BaseTransformer, text: List[str],
-                         tokenizer: PreTrainedTokenizer,
+                         tokenizer: PreTrainedTokenizerBase,
                          get_last_embedding: bool = True) -> FloatTensorT[
     'B,Opt[SrcSeqLen],EmbedLen']:
     batch_encoding = tokenizer(text, return_tensors="pt", padding=True)
@@ -36,7 +36,7 @@ def embedding_controller(model: BaseTransformer, text: List[str],
 
 
 def forward_controller(model: BaseTransformer, text: List[str],
-                       tokenizer: PreTrainedTokenizer):
+                       tokenizer: PreTrainedTokenizerBase):
     batch_encoding = tokenizer(text, return_tensors="pt")
     src_ids = batch_encoding.input_ids.to(settings.DEVICE)
     batch_size = len(text)
@@ -53,7 +53,7 @@ def forward_controller(model: BaseTransformer, text: List[str],
 
 
 def generate_controller(model: BaseTransformer, text: List[str],
-                        tokenizer: PreTrainedTokenizer,
+                        tokenizer: PreTrainedTokenizerBase,
                         ):
     batch_size = len(text)
     batch_encoding = tokenizer(text, return_tensors="pt")
@@ -73,7 +73,7 @@ def generate_controller(model: BaseTransformer, text: List[str],
 
 def tagging_embedding_controller(model: LEDForBinaryTagging, text: List[str],
                                  tag_text: List[str],
-                                 tokenizer: PreTrainedTokenizer,
+                                 tokenizer: PreTrainedTokenizerBase,
                                  max_src_len: int = None,
                                  max_tgt_len: int = None
                                  ) -> FloatTensorT['B,EmbedLen']:
