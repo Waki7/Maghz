@@ -111,7 +111,7 @@ def led_main_train():
                 eps=1e-4)
         else:
             optimizer = torch.optim.Adam(
-                model_node.model.parameters(), lr=0.0005,
+                model_node.model.parameters(), lr=0.001,
                 weight_decay=0.0001,
                 betas=(0.9, 0.98),
                 eps=1e-4

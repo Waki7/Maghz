@@ -71,30 +71,32 @@ def run_epoch(
             support_centers: FloatTensorT['NClasses,EmbedLen'] = \
                 support_embeds.mean(dim=1, keepdim=False)
 
-        query_embeds: FloatTensorT[
-            'TaskSize,EmbedLen'] = model.forward(
+        predictions: FloatTensorT[
+            'TaskSize,2'] = model.forward_tag(
             src_ids=batch.queries,
             tgt_ids=batch.tgt_tag_ids_queries,
             src_mask=batch.query_masks,
-            tgt_mask=batch.tgt_tag_masks_queries
+            tgt_mask=batch.tgt_tag_masks_queries,
+            neg_center=support_centers[:1, :].repeat(batch.queries.shape[0], 1),
+            pos_center=support_centers[1:, :].repeat(batch.queries.shape[0], 1),
         )
         query_lbls: LongTensorT['TaskSize'] = batch.query_lbls
-        loss = torch.tensor(0.0).to(query_embeds.device)
-        distance_to_supports_per_cls: List[FloatTensorT['NQuery']] = []
-        # TODO can probably do this in a batched way
-        for cls in range(support_embeds.shape[0]):
-            distance_to_supports_per_cls.append(
-                FloatTensorT(torch.cosine_similarity(query_embeds,
-                                                     support_centers[cls, :],
-                                                     dim=-1))
-                # -1 * torch.linalg.norm(
-                #     query_embeds - support_centers[cls, :], dim=-1, ord=2)
-            )
-        distance_to_supports_per_cls: FloatTensorT['NQuery,NClasses'] = \
-            FloatTensorT(torch.stack(
-                distance_to_supports_per_cls, dim=-1))
+        loss = torch.tensor(0.0).to(predictions.device)
+        # distance_to_supports_per_cls: List[FloatTensorT['NQuery']] = []
+        # # TODO can probably do this in a batched way
+        # for cls in range(support_embeds.shape[0]):
+        #     distance_to_supports_per_cls.append(
+        #         FloatTensorT(torch.cosine_similarity(query_embeds,
+        #                                              support_centers[cls, :],
+        #                                              dim=-1))
+        #         # -1 * torch.linalg.norm(
+        #         #     query_embeds - support_centers[cls, :], dim=-1, ord=2)
+        #     )
+        # distance_to_supports_per_cls: FloatTensorT['NQuery,NClasses'] = \
+        #     FloatTensorT(torch.stack(
+        #         distance_to_supports_per_cls, dim=-1))
         distance_to_supports_per_cls_probs = torch.softmax(
-            distance_to_supports_per_cls, dim=-1)
+            predictions, dim=-1)
 
         # Calculate accuracy
         predictions: LongTensorT[

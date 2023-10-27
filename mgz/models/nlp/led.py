@@ -72,16 +72,17 @@ class LEDLearnedPositionalEmbedding(nn.Embedding):
         super().__init__(num_embeddings, embedding_dim)
 
     def forward(self, input_ids: torch.Tensor,
-                transformer_ctx: TransformerContext = None):
+                transformer_ctx: TransformerContext = None,
+                seq_addition: int = 0, ):
         """`input_ids' shape is expected to be [bsz x seqlen]."""
         past_key_values_length = transformer_ctx.get_seq_len_so_far() \
             if transformer_ctx is not None else 0
         bsz, seq_len = input_ids.shape[:2]
+        seq_len += seq_addition
         positions = torch.arange(
             past_key_values_length, past_key_values_length + seq_len,
             dtype=torch.long, device=self.weight.device
         ).expand(bsz, -1)
-
         return super().forward(positions)
 
 
@@ -1249,14 +1250,22 @@ class LEDDecoder(nn.Module):
     def forward(
             self,
             encoder_hidden_states: FloatTensorT['B,SeqLen,EmbedLen'],
-            tgt_ids: LongTensorT['B,SrcSeqLen'],
+            tgt_ids: LongTensorT['B,TgtSeqLen'],
             src_mask: IntTensorT['B,1,SrcSeqLen'],
             tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqStep'] = None,
-            transformer_ctx: TransformerContext = None
+            transformer_ctx: TransformerContext = None,
+            forward_injection: Optional[FloatTensorT['B,2,EmbedLen']] = None
     ) -> FloatTensorT['B,TgtSeqLen,EmbedLen']:
-        inputs_embeds: FloatTensorT['B,1,EmbedLen'] = self.embed_tokens(
+        inputs_embeds: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.embed_tokens(
             tgt_ids) * self.embed_scale
-        positions = self.embed_positions(tgt_ids, transformer_ctx)
+        seq_add = 0
+        if forward_injection is not None:
+            inputs_embeds = FloatTensorT(
+                torch.cat([inputs_embeds, forward_injection], dim=1))
+            seq_add = forward_injection.shape[1]
+        positions = self.embed_positions.forward(tgt_ids,
+                                                 transformer_ctx=transformer_ctx,
+                                                 seq_addition=seq_add)
         positions = positions.to(inputs_embeds.device)
         hidden_states = inputs_embeds + positions
         hidden_states = self.layernorm_embedding(hidden_states)
@@ -1318,12 +1327,15 @@ class LEDModel(LEDPretrainedModel):
                tgt_ids: LongTensorT['B,TgtSeqLen'],
                src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
                tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen'] = None,
-               transformer_ctx: TransformerContext = None):
+               transformer_ctx: TransformerContext = None,
+               forward_injection: Optional[FloatTensorT['B,2,EmbedLen']] = None
+               ):
         return self.decoder.forward(
             encoder_hidden_states=encoder_memory,
             tgt_ids=tgt_ids,
             src_mask=src_mask,
-            tgt_mask=tgt_mask, transformer_ctx=transformer_ctx
+            tgt_mask=tgt_mask, transformer_ctx=transformer_ctx,
+            forward_injection=forward_injection
         )
 
     def forward(
@@ -1331,7 +1343,9 @@ class LEDModel(LEDPretrainedModel):
             src_ids: LongTensorT['B,SrcSeqLen'],
             tgt_ids: LongTensorT['B,TgtSeqLen'],
             src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
-            tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen'] = None
+            tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen'] = None,
+            forward_injection: Optional[FloatTensorT['B,2,EmbedLen']] = None
+
     ) -> FloatTensorT['B,TgtSeqLen,EmbedLen']:
         src_ids, src_mask = self._pre_encode_pad_if_needed(
             src_ids=src_ids,
@@ -1344,6 +1358,7 @@ class LEDModel(LEDPretrainedModel):
             src_mask=src_mask,
             tgt_mask=tgt_mask,
             encoder_memory=encoder_outputs,
+            forward_injection=forward_injection
         )
         return decoder_hidden_state
 
@@ -1527,7 +1542,8 @@ class LEDForBinaryTagging(LEDPretrainedModel, BinaryTaggerMixin):
             if quantization_config and quantization_config.load_in_8bit:
                 model = quantize_model(model)
             model.load_state_dict(torch.load(os.path.join(path, 'weights.bin'),
-                                             map_location=torch.device('cpu')))
+                                             map_location=torch.device('cpu')),
+                                  strict=False)
             model.to(settings.DEVICE)
             return model
         except FileNotFoundError:
@@ -1552,8 +1568,8 @@ class LEDForBinaryTagging(LEDPretrainedModel, BinaryTaggerMixin):
         self.led = LEDModel(config)
         self.register_buffer("final_logits_bias",
                              torch.zeros((1, self.led.shared.num_embeddings)))
-        self.lm_head = nn.Linear(config.d_model,
-                                 self.led.shared.num_embeddings, bias=False)
+        self.tagging_head = nn.Linear(config.d_model,
+                                      2, bias=False)
 
         # Initialize weights and apply final processing
         self.apply(self._init_weights)
@@ -1588,31 +1604,12 @@ class LEDForBinaryTagging(LEDPretrainedModel, BinaryTaggerMixin):
         )
         return self.led.encode(src_ids=src_ids, src_mask=src_mask, )
 
-    def decode(self,
-               encoder_memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
-               tgt_ids: LongTensorT['B,TgtSeqLen'],
-               src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
-               tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen'] = None,
-               transformer_ctx: TransformerContext = None):
-        output = self.led.decoder.forward(
-            encoder_hidden_states=encoder_memory,
-            tgt_ids=tgt_ids,
-            src_mask=src_mask,
-            tgt_mask=tgt_mask, transformer_ctx=transformer_ctx
-        )
-
-        lm_logits = self.lm_head(output)
-        lm_logits = lm_logits + self.final_logits_bias.to(lm_logits.device)
-        return lm_logits
-
     def forward(
             self,
             src_ids: LongTensorT['B,SrcSeqLen'],
             tgt_ids: LongTensorT['B,TgtSeqLen'],
             src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
             tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen'],
-            neg_center: FloatTensorT['B,EmbedLen'] = None,
-            pos_center: FloatTensorT['B,EmbedLen'] = None,
     ) -> FloatTensorT['B,EmbedLen']:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -1627,6 +1624,48 @@ class LEDForBinaryTagging(LEDPretrainedModel, BinaryTaggerMixin):
             tgt_ids=tgt_ids, tgt_mask=tgt_mask)
         # get the last embedding, not an average of the embeddings
         return output[:, -1, :]
+
+    def forward_tag(
+            self,
+            src_ids: LongTensorT['B,SrcSeqLen'],
+            tgt_ids: LongTensorT['B,TgtSeqLen'],
+            src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
+            # not 3 dim cause not generating
+            tgt_mask: IntTensorT['B|1,TgtSeqLen'],
+            neg_center: FloatTensorT['B,EmbedLen'] = None,
+            pos_center: FloatTensorT['B,EmbedLen'] = None,
+    ) -> FloatTensorT['B,2']:
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
+            config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
+            (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
+
+        Returns:
+        """
+        forward_injection = None
+        if pos_center is not None and neg_center is not None:
+            n_injections = 6
+            batch_sz = tgt_ids.shape[0]
+            extended_tgt_mask = torch.ones(
+                (batch_sz, tgt_mask.shape[1] + n_injections), dtype=torch.bool,
+                device=tgt_mask.device)
+            extended_tgt_mask[:, :-n_injections] = tgt_mask
+            tgt_mask = extended_tgt_mask
+            injection_tensor: FloatTensorT[
+                'B,4,EmbedLen'] = self.led.decoder.embed_tokens(
+                torch.tensor([self.config.sep_token_id] * 4)[
+                None, :].to(tgt_ids.device)).repeat(batch_sz, 1, 1)
+            forward_injection = FloatTensorT(
+                torch.cat([injection_tensor[:, :2, :], neg_center[:, None, :],
+                           injection_tensor[:, 2:, :], pos_center[:, None, :]],
+                          dim=1))
+        output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.led.forward(
+            src_ids=src_ids, src_mask=src_mask,
+            tgt_ids=tgt_ids, tgt_mask=tgt_mask,
+            forward_injection=forward_injection)
+        # get the last embedding, not an average of the embeddings
+        return self.tagging_head(output[:, -1, :])
 
     @staticmethod
     def _reorder_cache(past, beam_idx):
