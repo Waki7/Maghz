@@ -1,6 +1,11 @@
 from __future__ import annotations
+from __future__ import annotations
 
-import torch.nn as nn
+import os
+
+from torch import nn
+
+os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
 
 class BaseModel(nn.Module):
@@ -21,7 +26,6 @@ class BaseModel(nn.Module):
     #
     #     self.trainer: Optional[NetworkTrainer] = None
     #     self.temp_predictor = nn.Identity()
-
 
     # def __init__(self, **kwargs):
     #     super(BaseModel, self).__init__()

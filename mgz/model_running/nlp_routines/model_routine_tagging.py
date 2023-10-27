@@ -12,7 +12,6 @@ import spaces as sp
 from mgz.ds.base_dataset import BaseDataset
 from mgz.ds.sentence_datasets.sentence_datasets import Sent2TagMetaTaskBatch
 from mgz.model_running.base_routine import BaseProtocol
-from mgz.model_running.learning_ops import LabelSmoothing
 from mgz.model_running.run_ops import run_epoch, TrainState
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.typing import *
@@ -42,7 +41,6 @@ def run_epoch(
     # loss_fn = LabelSmoothing(
     #     n_cls=2, padding_idx=model_node.tokenizer.pad_token_id,
     #     smoothing=0.1).to(settings.DEVICE)
-    loss_interval = 5
     if not model_node.has_initial_metrics():
         val_model(val_data_loader, model)
         model_node.store_metrics({
@@ -52,7 +50,7 @@ def run_epoch(
                 Metrics.VAL_ACC: log_utils.exp_tracker.pop_scalars(
                     Metrics.VAL_ACC)
             })
-
+    loss_interval = 5
     for i, batch in tqdm(enumerate(data_loader), total=len(data_loader)):
         if batch is None:
             logging.warning(
@@ -70,6 +68,9 @@ def run_epoch(
             support_embeds: FloatTensorT[
                 'NClasses,TaskSize,EmbedLen'] = \
                 support_embeds.reshape(n_cls, tsk_sz, -1)
+            support_centers: FloatTensorT['NClasses,EmbedLen'] = \
+                support_embeds.mean(dim=1, keepdim=False)
+
         query_embeds: FloatTensorT[
             'TaskSize,EmbedLen'] = model.forward(
             src_ids=batch.queries,
@@ -79,19 +80,21 @@ def run_epoch(
         )
         query_lbls: LongTensorT['TaskSize'] = batch.query_lbls
         loss = torch.tensor(0.0).to(query_embeds.device)
-        support_centers: FloatTensorT['NClasses,EmbedLen'] = \
-            support_embeds.mean(dim=1, keepdim=False)
         distance_to_supports_per_cls: List[FloatTensorT['NQuery']] = []
         # TODO can probably do this in a batched way
         for cls in range(support_embeds.shape[0]):
             distance_to_supports_per_cls.append(
-                torch.linalg.norm(
-                    query_embeds - support_centers[cls, :], dim=-1, ord=2))
+                FloatTensorT(torch.cosine_similarity(query_embeds,
+                                                     support_centers[cls, :],
+                                                     dim=-1))
+                # -1 * torch.linalg.norm(
+                #     query_embeds - support_centers[cls, :], dim=-1, ord=2)
+            )
         distance_to_supports_per_cls: FloatTensorT['NQuery,NClasses'] = \
             FloatTensorT(torch.stack(
                 distance_to_supports_per_cls, dim=-1))
         distance_to_supports_per_cls_probs = torch.softmax(
-            -1 * distance_to_supports_per_cls, dim=-1)
+            distance_to_supports_per_cls, dim=-1)
 
         # Calculate accuracy
         predictions: LongTensorT[

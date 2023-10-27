@@ -5,11 +5,26 @@ from setuptools import find_packages
 
 # Usage
 # if timeout add this argument --default-timeout=100
-# in development: pip install -e C:\Users\ceyer\OneDrive\Documents\Projects\Maghz
-# in prod: pip install C:\Users\ceyer\OneDrive\Documents\Projects\Maghz
+# in development: pip install -e {path to Maghz or . if in dir}
+# in prod: pip install {path to Maghz or . if in dir}
 
 # User-friendly description from README.md
 current_directory = os.path.dirname(os.path.abspath(__file__))
+operating_system = os.name
+is_windows = operating_system == 'nt'
+is_linux = operating_system == 'posix'
+is_mac = operating_system == 'mac'
+
+torch_deps = []
+if is_windows:
+    torch_deps = \
+        ["torch@https://download.pytorch.org/whl/cu116/torch-1.13.1%2Bcu116-cp38-cp38-win_amd64.whl"
+         "torchvision@https://download.pytorch.org/whl/cu116/torchvision-0.14.1%2Bcu116-cp38-cp38-win_amd64.whl"]
+else:
+    torch_deps = \
+        ["torch@https://download.pytorch.org/whl/cu116/torch-1.13.1%2Bcu116-cp38-cp38-linux_x86_64.whl"
+         "torchvision@https://download.pytorch.org/whl/cu116/torchvision-0.14.1%2Bcu116-cp38-cp38-linux_x86_64.whl"]
+
 try:
     with open(os.path.join(current_directory, 'README.md'),
               encoding='utf-8') as f:
@@ -53,7 +68,7 @@ setup(
 
     # List of keyword arguments
     keywords=[],
-    python_requires='>3.9',
+    python_requires='>3.8',
 
     # List of packages to install with this one
     install_requires=[
@@ -66,7 +81,6 @@ setup(
         'scipy',
         'numpy',
         'tensorflow',
-        'torch',
         'torchvision',
         'transformers',
         'opencv-python',
@@ -90,16 +104,15 @@ setup(
         'typing_extensions==4.4.0',
         'peft',
         'bitsandbytes',
-        # python -m pip install bitsandbytes --prefer-binary --extra-index-url=https://jllllll.github.io/bitsandbytes-windows-webui
-        'bitsandbytes-cuda116',
         'optimum',
-        # pip3 install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu116
-        # pip3 install torchdata==0.5.1 torchtext==0.14.1 (use conda if you can)
-
-        # python -m spacy download de_core_news_sm
-        # python -m spacy download en_core_web_sm
+        'torch>=2.1.0',
+        'torchvision',
+        'torchaudio',
+        'torchdata',
+        'torchtext',
+        'tensorflow-gpu==2.8.0',
+        'protobuf==3.20',
+        'auto-gptq==0.4.2',
     ],
-
-    # https://pypi.org/classifiers/
     classifiers=[]
 )

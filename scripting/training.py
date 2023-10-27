@@ -3,6 +3,7 @@ from __future__ import annotations
 # from mgz.models.nlp.bart_interface import BARTHubInterface
 import os
 
+import bitsandbytes
 from transformers import BitsAndBytesConfig
 
 from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagging
@@ -43,7 +44,6 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
     assert aus or enron, 'must select a dataset'
     ds, val_ds = None, None
     cfg = model_node.model.config
-    print(cfg.max_encoder_position_embeddings)
     if aus:
         ds = AusCaseReportsToTagGrouped(model_node.tokenizer,
                                         max_src_len=3000,
@@ -56,11 +56,11 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
                                             n_supports_per_cls=[2])
     if enron:
         ds = EnronEmailsTagging(model_node.tokenizer,
-                                max_src_len=4096,
+                                max_src_len=2500,
                                 n_episodes=2000,
                                 n_query_per_cls=[3], n_support_per_cls=[2])
         val_ds = EnronEmailsTagging(model_node.tokenizer,
-                                    max_src_len=4096,
+                                    max_src_len=2500,
                                     n_episodes=50,
                                     n_query_per_cls=[3],
                                     n_support_per_cls=[2])
@@ -74,9 +74,8 @@ def led_main_train():
     # model_name = "facebook/bart-base"
     # model_name = 'allenai/bart-large-multi_lexsum-long-tiny'
     # model_name = 'allenai/bart-large-multi_lexsum-long-short'
-    model_name = 'allenai/led-base-16384-multi_lexsum-source-long'
+    model_name = 'allenai/primera-multi_lexsum-source-long'
     # model_name = 'allenai/led-base-16384-multi_lexsum-source-tiny'
-    # model_name = 'allenai/primera-multi_lexsum-source-long'
 
     # model_name = 'allenai/led-base-16384'
     # model_name = 'allenai/led-large-16384'
@@ -85,15 +84,16 @@ def led_main_train():
     # model_name = 'facebook/bart-large-cnn'
     # model_cls = BartForBinaryTagging
     print('... loading model and tokenizer')
-    with torch.cuda.amp.autocast():
+
+    with torch.cuda.amp.autocast(enabled=True):
+        quantize = False
+        quantization_cfg = BitsAndBytesConfig(load_in_8bit=quantize)
         model_node: ModelNode = \
             ModelNode.load_from_id(LEDForBinaryTagging, model_name, model_name,
-                                   quantization_config=BitsAndBytesConfig(
-                                       load_in_4bit=True))
-
+                                   quantization_config=quantization_cfg)
         model_node.model.to(settings.DEVICE)
         model_node.model.train()
-        exit(3)
+        settings.print_gpu_usage()
         ds, val_ds = dataset_select(model_node, aus=False, enron=True)
         routine = TaggingRoutine()
         loss_fn = LabelSmoothing(
@@ -101,12 +101,21 @@ def led_main_train():
             padding_idx=model_node.tokenizer.pad_token_id,
             smoothing=0.1
         ).to(settings.DEVICE)
-        optimizer = torch.optim.Adam(
-            model_node.model.parameters(), lr=0.0005,
-            weight_decay=0.0001,
-            betas=(0.9, 0.98),
-            eps=1e-4
-        )
+        if quantize:
+            optimizer = bitsandbytes.optim.Adam8bit(
+                [p for n, p in model_node.model.named_parameters() if
+                 p.requires_grad],
+                lr=0.0005,
+                weight_decay=0.0001,
+                betas=(0.9, 0.98),
+                eps=1e-4)
+        else:
+            optimizer = torch.optim.Adam(
+                model_node.model.parameters(), lr=0.0005,
+                weight_decay=0.0001,
+                betas=(0.9, 0.98),
+                eps=1e-4
+            )
         # scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda)
         train_transition_edge = ModelTransitionEdge(model_node, loss_fn,
                                                     optimizer, ds)

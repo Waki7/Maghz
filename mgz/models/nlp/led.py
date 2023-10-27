@@ -11,13 +11,13 @@ from abc import ABC
 import torch.utils.checkpoint
 import transformers as hug
 from torch import nn
-from transformers import BitsAndBytesConfig, GPTQConfig
+from transformers import BitsAndBytesConfig
 from transformers.activations import ACT2FN
 from transformers.models.led.configuration_led import LEDConfig
 
 import settings
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext, \
-    BinaryTaggerMixin
+    BinaryTaggerMixin, quantize_model
 from mgz.models.nlp.utils_attention import _attention
 from mgz.typing import *
 
@@ -1015,6 +1015,14 @@ class LEDDecoderLayer(nn.Module):
 
 
 class LEDPretrainedModel(BaseTransformer, ABC):
+    @classmethod
+    def modules_to_apply_lora(cls) -> List[str]:
+        return ['key', 'value', 'query']
+
+    @classmethod
+    def modules_to_not_convert(cls):
+        return ['model.encoder.embed_tokens', 'model.decoder.embed_tokens',
+                'lm_head']
 
     @classmethod
     def load_tokenizer(cls, tokenizer_id: str) -> Optional[
@@ -1354,15 +1362,26 @@ class LEDForConditionalGeneration(LEDPretrainedModel):
         return self.get_decoder().embed_positions.weight.shape[0]
 
     @classmethod
-    def load_model(cls, path: str) -> Optional[LEDForConditionalGeneration]:
+    def load_model(cls, path: str,
+                   quantization_config: BitsAndBytesConfig = None) -> Optional[
+        LEDForConditionalGeneration]:
         try:
             with open(os.path.normpath(os.path.join(path, 'config.json')),
                       'r') as f:
                 config = json.load(f)
-            model = LEDForConditionalGeneration(
-                LEDConfig.from_dict(config))
+                if hasattr(config, 'quantization_config'):
+                    if (quantization_config != config.quantization_config):
+                        logging.warning(
+                            'quantization configs do not match, {} vs {}'.format(
+                                quantization_config,
+                                config.quantization_config))
+                    quantization_config = config.quantization_config
+            model = LEDForConditionalGeneration(LEDConfig.from_dict(config))
+            if quantization_config and quantization_config.load_in_8bit:
+                model = quantize_model(model)
             model.load_state_dict(torch.load(os.path.join(path, 'weights.bin'),
                                              map_location=torch.device('cpu')))
+            model.to(settings.DEVICE)
             return model
         except FileNotFoundError:
             return None
@@ -1489,15 +1508,28 @@ class LEDForBinaryTagging(LEDPretrainedModel, BinaryTaggerMixin):
         return self.get_decoder().embed_positions.weight.shape[0]
 
     @classmethod
-    def load_model(cls, path: str) -> Optional[LEDForBinaryTagging]:
+    def load_model(cls, path: str,
+                   quantization_config: BitsAndBytesConfig = None) -> Optional[
+        LEDForBinaryTagging]:
         try:
             with open(os.path.normpath(os.path.join(path, 'config.json')),
                       'r') as f:
                 config = json.load(f)
+                if hasattr(config, 'quantization_config'):
+                    if (quantization_config != config.quantization_config):
+                        logging.warning(
+                            'quantization configs do not match, {} vs {}'.format(
+                                quantization_config,
+                                config.quantization_config))
+                    quantization_config = config.quantization_config
             model = LEDForBinaryTagging(
                 LEDConfig.from_dict(config))
+            if quantization_config and quantization_config.load_in_8bit:
+                model = quantize_model(model)
             model.load_state_dict(torch.load(os.path.join(path, 'weights.bin'),
                                              map_location=torch.device('cpu')))
+            model.to(settings.DEVICE)
+            return model
         except FileNotFoundError:
             return None
 
@@ -1506,7 +1538,7 @@ class LEDForBinaryTagging(LEDPretrainedModel, BinaryTaggerMixin):
         if not os.path.exists(path):
             os.makedirs(path)
         model_hug = hug.LEDForConditionalGeneration.from_pretrained(
-            model_id, load_in_4bit=True).to(settings.DEVICE)
+            model_id)
         with open(os.path.normpath(os.path.join(path, 'config.json')),
                   'w') as f:
             json.dump(model_hug.config.to_dict(), f)
@@ -1578,7 +1610,9 @@ class LEDForBinaryTagging(LEDPretrainedModel, BinaryTaggerMixin):
             src_ids: LongTensorT['B,SrcSeqLen'],
             tgt_ids: LongTensorT['B,TgtSeqLen'],
             src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
-            tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen']
+            tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen'],
+            neg_center: FloatTensorT['B,EmbedLen'] = None,
+            pos_center: FloatTensorT['B,EmbedLen'] = None,
     ) -> FloatTensorT['B,EmbedLen']:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):

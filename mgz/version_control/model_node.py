@@ -62,9 +62,9 @@ class ModelNode:
     @classmethod
     def load_from_id(cls, model_cls: Type[BaseTransformer], model_id: str,
                      tokenizer_id: str = None,
-                     quantization_config: Optional[BitsAndBytesConfig] = None):
+                     quantization_config: BitsAndBytesConfig = None):
         node = vc.lookup_model(model_cls, model_id, tokenizer_id,
-                               quantization_config)
+                               quantization_config=quantization_config)
         node.load_metrics()
         return node
 
@@ -110,8 +110,10 @@ class ModelNode:
             for key, values in data.get("all_metrics", {}).items():
                 self.all_metrics[Metrics(key)] = values
 
-    def store_model_node(self):
+    def store_model_node(self, path: DirPath = None):
         model_dir = vc.CACHED_INDEXER.path_from_id(self.model_id)
+        if path is not None:
+            model_dir = path
         # bug1 - the weights of the original model aren't copied so we only
         # have the changing out, this should be changed, I'm not sure if
         # saving both is necessary/optimal. Maybe we should load it fresh

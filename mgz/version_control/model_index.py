@@ -1,14 +1,21 @@
+from __future__ import annotations
+
 import json
+# from mgz.models.nlp.bart_interface import BARTHubInterface
 import os
 from pathlib import Path
 
-import transformers as hug
 from transformers import PreTrainedTokenizer, BitsAndBytesConfig
 
 from mgz.models.base_model import BaseModel
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.typing import *
-from mgz.version_control.model_node import ModelNode
+
+os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+import logging
+
+from mgz.version_control import ModelNode
+import transformers as hug
 
 
 class ModelDatabase:
@@ -37,8 +44,7 @@ DEFAULT_INDEX_PATH = os.path.join(Path(__file__).resolve().parent.parent.parent,
 
 def lookup_model(model_cls: Type[BaseTransformer], model_id: str,
                  tokenizer_id: str = None,
-                 quantization_config: Union[
-                     BitsAndBytesConfig, None] = None) -> ModelNode:
+                 quantization_config: BitsAndBytesConfig = None) -> ModelNode:
     assert tokenizer_id is not None, 'NLP Model needs tokenizer id'
     model_node = \
         CACHED_INDEXER.lookup_or_init(model_id,
@@ -100,7 +106,8 @@ class Indexer:
     def check_state(self):
         if not os.path.exists(self.root_path):
             raise OSError(
-                f'Indexer root path {os.path.abspath(self.root_path)} does not exist, check if the indexer moved.')
+                f'Indexer root path {os.path.abspath(self.root_path)} does '
+                f'not exist, check if the indexer moved.')
 
     def path_from_id(self, model_id: str, create_if_not_exist=True):
         model_dir: DirPath = os.path.join(self.root_path, model_id).replace(
@@ -121,27 +128,26 @@ class Indexer:
 
     def lookup_or_init(self, model_id: str,
                        model_cls: Type[BaseTransformer],
-                       quantization_config: Union[
-                           BitsAndBytesConfig, None] = None) -> ModelNode:
+                       quantization_config: BitsAndBytesConfig = None) -> ModelNode:
         self.check_state()
         model_dir: DirPath = self.get_or_add_to_root(model_id)
 
         # TODO, cleaner way to distinguish the models that are available to load
         model: Optional[BaseTransformer] = \
-            model_cls.load_model(model_dir)
+            model_cls.load_model(model_dir, quantization_config)
         tokenizer: Optional[hug.PreTrainedTokenizer] = model_cls.load_tokenizer(
             model_dir)
         loaded_successfully = model is not None and tokenizer is not None
         if not loaded_successfully:
             logging.warning(
                 'Model was in roots but not found in directory, this may be '
-                'an online model.', model_dir)
+                'an online model: ' + model_dir)
 
         if not loaded_successfully:
             # Now we try to load the model from some other source
             model_cls.initial_save(model_id, model_dir)
             model: Optional[BaseTransformer] = \
-                model_cls.load_model(model_dir)
+                model_cls.load_model(model_dir, quantization_config)
             tokenizer: Optional[
                 hug.PreTrainedTokenizer] = model_cls.load_tokenizer(
                 model_id)
@@ -150,12 +156,6 @@ class Indexer:
                 'Model {} not found. Checked in directory {}'.format(model_id,
                                                                      os.path.abspath(
                                                                          model_dir)))
-        if quantization_config is not None:
-            from optimum.gptq import GPTQQuantizer
-            quantizer = GPTQQuantizer.from_dict(
-                quantization_config.to_dict())
-            quantizer.quantize_model(model, tokenizer)
-            model.config.quantization_config = quantization_config
         return ModelNode(model, tokenizer, model_id)
 
     def save_to_index(self, model_node: ModelNode) -> DirPath:

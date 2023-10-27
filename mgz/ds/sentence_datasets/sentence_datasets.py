@@ -8,7 +8,7 @@ from functools import partial
 
 import torch.utils.data
 from torch.nn.functional import pad
-from transformers import PreTrainedTokenizer, BatchEncoding
+from transformers import PreTrainedTokenizer
 
 from mgz.ds.base_dataset import BaseDataset, DataState
 from mgz.typing import *
@@ -115,25 +115,26 @@ class Sent2TagMetaTaskBatch:
         neg_idxs = list(range(neg_src_ids.shape[0]))
         random.shuffle(neg_idxs)
         neg_supports = neg_src_ids[neg_idxs[:n_support_per_cls], :]
-        neg_support_mask = (neg_supports != pad_idx).long().to(
+        neg_support_mask = (neg_supports != pad_idx).to(torch.int8).to(
             neg_supports.device)
 
         pos_idxs = list(range(pos_src_ids.shape[0]))
         random.shuffle(pos_idxs)
         pos_supports = pos_src_ids[pos_idxs[:n_support_per_cls], :]
-        pos_support_mask = (pos_supports != pad_idx).long().to(
+        pos_support_mask = (pos_supports != pad_idx).to(torch.int8).to(
             pos_supports.device)
         self.supports: LongTensorT[
             'NClasses,TaskSize/NClasses,SrcSeqLen'] = \
-            LongTensorT(torch.stack([neg_supports, pos_supports], dim=0))
+            LongTensorT(torch.stack([neg_supports, pos_supports], dim=0)).to(
+                torch.long)
         self.support_masks = torch.stack([neg_support_mask, pos_support_mask],
-                                         dim=0)
+                                         dim=0).to(torch.int8)
         neg_queries = neg_src_ids[neg_idxs[n_support_per_cls:], :]
         pos_queries = pos_src_ids[pos_idxs[n_support_per_cls:], :]
         self.queries: LongTensorT[
             'TaskSize,SrcSeqLen'] = LongTensorT(
-            torch.cat([neg_queries, pos_queries], dim=0))
-        self.query_masks = (self.queries != pad_idx).long().to(
+            torch.cat([neg_queries, pos_queries], dim=0)).to(torch.long)
+        self.query_masks = (self.queries != pad_idx).to(torch.int8).to(
             self.queries.device)
         self.query_lbls = \
             torch.cat([torch.zeros(neg_queries.shape[0]),
@@ -142,15 +143,15 @@ class Sent2TagMetaTaskBatch:
 
         self.tgt_tag_ids_supports = tgt_tag_ids.unsqueeze(0).unsqueeze(
             0).repeat(
-            self.supports.shape[0], self.supports.shape[1], 1)
+            self.supports.shape[0], self.supports.shape[1], 1).to(torch.long)
         self.tgt_tag_masks_supports = (
-                self.tgt_tag_ids_supports != pad_idx).long().to(
+                self.tgt_tag_ids_supports != pad_idx).to(torch.int8).to(
             tgt_tag_ids.device)
 
         self.tgt_tag_ids_queries = tgt_tag_ids.unsqueeze(0).repeat(
-            self.queries.shape[0], 1)
+            self.queries.shape[0], 1).to(torch.long)
         self.tgt_tag_masks_queries = (
-                self.tgt_tag_ids_queries != pad_idx).long().to(
+                self.tgt_tag_ids_queries != pad_idx).to(torch.int8).to(
             tgt_tag_ids.device)
 
     def get_support_centers(self) -> FloatTensorT['NClasses,EmbedLen']:
