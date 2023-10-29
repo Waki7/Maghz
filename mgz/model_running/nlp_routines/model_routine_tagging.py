@@ -37,10 +37,6 @@ def run_epoch(
     loss = 0
     i: int
     batch: Sent2TagMetaTaskBatch
-    loss_fn = torch.nn.CrossEntropyLoss()
-    # loss_fn = LabelSmoothing(
-    #     n_cls=2, padding_idx=model_node.tokenizer.pad_token_id,
-    #     smoothing=0.1).to(settings.DEVICE)
     if not model_node.has_initial_metrics():
         val_model(val_data_loader, model)
         model_node.store_metrics({
@@ -50,7 +46,7 @@ def run_epoch(
                 Metrics.VAL_ACC: log_utils.exp_tracker.pop_scalars(
                     Metrics.VAL_ACC)
             })
-    loss_interval = 5
+    loss_interval = 3
     for i, batch in tqdm(enumerate(data_loader), total=len(data_loader)):
         if batch is None:
             logging.warning(
@@ -70,6 +66,7 @@ def run_epoch(
                 support_embeds.reshape(n_cls, tsk_sz, -1)
             support_centers: FloatTensorT['NClasses,EmbedLen'] = \
                 support_embeds.mean(dim=1, keepdim=False)
+            del support_embeds
 
         query_embeds: FloatTensorT[
             'TaskSize,EmbedLen'] = model.forward(
@@ -82,13 +79,13 @@ def run_epoch(
         loss = torch.tensor(0.0).to(query_embeds.device)
         distance_to_supports_per_cls: List[FloatTensorT['NQuery']] = []
         # TODO can probably do this in a batched way
-        for cls in range(support_embeds.shape[0]):
+        for cls in range(n_cls):
             distance_to_supports_per_cls.append(
-                FloatTensorT(torch.cosine_similarity(query_embeds,
-                                                     support_centers[cls, :],
-                                                     dim=-1))
-                # -1 * torch.linalg.norm(
-                #     query_embeds - support_centers[cls, :], dim=-1, ord=2)
+                # FloatTensorT(torch.cosine_similarity(query_embeds,
+                #                                      support_centers[cls, :],
+                #                                      dim=-1))
+                -1 * torch.linalg.norm(
+                    query_embeds - support_centers[cls, :], dim=-1, ord=2)
             )
         distance_to_supports_per_cls: FloatTensorT['NQuery,NClasses'] = \
             FloatTensorT(torch.stack(
@@ -102,8 +99,8 @@ def run_epoch(
         log_utils.exp_tracker.add_scalar(Metrics.TRAIN_ACC_MEAN, (
                 predictions == query_lbls).float().mean().item(),
                                          track_mean=True)
-        loss += loss_fn.__call__(distance_to_supports_per_cls_probs,
-                                 query_lbls)
+        loss += model_edge.loss_fn.__call__(distance_to_supports_per_cls_probs,
+                                            query_lbls)
 
         model_edge.train_state.step += 1
         log_utils.exp_tracker.add_scalar(Metrics.TRAIN_LOSS_MEAN,

@@ -19,7 +19,6 @@ import logging
 
 from mgz.ds.sentence_datasets.aus_legal_case_reports import \
     AusCaseReportsToTagGrouped
-from mgz.model_running.learning_ops import LabelSmoothing
 from mgz.model_running.nlp_routines.model_routine_tagging import TaggingRoutine
 from mgz.version_control import ModelNode
 from mgz.version_control.model_edge import ModelTransitionEdge
@@ -56,11 +55,11 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
                                             n_supports_per_cls=[2])
     if enron:
         ds = EnronEmailsTagging(model_node.tokenizer,
-                                max_src_len=2500,
+                                max_src_len=2000,
                                 n_episodes=2000,
                                 n_query_per_cls=[3], n_support_per_cls=[2])
         val_ds = EnronEmailsTagging(model_node.tokenizer,
-                                    max_src_len=2500,
+                                    max_src_len=2000,
                                     n_episodes=50,
                                     n_query_per_cls=[3],
                                     n_support_per_cls=[2])
@@ -68,18 +67,19 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
 
 
 def led_main_train():
+    from transformers import GPTNeoXForCausalLM
     logging.basicConfig(level=logging.WARNING)
     batch_size = 1
     # Initializing a BART facebook/bart-large style configuration
     # model_name = "facebook/bart-base"
     # model_name = 'allenai/bart-large-multi_lexsum-long-tiny'
     # model_name = 'allenai/bart-large-multi_lexsum-long-short'
-    model_name = 'allenai/primera-multi_lexsum-source-long'
+    # model_name = 'allenai/primera-multi_lexsum-source-long'
     # model_name = 'allenai/led-base-16384-multi_lexsum-source-tiny'
 
     # model_name = 'allenai/led-base-16384'
     # model_name = 'allenai/led-large-16384'
-    # model_name = 'allenai/led-base-16384-multi_lexsum-source-long'
+    model_name = 'allenai/led-base-16384-multi_lexsum-source-long'
 
     # model_name = 'facebook/bart-large-cnn'
     # model_cls = BartForBinaryTagging
@@ -96,11 +96,12 @@ def led_main_train():
         settings.print_gpu_usage()
         ds, val_ds = dataset_select(model_node, aus=False, enron=True)
         routine = TaggingRoutine()
-        loss_fn = LabelSmoothing(
-            n_cls=ds.tgt_vocab_len(),
-            padding_idx=model_node.tokenizer.pad_token_id,
-            smoothing=0.1
-        ).to(settings.DEVICE)
+        loss_fn = torch.nn.CrossEntropyLoss()
+        # loss_fn = LabelSmoothing(
+        #     n_cls=2,
+        #     padding_idx=model_node.tokenizer.pad_token_id,
+        #     smoothing=0.1
+        # ).to(settings.DEVICE)
         if quantize:
             optimizer = bitsandbytes.optim.Adam8bit(
                 [p for n, p in model_node.model.named_parameters() if
@@ -111,9 +112,8 @@ def led_main_train():
                 eps=1e-4)
         else:
             optimizer = torch.optim.Adam(
-                model_node.model.parameters(), lr=0.0005,
-                weight_decay=0.0001,
-                betas=(0.9, 0.98),
+                model_node.model.parameters(), lr=0.0001,
+                weight_decay=0.0005,
                 eps=1e-4
             )
         # scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda)
@@ -122,7 +122,7 @@ def led_main_train():
         routine.train(model_node=model_node, ds=ds, val_ds=val_ds,
                       model_edge=train_transition_edge,
                       device=settings.DEVICE, distributed=False,
-                      turn_off_shuffle=False, n_epochs=10, )
+                      turn_off_shuffle=False, n_epochs=15, )
         torch.cuda.empty_cache()
 
 

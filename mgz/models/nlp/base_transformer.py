@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import bitsandbytes
 import torch.nn as nn
 import transformers as hug
 from accelerate import dispatch_model
@@ -49,6 +48,7 @@ def replace_8bit_linear(model, threshold=6.0, module_to_not_convert=None):
 
 
 def quantize_model(model: BaseTransformer):
+    logging.info('Quantizing model.')
     model = replace_8bit_linear(
         model,
         module_to_not_convert=model.modules_to_not_convert()
@@ -60,6 +60,7 @@ def quantize_model(model: BaseTransformer):
 
 
 def quantize_model_inference(model: BaseTransformer):
+    logging.info('Quantizing model.')
     quantization_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_use_double_quant=True,
