@@ -19,7 +19,7 @@ import transformers as hug
 
 
 class ModelDatabase:
-    from mgz.models.nlp.led import LEDForBinaryTagging
+    from mgz.models.nlp.led import LEDForSequenceClassification
     '''
     Just some quick access base models. For easier book keeping for now.
     '''
@@ -30,9 +30,9 @@ class ModelDatabase:
 
     @staticmethod
     def led_source_to_long() -> ModelNode:
-        return lookup_model(ModelDatabase.LEDForBinaryTagging,
-                            ModelDatabase.led_source_to_long_id(),
-                            ModelDatabase.led_source_to_long_id())
+        return lookup_or_init_model(ModelDatabase.LEDForSequenceClassification,
+                                    ModelDatabase.led_source_to_long_id(),
+                                    ModelDatabase.led_source_to_long_id())
 
 
 # DEFAULTS
@@ -42,9 +42,9 @@ DEFAULT_INDEX_PATH = os.path.join(Path(__file__).resolve().parent.parent.parent,
                                                                          "/")
 
 
-def lookup_model(model_cls: Type[BaseTransformer], model_id: str,
-                 tokenizer_id: str = None,
-                 quantization_config: BitsAndBytesConfig = None) -> ModelNode:
+def lookup_or_init_model(model_cls: Type[BaseTransformer], model_id: str,
+                         tokenizer_id: str = None,
+                         quantization_config: BitsAndBytesConfig = None) -> ModelNode:
     assert tokenizer_id is not None, 'NLP Model needs tokenizer id'
     model_node = \
         CACHED_INDEXER.lookup_or_init(model_id,
@@ -53,6 +53,9 @@ def lookup_model(model_cls: Type[BaseTransformer], model_id: str,
     model_node.model.eval()
     model_node.model.verify_tokenizer(model_node.tokenizer)
     return model_node
+
+def get_models_path()->DirPath:
+    return CACHED_INDEXER.root_path
 
 
 class Indexer:
@@ -110,9 +113,9 @@ class Indexer:
                 f'not exist, check if the indexer moved.')
 
     def path_from_id(self, model_id: str, create_if_not_exist=True):
-        model_dir: DirPath = os.path.join(self.root_path, model_id).replace(
-            "\\",
-            "/")
+        model_dir: DirPath = (
+            os.path.join(self.root_path, model_id).replace(
+                "\\", "/"))
         if create_if_not_exist and not os.path.exists(model_dir):
             os.makedirs(model_dir)
         return model_dir
@@ -184,7 +187,7 @@ class Indexer:
                 return None, None
             else:
                 logging.info('loading model {} into cache'.format(model_id))
-                model_node = lookup_model(model_cls, model_id, model_id)
+                model_node = lookup_or_init_model(model_cls, model_id, model_id)
                 self.runtime_model_cache[model_id] = model_node.model
                 self.runtime_tokenizer_cache[model_id] = model_node.tokenizer
         return self.runtime_model_cache[model_id], \

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 from functools import partial
 from pathlib import Path
 
@@ -252,7 +253,7 @@ class AusCaseReportsToTagGrouped(AusCaseReports, MetaLearningMixIn):
         self.similar_enough_count_diff = 1
         self.punctuation_to_remove = r"""!? ,.:;?"""
         self.max_words_tag = max_words_tag
-        self._tag_to_sample_idx_map: Dict[str, List[int]] = {}
+        self._tag_to_sample_idx_map: OrderedDict[str, List[int]] = OrderedDict()
 
         # Meta Learning Sampling Parameters
         self._n_supports_per_cls = n_queries_per_cls
@@ -262,7 +263,9 @@ class AusCaseReportsToTagGrouped(AusCaseReports, MetaLearningMixIn):
     def __len__(self):
         'Denotes the total number of samples'
         assert self.loaded, "Dataset not loaded"
-        return len(self.data) if self.n_episodes is None else self.n_episodes
+        if self.n_episodes is not None:
+            return self.n_episodes
+        return len(self._tag_to_sample_idx_map)
 
     @property
     @overrides(SentenceDataset)
@@ -398,9 +401,12 @@ class AusCaseReportsToTagGrouped(AusCaseReports, MetaLearningMixIn):
 
     @overrides(AusCaseReports)
     def __getitem__(self, idx) -> (SrcStringT, TgtStringT):
-        input_text = self.data[idx][SampleType.INPUT_TEXT]
-        catchphrase = self.data[idx][SampleType.CATCHPHRASES]
-        return input_text, catchphrase
+        tags = list(self._tag_to_sample_idx_map.keys())
+        tag_idx = idx % len(self._tag_to_sample_idx_map)
+        selected_tag: TgtStringT = tags[tag_idx]
+        rand_sample_for_tag: SrcStringT = self.data[random.choice(
+            self._tag_to_sample_idx_map[selected_tag])][SampleType.INPUT_TEXT]
+        return rand_sample_for_tag, selected_tag
 
 
 def inspect_src_test():

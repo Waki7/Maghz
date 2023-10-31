@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-# from mgz.models.nlp.bart_interface import BARTHubInterface
 import os
+
+os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+# from mgz.models.nlp.bart_interface import BARTHubInterface
 
 import bitsandbytes
 from transformers import BitsAndBytesConfig
@@ -9,14 +11,12 @@ from transformers import BitsAndBytesConfig
 from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagging
 from mgz.typing import *
 
-os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 import torch
 import settings
 from mgz.ds.sentence_datasets.synthetic_memorization import \
     SyntheticMemorization
-from mgz.models.nlp.led import LEDForBinaryTagging
 import logging
-
+from mgz.models.nlp.led import LEDForSequenceClassification
 from mgz.ds.sentence_datasets.aus_legal_case_reports import \
     AusCaseReportsToTagGrouped
 from mgz.model_running.nlp_routines.model_routine_tagging import TaggingRoutine
@@ -67,7 +67,6 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
 
 
 def led_main_train():
-    from transformers import GPTNeoXForCausalLM
     logging.basicConfig(level=logging.WARNING)
     batch_size = 1
     # Initializing a BART facebook/bart-large style configuration
@@ -89,7 +88,8 @@ def led_main_train():
         quantize = False
         quantization_cfg = BitsAndBytesConfig(load_in_8bit=quantize)
         model_node: ModelNode = \
-            ModelNode.load_from_id(LEDForBinaryTagging, model_name, model_name,
+            ModelNode.load_from_id(LEDForSequenceClassification, model_name,
+                                   model_name,
                                    quantization_config=quantization_cfg)
         model_node.model.to(settings.DEVICE)
         model_node.model.train()

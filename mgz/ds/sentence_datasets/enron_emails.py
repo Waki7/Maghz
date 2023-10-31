@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import email
 import os
+import random
 import re
 from functools import partial
 from pathlib import Path
@@ -233,7 +234,7 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
         self.validation_ratio = .2
         self.test_ratio = .1
 
-        self._tag_to_sample_idx_map: Dict[str, List[int]] = {}
+        self._tag_to_sample_idx_map: OrderedDict[str, List[int]] = OrderedDict()
 
         # Meta Learning Sampling Parameters
         self._n_query_per_cls = n_query_per_cls  # Will be roughly n_shot per class, not exact
@@ -250,8 +251,9 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
     def __len__(self):
         'Denotes the total number of samples'
         assert self.loaded, "Dataset not loaded"
-        return len(self.data) if self.n_episodes is None else min(
-            self.n_episodes, len(self.data))
+        if self.n_episodes is not None:
+            return self.n_episodes
+        return len(self._tag_to_sample_idx_map)
 
     @property
     @overrides(SentenceDataset)
@@ -264,9 +266,12 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
 
     @overrides(EnronEmails)
     def __getitem__(self, idx) -> (SrcStringT, TgtStringT):
-        input_text = self.data[idx][SampleType.INPUT_TEXT]
-        catchphrase = self.data[idx][SampleType.CATCHPHRASES]
-        return input_text, catchphrase
+        tags = list(self._tag_to_sample_idx_map.keys())
+        tag_idx = idx % len(self._tag_to_sample_idx_map)
+        selected_tag: TgtStringT = tags[tag_idx]
+        rand_sample_for_tag: SrcStringT = self.data[random.choice(
+            self._tag_to_sample_idx_map[selected_tag])][SampleType.INPUT_TEXT]
+        return rand_sample_for_tag, selected_tag
 
 
 def inspect_catchphrase_diffs():

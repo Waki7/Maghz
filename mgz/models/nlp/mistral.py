@@ -10,6 +10,7 @@ from abc import ABC
 
 import torch.utils.checkpoint
 import transformers as hug
+from accelerate import init_empty_weights
 from torch import nn
 from transformers import BitsAndBytesConfig
 from transformers.activations import ACT2FN
@@ -20,6 +21,7 @@ from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext,
     BinaryTaggerMixin, quantize_model
 from mgz.models.nlp.utils_attention import _attention
 from mgz.typing import *
+from mgz.version_control.model_index import get_models_path
 
 
 def clones(module, N: int) -> nn.ModuleList:
@@ -1533,18 +1535,40 @@ class LEDForSequenceClassification(LEDPretrainedModel, BinaryTaggerMixin):
         except FileNotFoundError:
             return None
 
+    # @classmethod
+    # def initial_save(cls, model_id: str, path: str):
+    #     if not os.path.exists(path):
+    #         os.makedirs(path)
+    #     with init_empty_weights():
+    #         model_pt1 = 'pytorch_model-00001-of-00002.bin'
+    #         model_pt2 = 'pytorch_model-00002-of-00002.bin'
+    #         for model_pt in [model_pt1, model_pt2]:
+    #             if not os.path.exists(os.path.join(path, model_pt)):
+    #                 hf_hub_download(repo_id=model_id, local_dir=path,
+    #                                 filename=model_pt,
+    #                                 force_download=True)
+    #
+    #     hf_hub_download(repo_id=model_id, local_dir=path,
+    #                     filename='config.json')
+    #     tokenizer = hug.LlamaTokenizerFast.from_pretrained(model_id)
+    #     tokenizer.save_pretrained(path)
+
     @classmethod
     def initial_save(cls, model_id: str, path: str):
         if not os.path.exists(path):
             os.makedirs(path)
-        model_hug = hug.LEDForSequenceClassification.from_pretrained(
-            model_id)
+        with torch.cuda.amp.autocast(enabled=True):
+            hug.MistralForSequenceClassification(hug.MistralConfig()).cuda()
+        exit(3)
+
+        model_hug = hug.MistralForSequenceClassification.from_pretrained(
+            path, low_cpu_mem_usage=True)
         with open(os.path.normpath(os.path.join(path, 'config.json')),
                   'w') as f:
             json.dump(model_hug.config.to_dict(), f)
         torch.save(model_hug.state_dict(),
                    os.path.normpath(os.path.join(path, 'weights.bin')))
-        tokenizer = hug.LEDTokenizerFast.from_pretrained(model_id)
+        tokenizer = hug.LlamaTokenizerFast.from_pretrained(model_id)
         tokenizer.save_pretrained(path)
 
     def __init__(self, config: LEDConfig):
@@ -1552,9 +1576,8 @@ class LEDForSequenceClassification(LEDPretrainedModel, BinaryTaggerMixin):
         self.led = LEDModel(config)
         self.register_buffer("final_logits_bias",
                              torch.zeros((1, self.led.shared.num_embeddings)))
-        self.classification_head = nn.Linear(config.d_model,
-                                             self.led.shared.num_embeddings,
-                                             bias=False)
+        self.lm_head = nn.Linear(config.d_model,
+                                 self.led.shared.num_embeddings, bias=False)
 
         # Initialize weights and apply final processing
         self.apply(self._init_weights)
@@ -1575,10 +1598,10 @@ class LEDForSequenceClassification(LEDPretrainedModel, BinaryTaggerMixin):
         self.register_buffer("final_logits_bias", new_bias)
 
     def get_output_embeddings(self):
-        return self.classification_head
+        return self.lm_head
 
     def set_output_embeddings(self, new_embeddings):
-        self.classification_head = new_embeddings
+        self.lm_head = new_embeddings
 
     def encode(self, src_ids: LongTensorT['B,SrcSeqLen'],
                src_mask: IntTensorT['B,SrcSeqLen']):
@@ -1602,7 +1625,7 @@ class LEDForSequenceClassification(LEDPretrainedModel, BinaryTaggerMixin):
             tgt_mask=tgt_mask, transformer_ctx=transformer_ctx
         )
 
-        lm_logits = self.classification_head(output)
+        lm_logits = self.lm_head(output)
         lm_logits = lm_logits + self.final_logits_bias.to(lm_logits.device)
         return lm_logits
 
@@ -1639,3 +1662,23 @@ class LEDForSequenceClassification(LEDPretrainedModel, BinaryTaggerMixin):
                       layer_past[:2]) + layer_past[2:],
             )
         return reordered_past
+
+
+def main():
+    pth = os.path.join(get_models_path(), 'mistralai/Mistral-7B-v0.1')
+    LEDForSequenceClassification.initial_save('mistralai/Mistral-7B-v0.1',
+                                              pth)
+    # with init_empty_weights():
+
+    # model = MistralForSequenceClassification.from_pretrained(
+    #     "mistralai/Mistral-7B-v0.1", force_download=True,
+    #     low_cpu_mem_usage=True).state_dict()  # , device=settings.DEVICE,
+    # tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-v0.1")
+    # ds = AusCaseReportsToTagGrouped(tokenizer,
+    #                                 max_src_len=3000,
+    #                                 n_episodes=1000, n_queries_per_cls=[2],
+    #                                 n_supports_per_cls=[2])
+
+
+if __name__ == '__main__':
+    main()
