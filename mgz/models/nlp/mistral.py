@@ -10,7 +10,6 @@ from abc import ABC
 
 import torch.utils.checkpoint
 import transformers as hug
-from accelerate import init_empty_weights
 from torch import nn
 from transformers import BitsAndBytesConfig
 from transformers.activations import ACT2FN
@@ -1557,12 +1556,8 @@ class LEDForSequenceClassification(LEDPretrainedModel, BinaryTaggerMixin):
     def initial_save(cls, model_id: str, path: str):
         if not os.path.exists(path):
             os.makedirs(path)
-        with torch.cuda.amp.autocast(enabled=True):
-            hug.MistralForSequenceClassification(hug.MistralConfig()).cuda()
-        exit(3)
-
         model_hug = hug.MistralForSequenceClassification.from_pretrained(
-            path, low_cpu_mem_usage=True)
+            model_id, low_cpu_mem_usage=True)
         with open(os.path.normpath(os.path.join(path, 'config.json')),
                   'w') as f:
             json.dump(model_hug.config.to_dict(), f)
