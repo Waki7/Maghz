@@ -11,9 +11,8 @@ if TYPE_CHECKING:
 
 
 class ExperimentLogger:
-    def __init__(self):
-        self.results_path = ''
-        self.writer = SummaryWriter()
+    def __init__(self, log_dir: str = None):
+        self.writer = SummaryWriter(log_dir)
         self.progress_values_sum: Dict[Metrics, List[float]] = {}
         self.progress_values_mean: Dict[Metrics, List[float]] = {}
         self.counts: Dict[Metrics, int] = {}
@@ -52,6 +51,20 @@ class ExperimentLogger:
             return None
         return np.mean(self.progress_values_mean[label]).item()
 
+    def get_max_scalar(self, label: Union[str, Metrics]) -> Optional[float]:
+        if isinstance(label, Enum):
+            label = label.value
+        if label not in self.progress_values_mean.keys():
+            return None
+        return np.max(self.progress_values_mean[label])
+
+    def get_min_scalar(self, label: Union[str, Metrics]) -> Optional[float]:
+        if isinstance(label, Enum):
+            label = label.value
+        if label not in self.progress_values_mean.keys():
+            return None
+        return np.min(self.progress_values_mean[label])
+
     def get_scalars(self, label: Union[str, Metrics]) -> Optional[List[float]]:
         if isinstance(label, Enum):
             label = label.value
@@ -86,9 +99,6 @@ class ExperimentLogger:
             self.writer.add_scalar(label, data, global_step=step)
 
     def add_scalars(self, label: Union[str, Metrics], data: Iterable,
-                    step: Optional[int] = None,
                     track_mean=False, log=True):
-        self.add_scalar(label, np.mean(data).item(), step, track_mean, log)
-
-
-exp_tracker = ExperimentLogger()
+        for val in data:
+            self.add_scalar(label, val, track_mean=track_mean, log=log)

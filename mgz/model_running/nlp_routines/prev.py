@@ -45,11 +45,11 @@ def run_epoch(
     if not model_node.has_initial_metrics():
         val_model(val_data_loader, model)
         model_node.store_metrics({
-            Metrics.VAL_ACC:
-                log_utils.exp_tracker.get_mean_scalar(Metrics.VAL_ACC)},
+            Metrics.VAL_ACC_ALL:
+                log_utils.exp_tracker.get_mean_scalar(Metrics.VAL_ACC_ALL)},
             iter_metrics={
-                Metrics.VAL_ACC: log_utils.exp_tracker.pop_scalars(
-                    Metrics.VAL_ACC)
+                Metrics.VAL_ACC_ALL: log_utils.exp_tracker.pop_scalars(
+                    Metrics.VAL_ACC_ALL)
             })
 
     for i, batch in tqdm(enumerate(data_loader), total=len(data_loader)):
@@ -157,14 +157,14 @@ def run_epoch(
             val_model(val_data_loader, model)
             model_node.store_metrics(
                 iter_metrics={
-                    Metrics.VAL_ACC: log_utils.exp_tracker.pop_scalars(
-                        Metrics.VAL_ACC)
+                    Metrics.VAL_ACC_ALL: log_utils.exp_tracker.pop_scalars(
+                        Metrics.VAL_ACC_ALL)
                 })
     if model_edge.scheduler is not None:
         model_edge.scheduler.step()
     model_edge.record_metric(Metrics.TRAIN_LOSS_MEAN,
                              log_utils.exp_tracker.get_mean_scalar(loss))
-    model_edge.record_metric(Metrics.VAL_ACC,
+    model_edge.record_metric(Metrics.VAL_ACC_ALL,
                              log_utils.exp_tracker.get_mean_scalar(loss))
     return model_edge.complete_model_transition()
 
@@ -255,7 +255,7 @@ def val_model(
                 accuracy = (predictions == query_lbls).float().mean()
                 accuracies.append(accuracy.item())
             print(f'Val Accuracy: {accuracies[-iter_per_tags:]}')
-    log_utils.exp_tracker.add_scalars(Metrics.VAL_ACC, accuracies,
+    log_utils.exp_tracker.add_scalars(Metrics.VAL_ACC_ALL, accuracies,
                                       track_mean=True)
     if started_training:
         model.train()

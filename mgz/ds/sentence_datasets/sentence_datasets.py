@@ -193,11 +193,9 @@ class Sent2TagMetaTaskBatch:
     @staticmethod
     def default_collate_fn(ds: MetaLearningMixIn,
                            device: Union[int, torch.device],
-                           batch: List[Tuple[SrcStringT, List[TgtStringT]]]):
+                           batch: List[Tuple[SrcStringT, TgtStringT]]):
         assert len(batch) == 1, "Batch size must be 1 for meta-learning for now"
-        src_text, tgt_texts = batch[0]
-
-        pos_tag = random.choice(tgt_texts)
+        src_text, pos_tag = batch[0]
 
         # self.task_sizes_per_cls can be a single value
         n_query_per_cls: int = random.choice(ds.n_query_per_cls)
@@ -398,7 +396,7 @@ class MetaLearningMixIn(SentenceDataset, ABC):
     __metaclass__ = ABCMeta
     _n_query_per_cls: List[int] = []
     _n_support_per_cls: List[int] = []
-    _tag_to_sample_idx_map: Dict[str, List[int]] = None
+    _tag_to_sample_idx_map: OrderedDict[str, List[int]] = None
 
     @property
     def n_query_per_cls(self):

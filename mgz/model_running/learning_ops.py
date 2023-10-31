@@ -9,7 +9,7 @@ import pandas as pd
 import torch.nn as nn
 from torch.optim.lr_scheduler import LambdaLR
 
-from mgz.models.nlp.bert_basic import PredictorHead
+from archive.models.bert_basic import PredictorHead
 from mgz.typing import *
 
 

@@ -5,7 +5,7 @@ from functools import partial
 
 import torch.nn as nn
 
-from mgz.models.nlp.bert_basic import Embeddings, attention, PositionalEncoding, \
+from archive.models.bert_basic import Embeddings, attention, PositionalEncoding, \
     make_model, subsequent_mask
 from mgz.typing import *
 

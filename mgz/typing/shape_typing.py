@@ -116,6 +116,18 @@ class FloatTensorT(torch.Tensor, Generic[Shape]):
         return torch.as_tensor(tensor)
 
 
+class ProbTensorT(FloatTensorT, Generic[Shape]):
+    """
+    Use this to type-annotate numpy arrays, e.g.
+        image: Array['H,W,3', np.uint8]
+        xy_points: Array['N,2', float]
+        nd_mask: Array['...', bool]
+    """
+
+    def __new__(cls, tensor, shape: Generic[Shape] = None):
+        # todo assert shape
+        return torch.as_tensor(tensor)
+
 class LongTensorT(torch.Tensor, Generic[Shape]):
     """
     Use this to type-annotate numpy arrays, e.g.

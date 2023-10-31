@@ -55,7 +55,7 @@ class BaseDataset(Dataset):
             "cls_name": self.__class__.__name__}
         if as_summary_str:
             # We probably want this to be a bit different in the future
-            return "data_cls-{}-".format(self.__class__.__name__)
+            return "{}-".format(self.__class__.__name__)
         if as_str:
             json.dumps(obj_dict, indent=4, separators=(',', ': '))
         return obj_dict
