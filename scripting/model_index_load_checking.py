@@ -9,7 +9,7 @@ import transformers as hug
 import settings
 from mgz.ds.sentence_datasets.synthetic_memorization import \
     SyntheticMemorization
-from mgz.models.nlp.led import LEDForSequenceClassification
+from mgz.models.nlp.led import LEDForConditionalGeneration
 import logging
 from mgz.version_control.model_index import lookup_or_init_model
 
@@ -30,7 +30,7 @@ def led_main_train():
     # model_name = 'allenai/bart-large-multi_lexsum-long-short'
     model_name = 'allenai/led-base-16384-multi_lexsum-source-tiny'
     print('... loading model and tokenizer')
-    lookup_or_init_model(LEDForSequenceClassification, model_name, model_name)
+    lookup_or_init_model(LEDForConditionalGeneration, model_name, model_name)
     exit(3)
 
 

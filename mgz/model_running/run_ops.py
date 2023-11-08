@@ -19,7 +19,7 @@ from mgz.model_running.learning_ops import LabelSmoothing, DummyOptimizer, \
     DummyScheduler, SimpleLossCompute, rate
 from mgz.models.nlp.base_transformer import BaseTransformer
 from archive.models.bert_basic import make_model
-from mgz.models.nlp.led import LEDForSequenceClassification
+from mgz.models.nlp.led import LEDForConditionalGeneration
 from mgz.typing import *
 
 
@@ -71,7 +71,7 @@ def generate_controller(model: BaseTransformer, text: List[str],
                           src_mask=src_mask)
 
 
-def tagging_embedding_controller(model: LEDForSequenceClassification, text: List[str],
+def tagging_embedding_controller(model: LEDForConditionalGeneration, text: List[str],
                                  tag_text: List[str],
                                  tokenizer: PreTrainedTokenizerBase,
                                  max_src_len: int = None,

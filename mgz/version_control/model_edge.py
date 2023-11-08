@@ -45,8 +45,20 @@ class ModelTransitionEdge:
         self.train_state = run_ops.TrainState()
         self.training_metrics: Dict[vc.Metrics, float] = {}
 
-        self.exp_tracker = log_utils.ExperimentLogger(
-            vc.CACHED_INDEXER.path_from_id(self.parent.model_id))
+        run_identifer = "data_{}".format(
+            self.ds.to_json(as_summary_str=True))
+        root_path = os.path.join(
+            vc.CACHED_INDEXER.path_from_id(self.parent.model_id),
+            run_identifer)
+        i = 0
+        new_path = root_path + '_' + str(i)
+        while os.path.exists(new_path):
+            i += 1
+            new_path = root_path + '_' + str(i)
+        self.root_path = root_path + '_' + str(i)
+        self.run_identifer = run_identifer + '_' + str(i)
+
+        self.exp_tracker = log_utils.ExperimentLogger(self.root_path)
         self.models_to_store = models_to_store
 
     def to_json(self, as_str=False) -> Union[dict, str]:
@@ -77,7 +89,7 @@ class ModelTransitionEdge:
 
     def record_validation(self, vals: List[float]):
         self.record_metrics(vc.Metrics.VAL_ACC_ALL, vals)
-        self.record_metrics(vc.Metrics.VAL_ACC_MEAN, np.mean(vals))
+        self.record_metric(vc.Metrics.VAL_ACC_MEAN, np.mean(vals))
 
     def complete_model_transition(self) -> vc.ModelNode:
         """
@@ -86,12 +98,9 @@ class ModelTransitionEdge:
         metrics. The naming convention will indicate something about how the
         model was created. It should be a unique identifier.
         """
-        assert vc.Metrics.VAL_ACC_ALL in self.training_metrics, \
-            "Must have validation accuracy to complete model transition"
+
         # start with a non-unique summary string
-        summary_string = "data_{}_valacc_{}".format(
-            self.ds.to_json(as_summary_str=True),
-            self.training_metrics[vc.Metrics.VAL_ACC_ALL])
+        summary_string = ""
 
         # Determine if we should store the best model
         store_model = False
@@ -107,7 +116,7 @@ class ModelTransitionEdge:
                 summary_string = "BEST_" + summary_string
 
         # Make the string unique depending on what we plan on storing
-        new_model_id = self.parent.model_id + '/' + summary_string
+        new_model_id = self.parent.model_id + '/' + self.run_identifer + '/' + summary_string
         new_model = vc.ModelNode(self.parent.model, self.parent.tokenizer,
                                  new_model_id, metrics=self.training_metrics)
         self.child = new_model

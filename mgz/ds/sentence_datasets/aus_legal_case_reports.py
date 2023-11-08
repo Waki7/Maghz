@@ -68,15 +68,16 @@ class AusCaseReports(SentenceDataset):
 
     @property
     @overrides(SentenceDataset)
-    def input_space(self) -> sp.Sentence:
-        return sp.Sentence(
-            len((self.vocab_src)), shape=(self.max_src_len,))
+    def input_space(self) -> sp.SentenceQuery:
+        return sp.SentenceQuery(
+            len((self.vocab_src)), sequence_len=self.max_src_len,
+            query_len=self.max_tgt_len)
 
     @property
     @overrides(SentenceDataset)
     def target_space(self) -> sp.Sentence:
         return sp.Sentence(len((self.vocab_tgt)),
-                           shape=(self.max_tgt_len,))
+                           sequence_len=(self.max_tgt_len,))
 
     def _pre_load_set_state_data_range(self, train: bool,
                                        val: bool,

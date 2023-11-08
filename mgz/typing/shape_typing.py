@@ -14,14 +14,14 @@ B = TypeVar("Batch")
 N = TypeVar("N")  # arbitrary count
 NHeads = int  # NewType("NHeads", int)  # something like n attention heads
 SrcSeqLen = TypeVar(
-    "SrcSeqLen")  # NewType("SeqLen", int)  # or input sequence length
-TgtSeqLen = int  # NewType("OutSeqLen", int)  # or output sequence length
-TgtSeqStep = int  # NewType("OutSeqStep", int)  # or output sequence length
-NClasses = int  # NewType("NClasses", int)  # or output sequence length
-NBeams = int  # NewType("NBeams", int)  # or output sequence length
-NDim = int  # NewType("NDim", int)  # or output sequence length
-VocabSize = int  # NewType("NClasses", int)  # or output sequence length
-OutNClasses = int  # NewType("OutNClasses", int)  # or output sequence length
+    "SrcSeqLen")  # NewType("SeqLen", int)
+TgtSeqLen = int  # NewType("TgtSeqLen", int)
+TgtSeqStep = int  # NewType("TgtSeqStep", int)
+NClasses = int  # NewType("NClasses", int)
+NBeams = int  # NewType("NBeams", int)
+NDim = int  # NewType("NDim", int)
+VocabSize = int  # NewType("VocabSize", int)
+OutNClasses = int  # NewType("OutNClasses", int)
 
 # META LEARNING
 TaskSize = TypeVar("NShot")
@@ -53,12 +53,27 @@ TokenT = str
 SrcTokenT = TokenT
 TgtTokenT = TokenT
 
-SrcStringT = str #Union[SourceListT, GermanT, EnglishT]  # untokenized
-TgtStringT = str #Union[SourceListT, GermanT, EnglishT]  # untokenized
+SrcStringT = str  # Union[SourceListT, GermanT, EnglishT]  # untokenized
+TgtStringT = str  # Union[SourceListT, GermanT, EnglishT]  # untokenized
+LabelT = int  # NewType("Label", int)
 
 Opt = Optional
 
 StateDictT = Dict[str, torch.Tensor]
+
+
+
+class IntListT(List, Generic[Shape, DType]):
+    """
+    Use this to type-annotate numpy arrays, e.g.
+        image: Array['H,W,3', np.uint8]
+        xy_points: Array['N,2', float]
+        nd_mask: Array['...', bool]
+    """
+
+    def __new__(cls, tensor, shape: Generic[Shape] = None):
+        # todo assert shape
+        return tensor
 
 
 class NDArrayT(np.ndarray, Generic[Shape, DType]):
@@ -68,6 +83,7 @@ class NDArrayT(np.ndarray, Generic[Shape, DType]):
         xy_points: Array['N,2', float]
         nd_mask: Array['...', bool]
     """
+
     def __new__(cls, tensor, shape: Generic[Shape] = None):
         # todo assert shape
         return tensor
@@ -127,6 +143,20 @@ class ProbTensorT(FloatTensorT, Generic[Shape]):
     def __new__(cls, tensor, shape: Generic[Shape] = None):
         # todo assert shape
         return torch.as_tensor(tensor)
+
+
+class LogitsTensorT(FloatTensorT, Generic[Shape]):
+    """
+    Use this to type-annotate numpy arrays, e.g.
+        image: Array['H,W,3', np.uint8]
+        xy_points: Array['N,2', float]
+        nd_mask: Array['...', bool]
+    """
+
+    def __new__(cls, tensor, shape: Generic[Shape] = None):
+        # todo assert shape
+        return torch.as_tensor(tensor)
+
 
 class LongTensorT(torch.Tensor, Generic[Shape]):
     """

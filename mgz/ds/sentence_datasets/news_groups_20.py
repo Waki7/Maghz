@@ -3,19 +3,17 @@ from __future__ import annotations
 from enum import Enum
 from functools import partial
 
-from datasets import load_dataset
 from datasets.arrow_dataset import Dataset
-from datasets.dataset_dict import DatasetDict
 from spacy.language import Language
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from transformers import AutoTokenizer, PreTrainedTokenizer
+from transformers import PreTrainedTokenizer
 import os
 import spaces as sp
 from mgz.ds.base_dataset import T
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
     collate_batch
-from mgz.models.nlp.tokenizing import Tokenizer, TokenStrings
+from archive.models.tokenizing import TokenStrings
 from mgz.typing import *
 
 

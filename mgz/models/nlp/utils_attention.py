@@ -8,10 +8,11 @@ from mgz.typing import *
 def _led_attention():
     pass
 
+
 def _attention(query: FloatTensorT,
                key: FloatTensorT,
                value: FloatTensorT,
-               mask: IntTensorT,
+               mask: IntTensorT = None,
                dropout_p: float = None) -> \
         Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
     "Compute 'Scaled Dot Product Attention'"

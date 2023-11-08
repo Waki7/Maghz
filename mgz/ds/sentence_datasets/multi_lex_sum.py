@@ -55,13 +55,13 @@ class MultiLexSum(SentenceDataset):
     @overrides(SentenceDataset)
     def input_space(self) -> sp.Sentence:
         return sp.Sentence(
-            len((self.vocab_src)), shape=(self.max_src_len,))
+            len((self.vocab_src)), sequence_len=(self.max_src_len,))
 
     @property
     @overrides(SentenceDataset)
     def target_space(self) -> Union[sp.Sentence, sp.RegressionTarget]:
         return sp.Sentence(len((self.vocab_tgt)),
-                           shape=(self.max_tgt_len,))
+                           sequence_len=(self.max_tgt_len,))
 
     def __add__(self, other: Dataset[T]) -> 'ConcatDataset[T]':
         raise NotImplementedError

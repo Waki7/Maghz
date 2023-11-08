@@ -14,7 +14,8 @@ from transformers import PreTrainedTokenizer
 import spaces as sp
 from mgz.ds.base_dataset import BaseDataset, DataState
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
-    Sent2SentBatch, SampleType, MetaLearningMixIn, Sent2TagMetaTaskBatch
+    Sent2SentBatch, SampleType, MetaLearningMixIn, Sent2TagMetaTaskBatch, \
+    TagQAMetaTaskBatch
 from mgz.typing import *
 
 DATASET_DIR = os.path.join(
@@ -157,15 +158,16 @@ class EnronEmails(SentenceDataset):
 
     @property
     @overrides(SentenceDataset)
-    def input_space(self) -> sp.Sentence:
-        return sp.Sentence(
-            len((self.vocab_src)), shape=(self.max_src_len,))
+    def input_space(self) -> sp.SentenceQuery:
+        return sp.SentenceQuery(
+            len((self.vocab_src)), sequence_len=self.max_src_len,
+            query_len=self.max_tgt_len)
 
     @property
     @overrides(SentenceDataset)
     def target_space(self) -> sp.Sentence:
         return sp.Sentence(len((self.vocab_tgt)),
-                           shape=(self.max_tgt_len,))
+                           sequence_len=self.max_tgt_len)
 
     def get_collate_fn(self, device: Union[int, torch.device]):
         assert self.loaded, "Dataset not loaded"
@@ -241,6 +243,12 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
         self._n_support_per_cls = n_support_per_cls  # Will be roughly n_shot per class, not exact
         self.n_episodes = n_episodes
 
+    @property
+    @overrides(SentenceDataset)
+    def input_space(self) -> sp.Sentence:
+        return sp.Sentence(
+            len((self.vocab_src)), sequence_len=self.max_src_len)
+
     def _load(self, train: bool = False, val: bool = False, test: bool = False):
         super()._load(train, val, test)  # Only loads into self.data
         self.loaded = False
@@ -272,6 +280,12 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
         rand_sample_for_tag: SrcStringT = self.data[random.choice(
             self._tag_to_sample_idx_map[selected_tag])][SampleType.INPUT_TEXT]
         return rand_sample_for_tag, selected_tag
+
+
+class EnronEmailsTagQA(EnronEmailsTagging, MetaLearningMixIn):
+    def get_collate_fn(self, device: Union[int, torch.device]):
+        assert self.loaded, "Dataset not loaded"
+        return partial(TagQAMetaTaskBatch.default_collate_fn, self, device)
 
 
 def inspect_catchphrase_diffs():

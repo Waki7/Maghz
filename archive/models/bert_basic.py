@@ -294,16 +294,16 @@ class EncoderDecoder(BaseTransformer):
 
     def decode(self, memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
                src_mask: IntTensorT['B,TgtSeqLen'],
-               tgt_ids: LongTensorT['B,TgtSeqLen'], tgt_mask):
+               generation_ids: LongTensorT['B,TgtSeqLen'], tgt_mask):
         '''
         Executes for one output at a time when doing training
         :param memory:
         :param src_mask:
-        :param tgt_ids:
+        :param generation_ids:
         :param tgt_mask:
         :return:
         '''
-        x = self.tgt_embed(tgt_ids)
+        x = self.tgt_embed(generation_ids)
         x = self.positional_encoder(x)
         return self.decoder(x, memory, src_mask, tgt_mask)
 

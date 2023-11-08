@@ -18,12 +18,14 @@ is_mac = operating_system == 'mac'
 torch_deps = []
 if is_windows:
     torch_deps = \
-        ["torch@https://download.pytorch.org/whl/cu116/torch-1.13.1%2Bcu116-cp38-cp38-win_amd64.whl"
-         "torchvision@https://download.pytorch.org/whl/cu116/torchvision-0.14.1%2Bcu116-cp38-cp38-win_amd64.whl"]
+        [
+            "torch@https://download.pytorch.org/whl/cu116/torch-1.13.1%2Bcu116-cp38-cp38-win_amd64.whl"
+            "torchvision@https://download.pytorch.org/whl/cu116/torchvision-0.14.1%2Bcu116-cp38-cp38-win_amd64.whl"]
 else:
     torch_deps = \
-        ["torch@https://download.pytorch.org/whl/cu116/torch-1.13.1%2Bcu116-cp38-cp38-linux_x86_64.whl"
-         "torchvision@https://download.pytorch.org/whl/cu116/torchvision-0.14.1%2Bcu116-cp38-cp38-linux_x86_64.whl"]
+        [
+            "torch@https://download.pytorch.org/whl/cu116/torch-1.13.1%2Bcu116-cp38-cp38-linux_x86_64.whl"
+            "torchvision@https://download.pytorch.org/whl/cu116/torchvision-0.14.1%2Bcu116-cp38-cp38-linux_x86_64.whl"]
 
 try:
     with open(os.path.join(current_directory, 'README.md'),
@@ -113,6 +115,8 @@ setup(
         'tensorflow-gpu==2.8.0',
         'protobuf==3.20',
         'auto-gptq==0.4.2',
+        'flash-attn',
+        'inspect-it',
     ],
     classifiers=[]
 )

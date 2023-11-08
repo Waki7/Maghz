@@ -137,11 +137,12 @@ class BaseProtocol(object):
     def train(self, model_node: vc.ModelNode, ds: BaseDataset,
               model_edge: vc.ModelTransitionEdge,
               batch_size=8, device=None, distributed: bool = False,
-              turn_off_shuffle=False,) -> vc.ModelNode:
-        pass
+              turn_off_shuffle=False, ) -> vc.ModelNode:
+        raise NotImplementedError
 
-    def evaluate(self):
-        pass
+    def evaluate(self, model_node: vc.ModelNode, val_ds: BaseDataset,
+                 device=None, ):
+        raise NotImplementedError
 
-    def predict(self):
-        pass
+    def predict(self, model_node: vc.ModelNode):
+        raise NotImplementedError

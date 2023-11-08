@@ -1,7 +1,6 @@
 """ PyTorch LED model."""
 from __future__ import annotations
 
-import copy
 import json
 import math
 import os
@@ -17,50 +16,9 @@ from transformers.models.led.configuration_led import LEDConfig
 
 import settings
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext, \
-    BinaryTaggerMixin, quantize_model
+    quantize_model, EncoderDecoderTransformer
 from mgz.models.nlp.utils_attention import _attention
 from mgz.typing import *
-
-
-def clones(module, N: int) -> nn.ModuleList:
-    "Produce N identical layers."
-    return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
-
-
-def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int,
-                       decoder_start_token_id: int):
-    """
-    Shift input ids one token to the right.
-    """
-    shifted_input_ids = input_ids.new_zeros(input_ids.shape)
-    shifted_input_ids[:, 1:] = input_ids[:, :-1].clone()
-    shifted_input_ids[:, 0] = decoder_start_token_id
-
-    if pad_token_id is None:
-        raise ValueError("self.model.config.pad_token_id has to be defined.")
-    # replace possible -100 values in labels by `pad_token_id`
-    shifted_input_ids.masked_fill_(shifted_input_ids == -100, pad_token_id)
-
-    return shifted_input_ids
-
-
-def _make_causal_mask(input_ids_shape: torch.Size, dtype: torch.dtype,
-                      past_key_values_length: int = 0):
-    """
-    Make causal mask used for bi-directional self-attention.
-    """
-    bsz, tgt_len = input_ids_shape
-    mask = torch.full((tgt_len, tgt_len), torch.tensor(torch.finfo(dtype).min))
-    mask_cond = torch.arange(mask.size(-1))
-    mask.masked_fill_(mask_cond < (mask_cond + 1).view(mask.size(-1), 1), 0)
-    mask = mask.to(dtype)
-
-    if past_key_values_length > 0:
-        mask = torch.cat(
-            [torch.zeros(tgt_len, past_key_values_length, dtype=dtype), mask],
-            dim=-1)
-    return mask[None, None, :, :].expand(bsz, 1, tgt_len,
-                                         tgt_len + past_key_values_length)
 
 
 class LEDLearnedPositionalEmbedding(nn.Embedding):
@@ -846,7 +804,8 @@ class MultiHeadedAttention(nn.Module):
         # here we split the embedding into n_heads
         # 1) Do all the linear projections in batch from d_model => h x d_k
         query_st = n_head_reshape(self.q_proj(query)) * self.scaling
-        if self.decoder_attention and transformer_ctx is not None and transformer_ctx.in_generation:
+        if (self.decoder_attention and transformer_ctx is not None
+                and transformer_ctx.in_generation):
             key_st = transformer_ctx.add_key(
                 n_head_reshape(self.k_proj(key)))
             value_st = transformer_ctx.add_value(n_head_reshape(
@@ -973,7 +932,8 @@ class LEDDecoderLayer(nn.Module):
             hidden_states: FloatTensorT['B,SrcSeqLen,EmbedLen'],
             encoder_hidden_states: FloatTensorT['B,SrcSeqLen,EmbedLen'],
             src_mask: IntTensorT['B,SrcSeqLen,TgtSeqLen'],
-            tgt_mask: IntTensorT['B,SrcSeqLen,SrcSeqLen'], transformer_ctx=None
+            tgt_mask: IntTensorT['B,SrcSeqLen,SrcSeqLen'],
+            transformer_ctx: TransformerContext = None
     ) -> FloatTensorT['B,TgtSeqLen|1,EmbedLen']:
         residual = hidden_states
         hidden_states = \
@@ -1014,7 +974,8 @@ class LEDDecoderLayer(nn.Module):
         return hidden_states
 
 
-class LEDPretrainedModel(BaseTransformer, ABC):
+class LEDPretrainedModel(EncoderDecoderTransformer, ABC):
+
     @classmethod
     def modules_to_apply_lora(cls) -> List[str]:
         return ['key', 'value', 'query']
@@ -1270,7 +1231,7 @@ class LEDDecoder(nn.Module):
             dropout_probability = random.uniform(0, 1)
             if self.training and (dropout_probability < self.layerdrop):
                 continue
-            layer_outputs = decoder_layer.forward(
+            hidden_states = decoder_layer.forward(
                 hidden_states=hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 src_mask=src_mask,
@@ -1278,7 +1239,6 @@ class LEDDecoder(nn.Module):
                 transformer_ctx=transformer_ctx.for_layer(
                     idx) if transformer_ctx else None
             )
-            hidden_states = layer_outputs
         return hidden_states
 
 
@@ -1301,31 +1261,6 @@ class LEDModel(LEDPretrainedModel):
         self.encoder.embed_tokens = self.shared
         self.decoder.embed_tokens = self.shared
 
-    def encode(self, src_ids: LongTensorT['B,SrcSeqLen'],
-               src_mask: IntTensorT['B,SrcSeqLen']):
-        src_ids, src_mask = self._pre_encode_pad_if_needed(
-            src_ids=src_ids,
-            src_mask=src_mask,
-            pad_token_id=self.config.pad_token_id,
-        )
-        return self.encoder.forward(
-            src_ids=src_ids,
-            src_mask=src_mask,
-        )
-
-    def decode(self,
-               encoder_memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
-               tgt_ids: LongTensorT['B,TgtSeqLen'],
-               src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
-               tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen'] = None,
-               transformer_ctx: TransformerContext = None):
-        return self.decoder.forward(
-            encoder_hidden_states=encoder_memory,
-            tgt_ids=tgt_ids,
-            src_mask=src_mask,
-            tgt_mask=tgt_mask, transformer_ctx=transformer_ctx
-        )
-
     def forward(
             self,
             src_ids: LongTensorT['B,SrcSeqLen'],
@@ -1339,11 +1274,11 @@ class LEDModel(LEDPretrainedModel):
             pad_token_id=self.config.pad_token_id,
         )
         encoder_outputs = self.encode(src_ids=src_ids, src_mask=src_mask)
-        decoder_hidden_state = self.decode(
+        decoder_hidden_state = self.decoder.forward(
+            encoder_hidden_states=encoder_outputs,
             tgt_ids=tgt_ids,
             src_mask=src_mask,
             tgt_mask=tgt_mask,
-            encoder_memory=encoder_outputs,
         )
         return decoder_hidden_state
 
@@ -1442,22 +1377,53 @@ class LEDForConditionalGeneration(LEDPretrainedModel):
         return self.led.encode(src_ids=src_ids, src_mask=src_mask, )
 
     def decode(self,
-               encoder_memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
-               tgt_ids: LongTensorT['B,TgtSeqLen'],
-               src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
-               tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen'] = None,
-               transformer_ctx: TransformerContext = None):
+               transformer_ctx: TransformerContext,
+               generation_ids: LongTensorT['B,1'],
+               src_mask: IntTensorT['B,SrcSeqLen'] = None) -> \
+            LogitsTensorT['B,1,VocabSize']:
         output = self.led.decoder.forward(
-            encoder_hidden_states=encoder_memory,
-            tgt_ids=tgt_ids,
-            src_mask=src_mask,
-            tgt_mask=tgt_mask, transformer_ctx=transformer_ctx
+            encoder_hidden_states=transformer_ctx.encoder_memory,
+            tgt_ids=generation_ids,
+            src_mask=src_mask, transformer_ctx=transformer_ctx
         )
 
         lm_logits = self.lm_head(output)
         lm_logits = lm_logits + self.final_logits_bias.to(lm_logits.device)
         return lm_logits
 
+    @overrides(EncoderDecoderTransformer)
+    def encoder_decoder_embedding(
+            self,
+            src_ids: LongTensorT['B,SrcSeqLen'],
+            tgt_ids: LongTensorT['B,TgtSeqLen'],
+            src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
+            tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen'],
+            pred_eos: bool = True,
+    ) -> FloatTensorT['B,EmbedLen']:
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
+            config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
+            (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
+
+        Returns:
+        """
+        output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.led.forward(
+            src_ids=src_ids, src_mask=src_mask,
+            tgt_ids=tgt_ids, tgt_mask=tgt_mask)
+
+        if pred_eos:
+            # get the last eos embedding
+            sequence_lengths = \
+                (torch.eq(tgt_ids, self.config.eos_token_id).long().argmax(
+                    -1) - 1)
+            bsz = output.shape[0]
+            output_eos = output[torch.arange(bsz), sequence_lengths, :]
+            return output_eos
+
+        return output[:, -1, :]
+
+    @overrides(EncoderDecoderTransformer)
     def forward(
             self,
             src_ids: LongTensorT['B,SrcSeqLen'],
@@ -1493,149 +1459,25 @@ class LEDForConditionalGeneration(LEDPretrainedModel):
         return reordered_past
 
 
-class LEDForSequenceClassification(LEDPretrainedModel, BinaryTaggerMixin):
+class LEDClassificationHead(nn.Module):
+    """Head for sentence-level classification tasks."""
 
-    def get_encoder(self):
-        return self.led.encoder
-
-    def get_max_encoder_positions(self):
-        return self.get_encoder().embed_positions.weight.shape[0]
-
-    def get_decoder(self):
-        return self.led.decoder
-
-    def get_max_decoder_positions(self):
-        return self.get_decoder().embed_positions.weight.shape[0]
-
-    @classmethod
-    def load_model(cls, path: str,
-                   quantization_config: BitsAndBytesConfig = None) -> Optional[
-        LEDForSequenceClassification]:
-        try:
-            with open(os.path.normpath(os.path.join(path, 'config.json')),
-                      'r') as f:
-                config = json.load(f)
-                if hasattr(config, 'quantization_config'):
-                    if (quantization_config != config.quantization_config):
-                        logging.warning(
-                            'quantization configs do not match, {} vs {}'.format(
-                                quantization_config,
-                                config.quantization_config))
-                    quantization_config = config.quantization_config
-            model = LEDForSequenceClassification(
-                LEDConfig.from_dict(config))
-            if quantization_config and quantization_config.load_in_8bit:
-                model = quantize_model(model)
-            model.load_state_dict(torch.load(os.path.join(path, 'weights.bin'),
-                                             map_location=torch.device('cpu')))
-            model.to(settings.DEVICE)
-            return model
-        except FileNotFoundError:
-            return None
-
-    @classmethod
-    def initial_save(cls, model_id: str, path: str):
-        if not os.path.exists(path):
-            os.makedirs(path)
-        model_hug = hug.LEDForSequenceClassification.from_pretrained(
-            model_id)
-        with open(os.path.normpath(os.path.join(path, 'config.json')),
-                  'w') as f:
-            json.dump(model_hug.config.to_dict(), f)
-        torch.save(model_hug.state_dict(),
-                   os.path.normpath(os.path.join(path, 'weights.bin')))
-        tokenizer = hug.LEDTokenizerFast.from_pretrained(model_id)
-        tokenizer.save_pretrained(path)
-
-    def __init__(self, config: LEDConfig):
-        super().__init__(config)
-        self.led = LEDModel(config)
-        self.register_buffer("final_logits_bias",
-                             torch.zeros((1, self.led.shared.num_embeddings)))
-        self.classification_head = nn.Linear(config.d_model,
-                                             self.led.shared.num_embeddings,
-                                             bias=False)
-
-        # Initialize weights and apply final processing
-        self.apply(self._init_weights)
-
-    def resize_token_embeddings(self, new_num_tokens: int) -> nn.Embedding:
-        new_embeddings = super().resize_token_embeddings(new_num_tokens)
-        self._resize_final_logits_bias(new_num_tokens)
-        return new_embeddings
-
-    def _resize_final_logits_bias(self, new_num_tokens: int) -> None:
-        old_num_tokens = self.final_logits_bias.shape[-1]
-        if new_num_tokens <= old_num_tokens:
-            new_bias = self.final_logits_bias[:, :new_num_tokens]
-        else:
-            extra_bias = torch.zeros((1, new_num_tokens - old_num_tokens),
-                                     device=self.final_logits_bias.device)
-            new_bias = torch.cat([self.final_logits_bias, extra_bias], dim=1)
-        self.register_buffer("final_logits_bias", new_bias)
-
-    def get_output_embeddings(self):
-        return self.classification_head
-
-    def set_output_embeddings(self, new_embeddings):
-        self.classification_head = new_embeddings
-
-    def encode(self, src_ids: LongTensorT['B,SrcSeqLen'],
-               src_mask: IntTensorT['B,SrcSeqLen']):
-        src_ids, src_mask = self._pre_encode_pad_if_needed(
-            src_ids=src_ids,
-            src_mask=src_mask,
-            pad_token_id=self.config.pad_token_id,
-        )
-        return self.led.encode(src_ids=src_ids, src_mask=src_mask, )
-
-    def decode(self,
-               encoder_memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
-               tgt_ids: LongTensorT['B,TgtSeqLen'],
-               src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
-               tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen'] = None,
-               transformer_ctx: TransformerContext = None):
-        output = self.led.decoder.forward(
-            encoder_hidden_states=encoder_memory,
-            tgt_ids=tgt_ids,
-            src_mask=src_mask,
-            tgt_mask=tgt_mask, transformer_ctx=transformer_ctx
-        )
-
-        lm_logits = self.classification_head(output)
-        lm_logits = lm_logits + self.final_logits_bias.to(lm_logits.device)
-        return lm_logits
-
-    def forward(
+    def __init__(
             self,
-            src_ids: LongTensorT['B,SrcSeqLen'],
-            tgt_ids: LongTensorT['B,TgtSeqLen'],
-            src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
-            tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen'],
-            neg_center: FloatTensorT['B,EmbedLen'] = None,
-            pos_center: FloatTensorT['B,EmbedLen'] = None,
-    ) -> FloatTensorT['B,EmbedLen']:
-        r"""
-        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
-            Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
-            config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
-            (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
+            input_dim: int,
+            inner_dim: int,
+            num_classes: int,
+            pooler_dropout: float,
+    ):
+        super().__init__()
+        self.dense = nn.Linear(input_dim, inner_dim)
+        self.dropout = nn.Dropout(p=pooler_dropout)
+        self.out_proj = nn.Linear(inner_dim, num_classes)
 
-        Returns:
-        """
-        output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.led.forward(
-            src_ids=src_ids, src_mask=src_mask,
-            tgt_ids=tgt_ids, tgt_mask=tgt_mask)
-        # get the last embedding, not an average of the embeddings
-        return output[:, -1, :]
-
-    @staticmethod
-    def _reorder_cache(past, beam_idx):
-        reordered_past = ()
-        for layer_past in past:
-            # cached cross_attention states don't have to be reordered -> they are always the same
-            reordered_past += (
-                tuple(past_state.index_select(0, beam_idx) for past_state in
-                      layer_past[:2]) + layer_past[2:],
-            )
-        return reordered_past
+    def forward(self, hidden_states: torch.Tensor):
+        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.dense(hidden_states)
+        hidden_states = torch.tanh(hidden_states)
+        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.out_proj(hidden_states)
+        return hidden_states

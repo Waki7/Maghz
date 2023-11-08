@@ -8,7 +8,7 @@ from functools import partial
 
 import torch.utils.data
 from torch.nn.functional import pad
-from transformers import PreTrainedTokenizer
+from transformers import PreTrainedTokenizer, BatchEncoding
 
 from mgz.ds.base_dataset import BaseDataset, DataState
 from mgz.typing import *
@@ -42,43 +42,19 @@ def subsequent_mask(size: SrcSeqLen):
 def strings_to_padded_id_tensor(txts: List[SrcStringT],
                                 tokenizer: PreTrainedTokenizer,
                                 max_len,
-                                device) -> \
+                                device=torch.device('cpu')) -> \
         LongTensorT['B,SrcSeqLen']:
     """
-    TODO verify that this is identical to
+    This does not truncate at all, minimum length will always be max_len.
     """
-    # use_hug = True
-    # if use_hug:
-    #     input_encodings: BatchEncoding = tokenizer(txts, padding=True,
-    #                                                truncation=True,
-    #                                                max_length=max_len,
-    #                                                return_tensors='pt')
-    #     return input_encodings.input_ids.to(device)
-    dtype = torch.int32
-    bs_id = torch.tensor([tokenizer.bos_token_id], device=device, dtype=dtype)
-    eos_id = torch.tensor([tokenizer.eos_token_id], device=device, dtype=dtype)
-
-    src_list: List[LongTensorT['SrcSeqLen']] = []
-    for txt in txts:
-        tokens: List[TokenT] = tokenizer.tokenize(txt)
-        token_ids: List[int] = tokenizer.convert_tokens_to_ids(tokens)
-        processed_src: LongTensorT['SrcSeqLen'] = \
-            LongTensorT(torch.cat([bs_id, torch.tensor(
-                token_ids,
-                dtype=dtype, device=device), eos_id], dim=0))
-        src_list.append(
-            LongTensorT(pad(processed_src,
-                            pad=(0, max_len - len(processed_src)),
-                            value=tokenizer.pad_token_id)))
-    return LongTensorT(torch.stack(src_list))
-
-
-def string_to_padded_id_tensor(txt: SrcStringT,
-                               tokenizer: PreTrainedTokenizer,
-                               max_len,
-                               device):
-    return strings_to_padded_id_tensor([txt], tokenizer, max_len,
-                                       device).flatten()
+    input_encodings: BatchEncoding = (
+        tokenizer.__call__(txts, padding=True, truncation=True,
+                           max_length=max_len,
+                           # TODO: set return_overflowing_tokens to True
+                           return_overflowing_tokens=False,
+                           pad_to_multiple_of=max_len,
+                           return_tensors='pt'))
+    return input_encodings.input_ids.to(device).to(torch.int32)
 
 
 def strings_to_padded_id_tensor_w_mask(txts: List[SrcStringT],
@@ -91,109 +67,98 @@ def strings_to_padded_id_tensor_w_mask(txts: List[SrcStringT],
     return txt, mask
 
 
-class Sent2TagBatch:
-    # @TODO
-    pass
+def question_answer_to_padded_id_tensor(context: SrcStringT,
+                                        question: TgtStringT,
+                                        tokenizer: PreTrainedTokenizer,
+                                        max_len, device):
+    input_encodings: BatchEncoding = (
+        tokenizer.__call__(
+            question,
+            context,
+            padding=True, truncation=True,
+            max_length=max_len,
+            # TODO: set return_overflowing_tokens to True
+            # stride=64,
+            return_overflowing_tokens=False,
+            pad_to_multiple_of=max_len,
+            return_tensors='pt'))
+    return input_encodings.input_ids.to(device).to(
+        torch.int32)
 
 
-class Sent2TagMetaTaskBatch:
-    """Object for holding a batch of data with mask during training."""
-
+class TagQAMetaTaskBatch:
     def __init__(self,
-                 pos_src_ids: LongTensorT['TaskSize,SrcSeqLen'],
-                 neg_src_ids: LongTensorT['TaskSize,SrcSeqLen'],
-                 tgt_tag_ids: LongTensorT['TgtSeqLen'], n_support_per_cls: int,
-                 pad_idx=2):
-        assert (pos_src_ids.shape[0] + neg_src_ids.shape[
-            0]) > (n_support_per_cls * 2), \
-            "Not enough data to make a query set."
-        task_size: int = pos_src_ids.shape[0] + neg_src_ids.shape[0]
+                 src_ids: LongTensorT['TaskSize,SrcSeqLen'],
+                 labels: LongTensorT['TaskSize'],
+                 n_support_per_cls: int,
+                 pad_idx):
+        assert src_ids.shape[
+                   0] > 2 * n_support_per_cls, "Not enough data to make a query set."
+        task_size: int = src_ids.shape[0]
 
         self.n_query = task_size - (n_support_per_cls * 2)
         self.n_support_per_cls = n_support_per_cls
 
-        neg_idxs = list(range(neg_src_ids.shape[0]))
+        neg_idxs = [i for i in range(task_size) if labels[i] == 0]
+        pos_idxs = [i for i in range(task_size) if labels[i] == 1]
         random.shuffle(neg_idxs)
-        neg_supports = neg_src_ids[neg_idxs[:n_support_per_cls], :]
-        neg_support_mask = (neg_supports != pad_idx).to(torch.int8).to(
-            neg_supports.device)
-
-        pos_idxs = list(range(pos_src_ids.shape[0]))
         random.shuffle(pos_idxs)
-        pos_supports = pos_src_ids[pos_idxs[:n_support_per_cls], :]
-        pos_support_mask = (pos_supports != pad_idx).to(torch.int8).to(
-            pos_supports.device)
+
+        neg_sup_idxs: List[int] = neg_idxs[:n_support_per_cls]
+        pos_sup_idxs: List[int] = pos_idxs[:n_support_per_cls]
+
+        neg_query_idxs: List[int] = neg_idxs[n_support_per_cls:]
+        pos_query_idxs: List[int] = pos_idxs[n_support_per_cls:]
+
         self.supports: LongTensorT[
             'NClasses,TaskSize/NClasses,SrcSeqLen'] = \
-            LongTensorT(torch.stack([neg_supports, pos_supports], dim=0)).to(
+            LongTensorT(torch.stack(
+                [src_ids[neg_sup_idxs, :], src_ids[pos_sup_idxs, :]],
+                dim=0)).to(
                 torch.long)
-        self.support_masks = torch.stack([neg_support_mask, pos_support_mask],
-                                         dim=0).to(torch.int8)
-        neg_queries = neg_src_ids[neg_idxs[n_support_per_cls:], :]
-        pos_queries = pos_src_ids[pos_idxs[n_support_per_cls:], :]
+        self.support_masks = (self.supports != pad_idx)
+
         self.queries: LongTensorT[
-            'TaskSize,SrcSeqLen'] = LongTensorT(
-            torch.cat([neg_queries, pos_queries], dim=0)).to(torch.long)
-        self.query_masks = (self.queries != pad_idx).to(torch.int8).to(
-            self.queries.device)
-        self.query_lbls = \
-            torch.cat([torch.zeros(neg_queries.shape[0]),
-                       torch.ones(pos_queries.shape[0])]).type(
-                torch.LongTensor).to(pos_src_ids.device)
+            'TaskSize,SrcSeqLen'] = src_ids[neg_query_idxs + pos_query_idxs, :]
+        self.query_masks = (self.queries != pad_idx)
 
-        self.tgt_tag_ids_supports = tgt_tag_ids.unsqueeze(0).unsqueeze(
-            0).repeat(
-            self.supports.shape[0], self.supports.shape[1], 1).to(torch.long)
-        self.tgt_tag_masks_supports = (
-                self.tgt_tag_ids_supports != pad_idx).to(torch.int8).to(
-            tgt_tag_ids.device)
+        self.query_lbls = labels[neg_query_idxs + pos_query_idxs]
 
-        self.tgt_tag_ids_queries = tgt_tag_ids.unsqueeze(0).repeat(
-            self.queries.shape[0], 1).to(torch.long)
-        self.tgt_tag_masks_queries = (
-                self.tgt_tag_ids_queries != pad_idx).to(torch.int8).to(
-            tgt_tag_ids.device)
+        self.neg_sup_idxs = neg_sup_idxs
+        self.pos_sup_idxs = pos_sup_idxs
+        self.neg_query_idxs = neg_query_idxs
+        self.pos_query_idxs = pos_query_idxs
 
     def get_support_centers(self) -> FloatTensorT['NClasses,EmbedLen']:
         return self.supports.mean(dim=1, keepdim=False)
 
     @staticmethod
-    def collate_batch(
-            srcs_txt_pos: List[SrcStringT],
-            srcs_txt_neg: List[SrcStringT],
-            tgt_text: TgtStringT,
-            src_tokenizer: PreTrainedTokenizer,
-            tgt_tokenizer: PreTrainedTokenizer,
-            device,
-            n_support_per_cls: int,
-            n_query_per_cls: int, max_src_len: int,
-            max_tgt_len: int) -> Sent2TagMetaTaskBatch:
-        pos_src_ids: LongTensorT[
-            'B,SrcSeqLen'] = strings_to_padded_id_tensor(srcs_txt_pos,
-                                                         tokenizer=src_tokenizer,
-                                                         max_len=max_src_len,
-                                                         device=device)
-        neg_src_ids: LongTensorT[
-            'B,SrcSeqLen'] = strings_to_padded_id_tensor(srcs_txt_neg,
-                                                         tokenizer=src_tokenizer,
-                                                         max_len=max_src_len,
-                                                         device=device)
-        processed_tgt: LongTensorT['TgtSeqLen'] = string_to_padded_id_tensor(
-            tgt_text,
-            tokenizer=tgt_tokenizer,
-            max_len=max_tgt_len,
-            device=device).flatten()
-        assert src_tokenizer.pad_token_id == tgt_tokenizer.pad_token_id
-        return Sent2TagMetaTaskBatch(pos_src_ids=pos_src_ids,
-                                     neg_src_ids=neg_src_ids,
-                                     tgt_tag_ids=processed_tgt,
-                                     pad_idx=src_tokenizer.pad_token_id,
-                                     n_support_per_cls=n_support_per_cls)
+    def collate_batch(batch: List[Tuple[SrcStringT, TgtStringT, LabelT]],
+                      tokenizer: PreTrainedTokenizer,
+                      device,
+                      n_support_per_cls: int,
+                      n_query_per_cls: int,
+                      max_src_len: int,
+                      max_tgt_len: int = None) -> TagQAMetaTaskBatch:
+        assert max_tgt_len is None, "max_tgt_len must not be set for this task"
+        srcs, tgts, labels = zip(*batch)
+        src_ids: LongTensorT['B,SrcSeqLen'] = \
+            question_answer_to_padded_id_tensor(context=srcs, question=tgts,
+                                                tokenizer=tokenizer,
+                                                max_len=max_src_len,
+                                                device=device)
+        label_tensor = LongTensorT(
+            torch.tensor(labels, dtype=torch.long, device=device))
+        return TagQAMetaTaskBatch(src_ids=src_ids,
+                                  labels=label_tensor,
+                                  pad_idx=tokenizer.pad_token_id,
+                                  n_support_per_cls=n_support_per_cls)
 
     @staticmethod
     def default_collate_fn(ds: MetaLearningMixIn,
                            device: Union[int, torch.device],
                            batch: List[Tuple[SrcStringT, TgtStringT]]):
+        assert ds.data_state != DataState.NOT_LOADED, "Dataset not loaded"
         assert len(batch) == 1, "Batch size must be 1 for meta-learning for now"
         src_text, pos_tag = batch[0]
 
@@ -225,24 +190,141 @@ class Sent2TagMetaTaskBatch:
                 if pos_tag not in neg_tags:
                     negative_examples.add(neg_sample_idx)
             neg_sampling_tries += 1
-        assert ds.data_state != DataState.NOT_LOADED, "Dataset not loaded"
-        pos_batch: List[SrcStringT] = [ds.data[i][SampleType.INPUT_TEXT] for i
-                                       in positive_examples]
-        neg_srcs: List[SrcStringT] = [ds.data[i][SampleType.INPUT_TEXT]
-                                      for i in negative_examples]
+
+        pos_batch: List[Tuple[SrcStringT, TgtStringT, LabelT]] = [
+            (
+                ds.tokenizer_src.bos_token + pos_tag + '?' + ds.tokenizer_src.eos_token +
+                ds.data[i][SampleType.INPUT_TEXT], pos_tag, 1) for i in
+            positive_examples]
+        neg_batch: List[Tuple[SrcStringT, TgtStringT, LabelT]] = [
+            (
+                ds.tokenizer_src.bos_token + pos_tag + '?' + ds.tokenizer_src.eos_token +
+                ds.data[i][SampleType.INPUT_TEXT], pos_tag, 0) for i in
+            negative_examples]
 
         # TODO fix so we catch this earlier
         min_to_have_1_query = n_support_per_cls + 1
-        if len(neg_srcs) < min_to_have_1_query or len(
+        if len(neg_batch) < min_to_have_1_query or len(
                 pos_batch) < min_to_have_1_query:
             return None
+        batch = neg_batch + pos_batch
+        return TagQAMetaTaskBatch.collate_batch(
+            batch=batch,
+            tokenizer=ds.tokenizer_src,
+            device=device,
+            max_src_len=ds.max_src_len,
+            n_query_per_cls=n_query_per_cls,
+            n_support_per_cls=n_support_per_cls,
+        )
 
+
+class Sent2TagMetaTaskBatch(TagQAMetaTaskBatch, ABC):
+    def __init__(self,
+                 src_ids: LongTensorT['TaskSize,SrcSeqLen'],
+                 tgt_ids: LongTensorT['TaskSize,TgtSeqLen'],
+                 labels: LongTensorT['TaskSize'],
+                 n_support_per_cls: int,
+                 pad_idx,
+                 ):
+        assert len(tgt_ids.shape) == 2, "tgt_ids must be 2D"
+        super(Sent2TagMetaTaskBatch, self).__init__(src_ids=src_ids,
+                                                    labels=labels,
+                                                    n_support_per_cls=n_support_per_cls,
+                                                    pad_idx=pad_idx)
+
+        # Input Ids for the tags:
+        if tgt_ids is not None:
+            self.tgt_tag_ids_supports: LongTensorT[
+                'NClasses,TaskSize/NClasses,TgtSeqLen'] = LongTensorT(
+                torch.stack([tgt_ids[self.neg_sup_idxs, :],
+                             tgt_ids[self.pos_sup_idxs, :]], dim=0))
+            self.tgt_tag_masks_supports = (
+                    self.tgt_tag_ids_supports != pad_idx)
+
+            self.tgt_tag_ids_queries: LongTensorT[
+                'TaskSize,TgtSeqLen'] = \
+                tgt_ids[self.neg_query_idxs + self.pos_query_idxs, :]
+            self.tgt_tag_masks_queries = (self.tgt_tag_ids_queries != pad_idx)
+
+    @staticmethod
+    def collate_batch(batch: List[Tuple[SrcStringT, TgtStringT, LabelT]],
+                      tokenizer: PreTrainedTokenizer,
+                      device,
+                      n_support_per_cls: int,
+                      n_query_per_cls: int,
+                      max_src_len: int,
+                      max_tgt_len: int = None) -> Sent2TagMetaTaskBatch:
+        assert max_tgt_len is not None, "max_tgt_len must be set for this task"
+        srcs, tgts, labels = zip(*batch)
+        src_ids: LongTensorT[
+            'B,SrcSeqLen'] = strings_to_padded_id_tensor(srcs,
+                                                         tokenizer=tokenizer,
+                                                         max_len=max_src_len,
+                                                         device=device)
+        tgt_ids: LongTensorT['B,TgtSeqLen'] = strings_to_padded_id_tensor(
+            tgts, tokenizer=tokenizer, max_len=max_tgt_len, device=device
+        )
+        label_tensor = LongTensorT(
+            torch.tensor(labels, dtype=torch.long, device=device))
+        return Sent2TagMetaTaskBatch(src_ids=src_ids,
+                                     tgt_ids=tgt_ids,
+                                     labels=label_tensor,
+                                     pad_idx=tokenizer.pad_token_id,
+                                     n_support_per_cls=n_support_per_cls)
+
+    @staticmethod
+    def default_collate_fn(ds: MetaLearningMixIn,
+                           device: Union[int, torch.device],
+                           batch: List[Tuple[SrcStringT, TgtStringT]]):
+        assert ds.data_state != DataState.NOT_LOADED, "Dataset not loaded"
+        assert len(batch) == 1, "Batch size must be 1 for meta-learning for now"
+        src_text, pos_tag = batch[0]
+
+        # self.task_sizes_per_cls can be a single value
+        n_query_per_cls: int = random.choice(ds.n_query_per_cls)
+        n_support_per_cls: int = random.choice(ds.n_support_per_cls)
+        task_size_per_cls: int = n_query_per_cls + n_support_per_cls
+
+        # Select the samples for the task based on the tag.
+        pos_sample_idxs: List[int] = ds.tag_to_sample_idx_map[
+            pos_tag]
+        random.shuffle(pos_sample_idxs)
+        positive_examples = pos_sample_idxs[:task_size_per_cls]
+
+        # If we're having trouble finding negative examples, we'll timeout,
+        # we currently randomly check, we don't keep an index that maps from
+        # negative to the sample indices.
+        timeout = 2 * task_size_per_cls
+        neg_sampling_tries = 0
+        negative_examples: set[int] = set()
+        while (len(negative_examples) < task_size_per_cls) and \
+                neg_sampling_tries < timeout:
+            # TODO: experiment with pulling negative samples that have very
+            #  different embeddings
+            if len(negative_examples) < task_size_per_cls:
+                neg_sample_idx = random.randint(0, len(ds.data) - 1)
+                neg_tags = ds.data[neg_sample_idx][
+                    SampleType.CATCHPHRASES]
+                if pos_tag not in neg_tags:
+                    negative_examples.add(neg_sample_idx)
+            neg_sampling_tries += 1
+
+        pos_batch: List[Tuple[SrcStringT, TgtStringT, LabelT]] = [
+            (ds.data[i][SampleType.INPUT_TEXT], pos_tag, 1) for i
+            in positive_examples]
+        neg_batch: List[Tuple[SrcStringT, TgtStringT, LabelT]] = [
+            (ds.data[i][SampleType.INPUT_TEXT], pos_tag, 0) for i
+            in negative_examples]
+
+        # TODO fix so we catch this earlier
+        min_to_have_1_query = n_support_per_cls + 1
+        if len(neg_batch) < min_to_have_1_query or len(
+                pos_batch) < min_to_have_1_query:
+            return None
+        batch = neg_batch + pos_batch
         return Sent2TagMetaTaskBatch.collate_batch(
-            srcs_txt_pos=pos_batch,
-            srcs_txt_neg=neg_srcs,
-            tgt_text=pos_tag,
-            src_tokenizer=ds.tokenizer_src,
-            tgt_tokenizer=ds.tokenizer_tgt,
+            batch=batch,
+            tokenizer=ds.tokenizer_src,
             device=device,
             max_src_len=ds.max_src_len,
             max_tgt_len=ds.max_tgt_len,
@@ -297,7 +379,7 @@ class Sent2SentBatch:
                                         max_len=max_src_len,
                                         device=device)
         tgt: LongTensorT['B,TgtSeqLen'] = \
-            strings_to_padded_id_tensor(srcs,
+            strings_to_padded_id_tensor(tgts,
                                         tokenizer=tgt_tokenizer,
                                         max_len=max_tgt_len,
                                         device=device)
@@ -421,8 +503,7 @@ class MetaLearningMixIn(SentenceDataset, ABC):
 
     def get_collate_fn(self, device: Union[int, torch.device]) -> Callable[
         [List[Tuple[SrcStringT, TgtStringT]]], Sent2SentBatch]:
-        assert self.loaded, "Dataset not loaded"
-        return partial(Sent2TagMetaTaskBatch.default_collate_fn, self, device)
+        raise NotImplementedError
 
     def create_tag_to_sample_idx_map(self) -> Dict[str, List[int]]:
         """

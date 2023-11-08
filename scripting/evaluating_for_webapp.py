@@ -9,7 +9,7 @@ from mgz.model_running.nlp_routines.model_routine_tagging import TaggingRoutine
 from mgz.model_running.run_ops import embedding_controller, \
     tagging_embedding_controller
 from mgz.models.nlp.base_transformer import BaseTransformer
-from mgz.models.nlp.led import LEDForSequenceClassification
+from mgz.models.nlp.led import LEDForConditionalGeneration
 from mgz.typing import *
 from mgz.version_control import ModelNode, lookup_or_init_model
 
@@ -25,9 +25,9 @@ MODEL_NAME = "allenai/primera-multi_lexsum-source-long/train_step_10255_data_dat
 
 def load_models():
     print('loading model {}... '.format(MODEL_NAME))
-    model_node: ModelNode = lookup_or_init_model(LEDForSequenceClassification, MODEL_NAME,
+    model_node: ModelNode = lookup_or_init_model(LEDForConditionalGeneration, MODEL_NAME,
                                                  MODEL_NAME)
-    model: LEDForSequenceClassification = model_node.model
+    model: LEDForConditionalGeneration = model_node.model
     tokenizer: PreTrainedTokenizer = model_node.tokenizer
     model.to(DEVICE)
     model.eval()
@@ -52,7 +52,7 @@ def encode(text: str) -> Tuple[
 def get_tag_apply_embedding(doc_text: str, tag_text: str) -> NDArrayT[
     'EmbedLen']:
     with torch.no_grad():
-        model: LEDForSequenceClassification = MODELS[MODEL_NAME]
+        model: LEDForConditionalGeneration = MODELS[MODEL_NAME]
         torch.manual_seed(5)
         logits: FloatTensorT['B,EmbedLen'] = \
             tagging_embedding_controller(model=model, text=[doc_text, ],
@@ -192,7 +192,7 @@ def hand_select():
 
 def validation():
     routine = TaggingRoutine()
-    model_node: ModelNode = ModelNode.load_from_id(LEDForSequenceClassification,
+    model_node: ModelNode = ModelNode.load_from_id(LEDForConditionalGeneration,
                                                    MODEL_NAME,
                                                    MODEL_NAME)
     model_node.model.to(DEVICE)

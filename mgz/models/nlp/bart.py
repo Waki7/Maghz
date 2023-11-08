@@ -14,7 +14,8 @@ from transformers.activations import ACT2FN
 from transformers.models.bart.configuration_bart import BartConfig
 
 import settings
-from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext
+from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext, \
+    EncoderDecoderTransformer
 from mgz.models.nlp.utils_attention import _attention
 from mgz.typing import *
 
@@ -297,7 +298,8 @@ class BartDecoderLayer(nn.Module):
         return hidden_states
 
 
-class BartPretrainedModel(BaseTransformer, ABC):
+class BartPretrainedModel(EncoderDecoderTransformer, ABC):
+
     @classmethod
     def load_tokenizer(cls, tokenizer_id: str) -> Optional[
         hug.BartTokenizerFast]:
@@ -549,39 +551,19 @@ class BartModel(BartPretrainedModel):
         self.encoder.embed_tokens = self.shared
         self.decoder.embed_tokens = self.shared
 
-    def encode(self, src_ids: LongTensorT['B,SrcSeqLen'],
-               src_mask: IntTensorT['B,SrcSeqLen']):
-        return self.encoder.forward(
-            src_ids=src_ids,
-            src_mask=src_mask,
-        )
-
-    def decode(self,
-               encoder_memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
-               tgt_ids: LongTensorT['B,TgtSeqLen'],
-               src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
-               tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen'] = None,
-               transformer_ctx: TransformerContext = None):
-        return self.decoder.forward(
-            encoder_hidden_states=encoder_memory,
-            tgt_ids=tgt_ids,
-            src_mask=src_mask,
-            tgt_mask=tgt_mask, transformer_ctx=transformer_ctx
-        )
-
     def forward(
             self,
             src_ids: LongTensorT['B,SrcSeqLen'],
             tgt_ids: LongTensorT['B,TgtSeqLen'],
-            src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
+            src_mask: IntTensorT['B,TgtSeqLen,SrcSeqLen'],
             tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen'] = None
     ) -> FloatTensorT['B,TgtSeqLen,EmbedLen']:
-        encoder_outputs = self.encode(src_ids=src_ids, src_mask=src_mask)
-        decoder_hidden_state = self.decode(
+        encoder_hidden_states = self.encode(src_ids=src_ids, src_mask=src_mask)
+        decoder_hidden_state = self.decoder.forward(
+            encoder_hidden_states=encoder_hidden_states,
             tgt_ids=tgt_ids,
             src_mask=src_mask,
             tgt_mask=tgt_mask,
-            encoder_memory=encoder_outputs,
         )
         return decoder_hidden_state
 
@@ -653,11 +635,44 @@ class BartForConditionalGeneration(BartPretrainedModel):
     def set_output_embeddings(self, new_embeddings):
         self.lm_head = new_embeddings
 
-    def forward(
+    @overrides(EncoderDecoderTransformer)
+    def encoder_decoder_embedding(
             self,
             src_ids: LongTensorT['B,SrcSeqLen'],
             tgt_ids: LongTensorT['B,TgtSeqLen'],
             src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
+            tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen'],
+            pred_eos: bool = True,
+    ) -> FloatTensorT['B,EmbedLen']:
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
+            config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
+            (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
+
+        Returns:
+        """
+        output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.model.forward(
+            src_ids=src_ids, src_mask=src_mask,
+            tgt_ids=tgt_ids, tgt_mask=tgt_mask)
+
+        if pred_eos:
+            # get the last eos embedding
+            sequence_lengths = \
+                (torch.eq(tgt_ids, self.config.eos_token_id).long().argmax(
+                    -1) - 1)
+            bsz = output.shape[0]
+            output_eos = output[torch.arange(bsz), sequence_lengths, :]
+            return output_eos
+
+        return output[:, -1, :]
+
+    @overrides(EncoderDecoderTransformer)
+    def forward(
+            self,
+            src_ids: LongTensorT['B,SrcSeqLen'],
+            tgt_ids: LongTensorT['B,TgtSeqLen'],
+            src_mask: IntTensorT['B,TgtSeqLen,SrcSeqLen'],
             tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen']
     ) -> FloatTensorT['B,TgtSeqLen,OutNClasses']:
         r"""
@@ -671,19 +686,11 @@ class BartForConditionalGeneration(BartPretrainedModel):
         output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.model.forward(
             src_ids=src_ids, src_mask=src_mask,
             tgt_ids=tgt_ids, tgt_mask=tgt_mask)
-
-        if self.__class__.DONE == 0:
-            print('hidden_states', output.shape)
-            # torch.unique(output, return_counts=True))
-            # print('--------')
-            self.__class__.DONE = 1
         lm_logits = self.lm_head(output)
         lm_logits = lm_logits + self.final_logits_bias.to(lm_logits.device)
-
         return lm_logits
 
-    DONE = 0
-
+    @overrides(BaseTransformer)
     def encode(self, src_ids: LongTensorT['B,SrcSeqLen'],
                src_mask: IntTensorT['B,SrcSeqLen']):
         return self.model.encoder.forward(
@@ -691,19 +698,18 @@ class BartForConditionalGeneration(BartPretrainedModel):
             src_mask=src_mask,
         )
 
+    @overrides(BaseTransformer)
     def decode(self,
-               encoder_memory: FloatTensorT['B,SrcSeqLen,EmbedLen'],
-               tgt_ids: LongTensorT['B,TgtSeqLen'],
-               src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
-               tgt_mask: IntTensorT['B,TgtSeqLen,TgtSeqLen'] = None,
-               transformer_ctx: TransformerContext = None):
+               transformer_ctx: TransformerContext,
+               generation_ids: LongTensorT['B,1'],
+               src_mask: IntTensorT['B,SrcSeqLen'] = None) -> \
+            LogitsTensorT['B,1,VocabSize']:
         output = self.model.decoder.forward(
-            encoder_hidden_states=encoder_memory,
-            tgt_ids=tgt_ids,
+            encoder_hidden_states=transformer_ctx.encoder_memory,
+            tgt_ids=generation_ids,
             src_mask=src_mask,
-            tgt_mask=tgt_mask, transformer_ctx=transformer_ctx
+            transformer_ctx=transformer_ctx
         )
-
         lm_logits = self.lm_head(output)
         lm_logits = lm_logits + self.final_logits_bias.to(lm_logits.device)
         return lm_logits

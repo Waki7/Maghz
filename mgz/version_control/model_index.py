@@ -19,7 +19,7 @@ import transformers as hug
 
 
 class ModelDatabase:
-    from mgz.models.nlp.led import LEDForSequenceClassification
+    from mgz.models.nlp.led import LEDForConditionalGeneration
     '''
     Just some quick access base models. For easier book keeping for now.
     '''
@@ -30,7 +30,7 @@ class ModelDatabase:
 
     @staticmethod
     def led_source_to_long() -> ModelNode:
-        return lookup_or_init_model(ModelDatabase.LEDForSequenceClassification,
+        return lookup_or_init_model(ModelDatabase.LEDForConditionalGeneration,
                                     ModelDatabase.led_source_to_long_id(),
                                     ModelDatabase.led_source_to_long_id())
 
@@ -153,7 +153,7 @@ class Indexer:
                 model_cls.load_model(model_dir, quantization_config)
             tokenizer: Optional[
                 hug.PreTrainedTokenizer] = model_cls.load_tokenizer(
-                model_id)
+                model_dir)
         if model is None or tokenizer is None:
             raise FileNotFoundError(
                 'Model {} not found. Checked in directory {}'.format(model_id,

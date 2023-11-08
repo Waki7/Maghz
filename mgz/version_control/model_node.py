@@ -12,7 +12,7 @@ from mgz.typing import *
 from mgz.version_control.metrics import Metrics
 
 if TYPE_CHECKING:
-    from mgz.models.nlp.led import LEDModel, LEDForSequenceClassification
+    from mgz.models.nlp.led import LEDModel, LEDForConditionalGeneration
     from mgz.version_control.model_edge import ModelTransitionEdge
 
 
@@ -30,7 +30,7 @@ class ModelNode:
     # Union thing is messy, what's a better way, probably pass a type to
     # ModelNode
     def __init__(self, model: Union[
-        BaseModel, BaseTransformer, LEDModel, LEDForSequenceClassification],
+        BaseModel, BaseTransformer, LEDModel, LEDForConditionalGeneration],
                  tokenizer: PreTrainedTokenizer, model_id: str,
                  metrics: Dict[Metrics, Union[List[float], float]] = None):
         """
@@ -61,8 +61,9 @@ class ModelNode:
                                        quantization_config=quantization_config)
         model_dir = vc.CACHED_INDEXER.path_from_id(node.model_id)
         file_path = os.path.join(model_dir, 'metrics.json')
-        with open(file_path, "r") as json_file:
-            node.metrics = json.load(json_file)
+        if os.path.exists(file_path):
+            with open(file_path, "r") as json_file:
+                node.metrics = json.load(json_file)
         return node
 
     def store_metrics(self,
@@ -73,8 +74,10 @@ class ModelNode:
         model_dir = vc.CACHED_INDEXER.path_from_id(self.model_id)
         file_path = os.path.join(model_dir, 'metrics.json')
 
-        with open(file_path, "r") as json_file:
-            data = json.load(json_file)
+        data = {}
+        if os.path.exists(file_path):
+            with open(file_path, "r") as json_file:
+                data = json.load(json_file)
         data["metrics"] = {str(k): v for k, v in
                            self.metrics.items()}
         with open(file_path, 'w') as json_file:

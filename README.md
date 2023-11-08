@@ -18,7 +18,7 @@ aus legal case reports: https://archive.ics.uci.edu/static/public/239/legal+case
 
 
 running tensorboard 
-tensorboard --logdir=scripting/runs --bind_all
+tensorboard --logdir=index_dir/main --bind_all
 
 
 
@@ -39,5 +39,6 @@ tensorboard --logdir=scripting/runs --bind_all
 'allenai/led-base-16384-multi_lexsum-source-long'
 
 
-
-
+    # Mistral
+'mistralai/Mistral-7B-v0.1'
+"openchat/openchat_3.5"
