@@ -61,12 +61,12 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
                               max_src_len=4096,
                               n_episodes=2000,
                               n_query_per_cls=[1],
-                              n_support_per_cls=[1, 2, 3])
+                              n_support_per_cls=[1, 2])
         val_ds = EnronEmailsTagQA(model_node.tokenizer,
                                   max_src_len=4096,
                                   n_episodes=25,
                                   n_query_per_cls=[1],
-                                  n_support_per_cls=[1, 2, 3])
+                                  n_support_per_cls=[1, 2])
     if old_enron:
         ds = EnronEmailsTagging(model_node.tokenizer,
                                 max_src_len=3000,
@@ -126,7 +126,7 @@ def led_main_train():
         #     smoothing=0.1
         # ).to(settings.DEVICE)
 
-        lr = 0.0002
+        lr = 0.0001
         weight_decay = 0.0001
         betas = (0.9, 0.98)
         eps = 1e-4
