@@ -6,7 +6,7 @@ from setuptools import find_packages
 
 # Usage
 # if timeout add this argument --default-timeout=100
-# in development: pip install -e {path to Maghz or . if in dir}
+# in development: pip install --upgrade -e {path to Maghz or . if in dir}
 # in prod: pip install {path to Maghz or . if in dir}
 
 
@@ -102,17 +102,17 @@ setup(
                          'tensorboardX',
                          'torchtext',
                          'spacy',
-                         'gym',
+                         'gym==0.26.2',
                          'torchvision',
                          'scipy',
                          'numpy',
-                         'tensorflow',
+                         'tensorflow>=2.11.0',
                          'torchvision',
                          'transformers',
                          'opencv-python',
                          'array2gif',
                          'Pillow',
-                         'stable-baselines',
+                         'stable-baselines==2.10.2',
                          'pyyaml',
                          'scikit-image',
                          'pytest',
