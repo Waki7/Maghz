@@ -3,10 +3,25 @@ from distutils.core import setup
 
 from setuptools import find_packages
 
+
 # Usage
 # if timeout add this argument --default-timeout=100
 # in development: pip install -e {path to Maghz or . if in dir}
 # in prod: pip install {path to Maghz or . if in dir}
+
+
+def is_cuda_available():
+    # Check CUDA_HOME environment variable
+    if os.getenv('CUDA_HOME', None) is None:
+        return False
+
+    # Check if nvcc is available
+    import subprocess
+    try:
+        subprocess.check_output(['nvcc', '--version'])
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
 
 # User-friendly description from README.md
 current_directory = os.path.dirname(os.path.abspath(__file__))
@@ -31,6 +46,10 @@ elif is_mac:
     tf_deps = ['tensorflow-macos']
 elif is_linux:
     tf_deps = ['tensorflow-gpu==2.12.0']
+
+cuda_deps = []
+if is_cuda_available():
+    cuda_deps = ['auto-gptq>=0.4.2']
 
 try:
     with open(os.path.join(current_directory, 'README.md'),
@@ -118,9 +137,8 @@ setup(
                          'torchdata',
                          'torchtext',
                          'protobuf==3.20',
-                         'auto-gptq>=0.4.2',
                          'flash-attn',
                          'inspect-it',
-                     ] + tf_deps,
+                     ] + cuda_deps + tf_deps,
     classifiers=[]
 )

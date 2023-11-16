@@ -2,14 +2,11 @@ from __future__ import annotations
 
 import os
 
-from accelerate.utils import BnbQuantizationConfig
-
 from mgz.models.nlp.mistral import MistralForCausalLM
 
 os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 # from mgz.models.nlp.bart_interface import BARTHubInterface
 
-import bitsandbytes
 
 from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagging, \
     EnronEmailsTagQA
@@ -108,8 +105,15 @@ def led_main_train():
         quantize = True
         quantization_cfg = None
         if quantize:
-            # quantization_cfg = BitsAndBytesConfig(load_in_8bit=quantize)
-            quantization_cfg = BnbQuantizationConfig(load_in_8bit=quantize, )
+            try:
+                from accelerate.utils import BnbQuantizationConfig
+                import bitsandbytes
+                # quantization_cfg = BitsAndBytesConfig(load_in_8bit=quantize)
+                quantization_cfg = BnbQuantizationConfig(
+                    load_in_8bit=quantize, )
+            except ImportError:
+                print("Module 'some_module' is not installed.")
+                quantization_cfg = None
 
         model_node: ModelNode = \
             ModelNode.load_from_id(MistralForCausalLM, model_name,
