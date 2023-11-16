@@ -28,7 +28,7 @@ current_directory = os.path.dirname(os.path.abspath(__file__))
 operating_system = os.name
 is_windows = operating_system == 'nt'
 is_linux = operating_system == 'posix'
-is_mac = operating_system == 'mac'
+is_mac = operating_system == 'mac'  # TODO this doesn't work, mac resolves to posix
 
 torch_deps = []
 tf_deps = []
@@ -37,19 +37,18 @@ if is_windows:
         [
             "torch@https://download.pytorch.org/whl/cu116/torch-1.13.1%2Bcu116-cp38-cp38-win_amd64.whl"
             "torchvision@https://download.pytorch.org/whl/cu116/torchvision-0.14.1%2Bcu116-cp38-cp38-win_amd64.whl"]
-    tf_deps = ['tensorflow-gpu==2.12.0']
-elif is_mac:
+else:
     torch_deps = \
         [
             "torch@https://download.pytorch.org/whl/cu116/torch-1.13.1%2Bcu116-cp38-cp38-linux_x86_64.whl"
             "torchvision@https://download.pytorch.org/whl/cu116/torchvision-0.14.1%2Bcu116-cp38-cp38-linux_x86_64.whl"]
-    tf_deps = ['tensorflow-macos']
-elif is_linux:
-    tf_deps = ['tensorflow-gpu==2.12.0']
 
 cuda_deps = []
 if is_cuda_available():
     cuda_deps = ['flash-attn', 'auto-gptq>=0.4.2']
+    tf_deps = ['tensorflow-gpu==2.12.0']
+else:
+    tf_deps = ['tensorflow-macos']
 
 try:
     with open(os.path.join(current_directory, 'README.md'),
@@ -101,11 +100,11 @@ setup(
                          'tensorboard',
                          'tensorboardX',
                          'torchtext',
-                         'spacy',
+                         'spacy==3.5.3',
                          'gym==0.26.2',
                          'torchvision',
-                         'scipy',
-                         'numpy',
+                         'scipy==1.9.1',
+                         'numpy==1.24.3',
                          'tensorflow>=2.11.0',
                          'torchvision',
                          'transformers',
@@ -116,12 +115,10 @@ setup(
                          'pyyaml',
                          'scikit-image',
                          'pytest',
-                         'spacy==3.4',
                          'torchtext',
                          'torchdata',
                          'datasets',
                          'GPUtil',
-                         'spacy',
                          'altair',
                          'evaluate',
                          'scikit-learn',
@@ -136,7 +133,7 @@ setup(
                          'torchaudio',
                          'torchdata',
                          'torchtext',
-                         'protobuf==3.20',
+                         'protobuf>=3.20',
                          'inspect-it',
                      ] + cuda_deps + tf_deps,
     classifiers=[]
