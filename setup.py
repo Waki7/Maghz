@@ -118,7 +118,7 @@ setup(
                          'torchdata',
                          'torchtext',
                          'protobuf==3.20',
-                         'auto-gptq==0.4.2',
+                         'auto-gptq>=0.4.2',
                          'flash-attn',
                          'inspect-it',
                      ] + tf_deps,
