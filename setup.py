@@ -49,7 +49,7 @@ elif is_linux:
 
 cuda_deps = []
 if is_cuda_available():
-    cuda_deps = ['auto-gptq>=0.4.2']
+    cuda_deps = ['flash-attn', 'auto-gptq>=0.4.2']
 
 try:
     with open(os.path.join(current_directory, 'README.md'),
@@ -137,7 +137,6 @@ setup(
                          'torchdata',
                          'torchtext',
                          'protobuf==3.20',
-                         'flash-attn',
                          'inspect-it',
                      ] + cuda_deps + tf_deps,
     classifiers=[]
