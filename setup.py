@@ -16,16 +16,21 @@ is_linux = operating_system == 'posix'
 is_mac = operating_system == 'mac'
 
 torch_deps = []
+tf_deps = []
 if is_windows:
     torch_deps = \
         [
             "torch@https://download.pytorch.org/whl/cu116/torch-1.13.1%2Bcu116-cp38-cp38-win_amd64.whl"
             "torchvision@https://download.pytorch.org/whl/cu116/torchvision-0.14.1%2Bcu116-cp38-cp38-win_amd64.whl"]
-else:
+    tf_deps = ['tensorflow-gpu==2.12.0']
+elif is_mac:
     torch_deps = \
         [
             "torch@https://download.pytorch.org/whl/cu116/torch-1.13.1%2Bcu116-cp38-cp38-linux_x86_64.whl"
             "torchvision@https://download.pytorch.org/whl/cu116/torchvision-0.14.1%2Bcu116-cp38-cp38-linux_x86_64.whl"]
+    tf_deps = ['tensorflow-macos']
+elif is_linux:
+    tf_deps = ['tensorflow-gpu==2.12.0']
 
 try:
     with open(os.path.join(current_directory, 'README.md'),
@@ -74,49 +79,48 @@ setup(
 
     # List of packages to install with this one
     install_requires=[
-        'tensorboard',
-        'tensorboardX',
-        'torchtext',
-        'spacy',
-        'gym',
-        'torchvision',
-        'scipy',
-        'numpy',
-        'tensorflow',
-        'torchvision',
-        'transformers',
-        'opencv-python',
-        'array2gif',
-        'Pillow',
-        'stable-baselines',
-        'pyyaml',
-        'scikit-image',
-        'pytest',
-        'spacy==3.4',
-        'torchtext',
-        'torchdata',
-        'datasets',
-        'GPUtil',
-        'spacy',
-        'altair',
-        'evaluate',
-        'scikit-learn',
-        'accelerate',
-        'bs4',
-        'typing_extensions==4.4.0',
-        'peft',
-        'bitsandbytes',
-        'optimum',
-        'torch>=2.1.0',
-        'torchvision',
-        'torchaudio',
-        'torchdata',
-        'torchtext',
-        'tensorflow-gpu==2.8.0',
-        'protobuf==3.20',
-        'auto-gptq==0.4.2',
-        'flash-attn',
-        'inspect-it',
-    ],
+                         'tensorboard',
+                         'tensorboardX',
+                         'torchtext',
+                         'spacy',
+                         'gym',
+                         'torchvision',
+                         'scipy',
+                         'numpy',
+                         'tensorflow',
+                         'torchvision',
+                         'transformers',
+                         'opencv-python',
+                         'array2gif',
+                         'Pillow',
+                         'stable-baselines',
+                         'pyyaml',
+                         'scikit-image',
+                         'pytest',
+                         'spacy==3.4',
+                         'torchtext',
+                         'torchdata',
+                         'datasets',
+                         'GPUtil',
+                         'spacy',
+                         'altair',
+                         'evaluate',
+                         'scikit-learn',
+                         'accelerate',
+                         'bs4',
+                         'typing_extensions==4.4.0',
+                         'peft',
+                         'bitsandbytes',
+                         'optimum',
+                         'torch>=2.1.0',
+                         'torchvision',
+                         'torchaudio',
+                         'torchdata',
+                         'torchtext',
+                         'protobuf==3.20',
+                         'auto-gptq==0.4.2',
+                         'flash-attn',
+                         'inspect-it',
+                     ] + tf_deps,
     classifiers=[]
 )
