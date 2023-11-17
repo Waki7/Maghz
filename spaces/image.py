@@ -1,4 +1,4 @@
-from gym.spaces import Box
+from spaces.box import Box
 
 from mgz.typing import *
 

@@ -3,7 +3,9 @@ from typing import *
 
 import numpy as np
 import torch
-from gym.spaces import Space, MultiDiscrete, Discrete
+from spaces.space import Space
+from spaces.discrete import Discrete
+from spaces.multi_discrete import MultiDiscrete
 
 
 class Hierarchical(Space):
@@ -40,7 +42,7 @@ class Hierarchical(Space):
                  **spaces_kwargs):
         assert isinstance(spaces, OrderedDict)
         assert (spaces is None) or (
-                not spaces_kwargs), \
+            not spaces_kwargs), \
             'Use either Dict(spaces=dict(...)) or Dict(foo=x, bar=z)'
         if spaces is None:
             spaces = spaces_kwargs
@@ -107,7 +109,7 @@ class Hierarchical(Space):
 
     def sample(self):
         return OrderedDict(
-                [(k, space.sample()) for k, space in self.spaces.items()])
+            [(k, space.sample()) for k, space in self.spaces.items()])
 
     def contains(self, x):
         if not isinstance(x, dict) or len(x) != len(self.spaces):
@@ -124,7 +126,7 @@ class Hierarchical(Space):
 
     def __repr__(self):
         return "Dict(" + ", ".join(
-                [str(k) + ":" + str(s) for k, s in self.spaces.items()]) + ")"
+            [str(k) + ":" + str(s) for k, s in self.spaces.items()]) + ")"
 
     def to_jsonable(self, sample_n):
         # serialize as dict-repr of vectors
@@ -156,8 +158,8 @@ class Hierarchical(Space):
             shape = sampled_action_functions.shape[:-1]
         for param_set in self.spaces.values():
             masks.append([
-                    torch.ones((*shape, space.n if per_probability else
-                    1)).to(device) for space in param_set.values()])
+                torch.ones((*shape, space.n if per_probability else
+                1)).to(device) for space in param_set.values()])
         return masks
 
     def action_function_masking(self,

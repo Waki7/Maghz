@@ -3,11 +3,12 @@ from collections import OrderedDict
 from enum import Enum
 from typing import *
 
-from gym.spaces import Discrete
+from .discrete import Discrete
 
 
 class DiscreteNode(Discrete):
-    def __init__(self, n, name: Union[Enum, str], is_function_node: bool = False):
+    def __init__(self, n, name: Union[Enum, str],
+                 is_function_node: bool = False):
         super(DiscreteNode, self).__init__(n)
         self.name = name
         self.is_function_node = is_function_node

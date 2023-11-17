@@ -1,5 +1,5 @@
 from mgz.typing import *
-from gym.spaces import Box
+from spaces.box import Box
 
 import numpy as np
 
@@ -14,4 +14,4 @@ class GenericBox(Box):
             dim_names = [str(dim) for dim in shape]
         self.dim_names = dim_names
         super(GenericBox, self).__init__(low=low, high=high, shape=(0,),
-                                    dtype=dtype)
+                                         dtype=dtype)
