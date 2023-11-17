@@ -102,7 +102,7 @@ setup(
                          'tensorboardX',
                          'torchtext',
                          'spacy==3.5.3',
-                         'gym[atari]',
+                         'gym',
                          'gym[accept-rom-license]',
                          'torchvision',
                          'scipy==1.9.1',
