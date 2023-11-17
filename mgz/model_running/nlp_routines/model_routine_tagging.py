@@ -7,7 +7,7 @@ from accelerate import Accelerator
 from tqdm import tqdm
 
 import mgz.version_control as vc
-import settings
+import mgz.settings as settings
 import spaces as sp
 from mgz.ds.base_dataset import BaseDataset
 from mgz.ds.sentence_datasets.sentence_datasets import Sent2TagMetaTaskBatch, \

@@ -2,7 +2,7 @@ from __future__ import annotations
 import torch.nn as nn
 from torchtext.data.metrics import bleu_score
 
-import settings
+import mgz.settings as settings
 from mgz.version_control.model_index import Indexer
 from mgz.models.nlp.bart import BartModel
 from mgz.typing import *

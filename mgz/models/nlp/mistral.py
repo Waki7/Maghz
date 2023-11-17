@@ -16,7 +16,7 @@ from transformers import BitsAndBytesConfig, MistralConfig
 from transformers.activations import ACT2FN
 from transformers.utils.import_utils import is_flash_attn_available
 
-import settings
+import mgz.settings as settings
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext, \
     DecoderTransformer
 from mgz.models.nlp.utils_attention import _attention

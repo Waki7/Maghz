@@ -6,7 +6,7 @@ import os
 os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 import torch
 import transformers as hug
-import settings
+import mgz.settings as settings
 from mgz.ds.sentence_datasets.synthetic_memorization import \
     SyntheticMemorization
 from mgz.models.nlp.led import LEDForConditionalGeneration

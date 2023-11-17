@@ -6,7 +6,7 @@ from transformers.generation.utils import MinLengthLogitsProcessor, \
     NoRepeatNGramLogitsProcessor, LogitsProcessorList, MaxLengthCriteria, \
     BeamSearchScorer
 
-import settings
+import mgz.settings as settings
 from mgz.typing import *
 
 if TYPE_CHECKING:

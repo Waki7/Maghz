@@ -5,7 +5,7 @@ import unittest
 import torch
 import transformers as hug
 
-import settings
+import mgz.settings as settings
 from mgz.models.nlp.led import LEDForConditionalGeneration
 from mgz.version_control import lookup_or_init_model
 

@@ -9,7 +9,7 @@ from tqdm import tqdm
 import mgz.model_running.run_ops as run_ops
 import mgz.models.nlp.metrics as metrics
 import mgz.version_control.model_index as model_index
-import settings
+import mgz.settings as settings
 from mgz.models.nlp.bart import BartModel
 from mgz.typing import *
 

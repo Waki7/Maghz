@@ -9,7 +9,7 @@ from transformers import PreTrainedTokenizer
 
 import mgz.models.nlp.metrics as metrics
 import mgz.version_control as vc
-import settings
+import mgz.settings as settings
 from mgz.ds.base_dataset import BaseDataset
 from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch
 from mgz.models.nlp.base_transformer import BaseTransformer

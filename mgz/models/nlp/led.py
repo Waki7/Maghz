@@ -14,7 +14,7 @@ from transformers import BitsAndBytesConfig
 from transformers.activations import ACT2FN
 from transformers.models.led.configuration_led import LEDConfig
 
-import settings
+import mgz.settings as settings
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext, \
     quantize_model, EncoderDecoderTransformer
 from mgz.models.nlp.utils_attention import _attention

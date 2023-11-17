@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import mgz.version_control as vc
-import settings
+import mgz.settings as settings
 import spaces as sp
 # from mgz.ds import DataState
 from mgz.ds.base_dataset import BaseDataset

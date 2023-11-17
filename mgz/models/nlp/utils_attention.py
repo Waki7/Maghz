@@ -1,7 +1,7 @@
 import torch.utils.checkpoint
 from torch import nn
 
-import settings
+import mgz.settings as settings
 from mgz.typing import *
 
 

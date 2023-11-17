@@ -10,7 +10,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim.lr_scheduler import LambdaLR
 from transformers import PreTrainedTokenizerBase
 
-import settings
+import mgz.settings as settings
 from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch, \
     SentenceDataset
 from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask

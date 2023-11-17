@@ -13,7 +13,7 @@ from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagging, \
 from mgz.typing import *
 
 import torch
-import settings
+import mgz.settings as settings
 from mgz.ds.sentence_datasets.synthetic_memorization import \
     SyntheticMemorization
 import logging

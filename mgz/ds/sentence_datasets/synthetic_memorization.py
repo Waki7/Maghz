@@ -1,6 +1,6 @@
 from functools import partial
 
-import settings
+import mgz.settings as settings
 import spaces as sp
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
     Sent2SentBatch

@@ -3,7 +3,7 @@ import random
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
 
-import settings
+import mgz.settings as settings
 from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagging
 from mgz.model_running.nlp_routines.model_routine_tagging import TaggingRoutine
 from mgz.model_running.run_ops import embedding_controller, \

@@ -13,7 +13,7 @@ from torch import nn
 from transformers.activations import ACT2FN
 from transformers.models.bart.configuration_bart import BartConfig
 
-import settings
+import mgz.settings as settings
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext, \
     EncoderDecoderTransformer
 from mgz.models.nlp.utils_attention import _attention

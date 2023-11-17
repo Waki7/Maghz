@@ -9,7 +9,7 @@ from transformers import BitsAndBytesConfig
 from transformers import PreTrainedTokenizer
 from transformers.integrations import replace_with_bnb_linear
 
-import settings
+import mgz.settings as settings
 from mgz.models.base_model import BaseModel
 from mgz.models.nlp.inference import BeamInference, Greedy
 from mgz.typing import *

@@ -40,7 +40,7 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 
-import settings
+import mgz.settings as settings
 
 if is_flash_attn_available():
     from flash_attn import flash_attn_func, flash_attn_varlen_func

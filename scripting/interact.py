@@ -4,7 +4,7 @@ from enum import Enum
 
 import transformers as hug
 
-import settings
+import mgz.settings as settings
 from mgz.model_running.run_ops import generate_controller, forward_controller
 from mgz.typing import *
 from mgz.version_control import lookup_or_init_model
