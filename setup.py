@@ -103,6 +103,7 @@ setup(
                          'torchtext',
                          'spacy==3.5.3',
                          'gym==0.21.0',
+                         'autorom',
                          'gym[accept-rom-license]',
                          'gym[atari]',
                          'torchvision',
