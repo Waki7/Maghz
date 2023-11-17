@@ -1,5 +1,6 @@
 import os
 from distutils.core import setup
+import platform
 
 from setuptools import find_packages
 
@@ -25,10 +26,10 @@ def is_cuda_available():
 
 # User-friendly description from README.md
 current_directory = os.path.dirname(os.path.abspath(__file__))
-operating_system = os.name
-is_windows = operating_system == 'nt'
-is_linux = operating_system == 'posix'
-is_mac = operating_system == 'mac'  # TODO this doesn't work, mac resolves to posix
+os_name = platform.system()
+is_windows = os_name == 'Windows'
+is_linux = os_name == 'Linux'
+is_mac = os_name == 'Darwin'
 
 torch_deps = []
 tf_deps = []
@@ -37,18 +38,18 @@ if is_windows:
         [
             "torch@https://download.pytorch.org/whl/cu116/torch-1.13.1%2Bcu116-cp38-cp38-win_amd64.whl"
             "torchvision@https://download.pytorch.org/whl/cu116/torchvision-0.14.1%2Bcu116-cp38-cp38-win_amd64.whl"]
-else:
+elif is_linux:
     torch_deps = \
         [
             "torch@https://download.pytorch.org/whl/cu116/torch-1.13.1%2Bcu116-cp38-cp38-linux_x86_64.whl"
             "torchvision@https://download.pytorch.org/whl/cu116/torchvision-0.14.1%2Bcu116-cp38-cp38-linux_x86_64.whl"]
+elif is_mac:
+    tf_deps = ['tensorflow-macos']
 
 cuda_deps = []
 if is_cuda_available():
     cuda_deps = ['flash-attn', 'auto-gptq>=0.4.2']
     tf_deps = ['tensorflow-gpu==2.12.0']
-else:
-    tf_deps = ['tensorflow-macos']
 
 try:
     with open(os.path.join(current_directory, 'README.md'),
