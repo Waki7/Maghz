@@ -104,8 +104,6 @@ setup(
                          'spacy==3.5.3',
                          'gym==0.21.0',
                          'autorom',
-                         'gym[accept-rom-license]',
-                         'gym[atari]',
                          'torchvision',
                          'scipy==1.9.1',
                          'numpy==1.24.3',
