@@ -63,7 +63,7 @@ setup(
     name='Maghz',
 
     # Packages to include into the distribution
-    packages=find_packages(),
+    packages=["mgz", "spaces"],
 
     # Start with a small number and increase it with every change you make
     # https://semver.org
