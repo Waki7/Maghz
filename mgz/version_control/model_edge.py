@@ -4,7 +4,7 @@ import json
 import os
 from enum import Enum
 
-import log_utils
+import mgz.log_utils as log_utils
 import mgz.model_running.run_ops as run_ops
 import mgz.version_control as vc
 from mgz.ds import BaseDataset

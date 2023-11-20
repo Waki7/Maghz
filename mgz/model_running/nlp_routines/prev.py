@@ -6,7 +6,7 @@ import time
 import torch.utils.data
 from tqdm import tqdm
 
-import log_utils
+import mgz.log_utils as log_utils
 import mgz.version_control as vc
 import mgz.settings as settings
 import spaces as sp
