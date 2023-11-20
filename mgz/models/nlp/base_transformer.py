@@ -3,7 +3,6 @@ from __future__ import annotations
 import torch.nn as nn
 import transformers as hug
 from accelerate import dispatch_model, init_empty_weights
-from bitsandbytes.nn import Linear8bitLt
 from peft import prepare_model_for_kbit_training
 from transformers import BitsAndBytesConfig
 from transformers import PreTrainedTokenizer
@@ -24,6 +23,7 @@ def replace_8bit_linear(model, threshold=6.0, module_to_not_convert=None):
 
         if isinstance(module, nn.Linear) and name not in module_to_not_convert:
             with init_empty_weights():
+                from bitsandbytes.nn import Linear8bitLt
                 model._modules[name] = Linear8bitLt(
                     module.in_features,
                     module.out_features,
