@@ -63,7 +63,7 @@ setup(
     name='Maghz',
 
     # Packages to include into the distribution
-    packages=["mgz", "spaces"],
+    packages=find_packages() + ["mgz", "spaces"],
     package_dir={
         "": ".",
         "mgz": "./mgz",
