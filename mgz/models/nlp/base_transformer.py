@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import torch.nn as nn
 import transformers as hug
-from accelerate import dispatch_model, init_empty_weights
-from peft import prepare_model_for_kbit_training
 from transformers import BitsAndBytesConfig
 from transformers import PreTrainedTokenizer
 from transformers.integrations import replace_with_bnb_linear
@@ -15,6 +13,8 @@ from mgz.typing import *
 
 
 def replace_8bit_linear(model, threshold=6.0, module_to_not_convert=None):
+    from accelerate import init_empty_weights
+
     if module_to_not_convert is None:
         module_to_not_convert = ["lm_head"]
     for name, module in model.named_children():
@@ -47,6 +47,9 @@ def quantize_model(model: BaseTransformer):
 
 
 def quantize_model_inference(model: BaseTransformer):
+    from peft import prepare_model_for_kbit_training
+    from accelerate import dispatch_model
+
     logging.info('Quantizing model.')
     quantization_config = BitsAndBytesConfig(
         load_in_4bit=True,
