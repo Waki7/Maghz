@@ -105,10 +105,14 @@ class EnronEmails(SentenceDataset):
     def __init__(self, tokenizer: PreTrainedTokenizer,
                  max_src_len: SrcSeqLen,
                  max_tgt_len: TgtSeqLen,
-                 training_ratio=0.7):  # change for testing/verification
+                 training_ratio=0.7,
+                 dataset_dir: str = None):  # change for testing/verification
+        if dataset_dir is None:
+            dataset_dir = DATASET_DIR
         super(EnronEmails, self).__init__(tokenizer=tokenizer,
                                           max_src_len=max_src_len,
-                                          max_tgt_len=max_tgt_len)
+                                          max_tgt_len=max_tgt_len,
+                                          dataset_dir=dataset_dir)
         # --- Initialization flags ---
         self.training_ratio = training_ratio
         self.validation_ratio = .2
@@ -116,7 +120,7 @@ class EnronEmails(SentenceDataset):
 
     @overrides(BaseDataset)
     def _load(self, train: bool = False, val: bool = False, test: bool = False):
-        logging.info('Reading data from: ' + DATASET_DIR)
+        logging.info('Reading data from: ' + self.dataset_dir)
         email_file_paths, label_file_paths = self._pre_load_paths_data_range(
             train, val, test)
 
@@ -179,7 +183,8 @@ class EnronEmails(SentenceDataset):
         List[FilePath], List[FilePath]]:
         email_file_paths: List[FilePath] = []
         label_file_paths: List[FilePath] = []
-        directories = [os.path.join(DATASET_DIR, str(i)) for i in range(1, 9)]
+        directories = [os.path.join(self.dataset_dir, str(i)) for i in
+                       range(1, 9)]
         for dir in directories:
             for file in os.listdir(dir):
                 if file.endswith('.txt'):

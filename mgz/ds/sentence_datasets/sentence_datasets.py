@@ -414,8 +414,9 @@ class SentenceDataset(BaseDataset, ABC):
 
     def __init__(self, tokenizer: PreTrainedTokenizer,
                  max_src_len: SrcSeqLen,
-                 max_tgt_len: TgtSeqLen):
-        super(SentenceDataset, self).__init__()
+                 max_tgt_len: TgtSeqLen,
+                 dataset_dir: str = None):
+        super(SentenceDataset, self).__init__(dataset_dir)
 
         self.max_src_len = max_src_len
         self.max_tgt_len = max_tgt_len

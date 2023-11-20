@@ -45,10 +45,14 @@ class AusCaseReports(SentenceDataset):
     def __init__(self, tokenizer: PreTrainedTokenizer,
                  max_src_len: SrcSeqLen,
                  max_tgt_len: TgtSeqLen,
-                 training_ratio=0.7):  # change for testing/verification
+                 training_ratio=0.7,
+                 dataset_dir: str = None):  # change for testing/verification
+        if dataset_dir is None:
+            dataset_dir = DATASET_DIR
         super(AusCaseReports, self).__init__(tokenizer=tokenizer,
                                              max_src_len=max_src_len,
-                                             max_tgt_len=max_tgt_len)
+                                             max_tgt_len=max_tgt_len,
+                                             dataset_dir=dataset_dir)
         # --- Initialization flags ---
         self.training_ratio = training_ratio
         self.validation_ratio = .15

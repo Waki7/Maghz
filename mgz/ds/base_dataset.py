@@ -25,7 +25,7 @@ class DataState(Enum):
 class BaseDataset(Dataset):
     __metaclass__ = ABCMeta
 
-    def __init__(self):
+    def __init__(self, dataset_dir: str = None):
         self.meta_data = None
 
         self.in_space: sp.Space
@@ -36,6 +36,7 @@ class BaseDataset(Dataset):
         # data_state must be set before loading sometimes
         self.data_state = DataState.NOT_LOADED
         self.loaded = False
+        self.dataset_dir = dataset_dir
 
     @property
     def input_space(self) -> sp.Sentence:
