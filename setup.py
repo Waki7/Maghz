@@ -103,7 +103,6 @@ setup(
     install_requires=[
         'tensorboard',
         'tensorboardX',
-        'torchtext',
         'spacy==3.5.3',
         'torchvision',
         'scipy==1.9.1',
@@ -117,7 +116,6 @@ setup(
         'pyyaml',
         'scikit-image',
         'pytest',
-        'torchtext',
         'torchdata',
         'datasets',
         'GPUtil',
@@ -131,6 +129,7 @@ setup(
         'bitsandbytes',
         'optimum',
         'torch>=2.1.0',
+        'torchtext',
         # 'torchvision',
         # 'torchaudio',
         # 'torchdata',
