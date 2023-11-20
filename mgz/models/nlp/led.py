@@ -1318,7 +1318,8 @@ class LEDForConditionalGeneration(LEDPretrainedModel):
                                              map_location=torch.device('cpu')))
             model.to(settings.DEVICE)
             return model
-        except FileNotFoundError:
+        except FileNotFoundError as e:
+            print(e)
             return None
 
     @classmethod
