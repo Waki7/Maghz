@@ -9,8 +9,6 @@ from abc import ABC
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers as hug
-from accelerate import init_empty_weights, load_checkpoint_and_dispatch
-from accelerate.utils import load_and_quantize_model
 from torch import nn
 from transformers import BitsAndBytesConfig, MistralConfig
 from transformers.activations import ACT2FN
@@ -781,6 +779,8 @@ class MistralForCausalLM(MistralPreTrainedModel):
     def load_model(cls, path: str,
                    quantization_config: BitsAndBytesConfig = None) -> Optional[
         MistralForCausalLM]:
+        from accelerate import init_empty_weights, load_checkpoint_and_dispatch
+        from accelerate.utils import load_and_quantize_model
         try:
             with open(os.path.normpath(os.path.join(path, 'config.json')),
                       'r') as f:
