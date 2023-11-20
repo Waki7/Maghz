@@ -142,6 +142,10 @@ class Indexer:
             model_dir)
         loaded_successfully = model is not None and tokenizer is not None
         if not loaded_successfully:
+            if model is None:
+                logging.warning('Model was not found {}'.format(model_dir))
+            if tokenizer is None:
+                logging.warning('Tokenizer was not found {}'.format(model_dir))
             logging.warning(
                 'Model was in roots but not found in directory, this may be '
                 'an online model: ' + model_dir)
