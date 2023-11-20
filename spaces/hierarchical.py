@@ -3,9 +3,9 @@ from typing import *
 
 import numpy as np
 import torch
-from spaces.space import Space
-from spaces.discrete import Discrete
-from spaces.multi_discrete import MultiDiscrete
+from .space import Space
+from .discrete import Discrete
+from .multi_discrete import MultiDiscrete
 
 
 class Hierarchical(Space):

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gym.spaces import MultiDiscrete
+from .multi_discrete import MultiDiscrete
 
 from mgz.typing import *
 

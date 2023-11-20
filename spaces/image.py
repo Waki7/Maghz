@@ -1,4 +1,4 @@
-from spaces.box import Box
+from .box import Box
 
 from mgz.typing import *
 
