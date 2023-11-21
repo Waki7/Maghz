@@ -230,6 +230,8 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
                  n_episodes: int = 100,
                  training_ratio: float = 0.75,
                  dataset_dir: str = None):
+        if dataset_dir is None:
+            dataset_dir = DATASET_DIR
         all_tags = []
         [all_tags.extend(subcategories.values()) for subcategories in
          CATEGORIES.values()]

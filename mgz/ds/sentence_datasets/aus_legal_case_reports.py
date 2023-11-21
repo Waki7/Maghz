@@ -199,6 +199,8 @@ class AusCaseReportsToPhraseTag(AusCaseReports):
     def __init__(self, tokenizer: PreTrainedTokenizer,
                  max_src_len: int = 1024, training_ratio=0.7,
                  dataset_dir: str = None):
+        if dataset_dir is None:
+            dataset_dir = DATASET_DIR
         assert max_src_len >= 1024
         super(AusCaseReportsToPhraseTag, self).__init__(tokenizer, max_src_len,
                                                         256,
