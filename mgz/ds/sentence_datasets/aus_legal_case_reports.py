@@ -197,11 +197,13 @@ class AusCaseReports(SentenceDataset):
 
 class AusCaseReportsToPhraseTag(AusCaseReports):
     def __init__(self, tokenizer: PreTrainedTokenizer,
-                 max_src_len: int = 1024, training_ratio=0.7):
+                 max_src_len: int = 1024, training_ratio=0.7,
+                 dataset_dir: str = None):
         assert max_src_len >= 1024
         super(AusCaseReportsToPhraseTag, self).__init__(tokenizer, max_src_len,
                                                         256,
-                                                        training_ratio=training_ratio)
+                                                        training_ratio=training_ratio,
+                                                        dataset_dir=dataset_dir)
 
         self.sample_map: Dict[int, Tuple[int, int]] = {}
 
