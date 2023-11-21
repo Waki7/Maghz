@@ -228,14 +228,16 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
                  max_src_len: SrcSeqLen, n_query_per_cls: List[int] = 5,
                  n_support_per_cls: List[int] = 5,
                  n_episodes: int = 100,
-                 training_ratio: float = 0.75):
+                 training_ratio: float = 0.75,
+                 dataset_dir: str = None):
         all_tags = []
         [all_tags.extend(subcategories.values()) for subcategories in
          CATEGORIES.values()]
         max_tgt_len = max([len(tokenizer.tokenize(tag)) for tag in all_tags])
         super(EnronEmails, self).__init__(tokenizer=tokenizer,
                                           max_src_len=max_src_len,
-                                          max_tgt_len=max_tgt_len)
+                                          max_tgt_len=max_tgt_len,
+                                          dataset_dir=dataset_dir)
         # --- Initialization flags ---
         self.training_ratio = training_ratio
         self.validation_ratio = .2
