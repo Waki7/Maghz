@@ -22,17 +22,40 @@ from archive.models.bert_basic import make_model
 from mgz.models.nlp.led import LEDForConditionalGeneration
 from mgz.typing import *
 
+from mgz.models.nlp.base_transformer import BaseTransformer, \
+    EncoderDecoderTransformer, DecoderTransformer
+
 
 @torch.no_grad()
 def embedding_controller(model: BaseTransformer, text: List[str],
-                         tokenizer: PreTrainedTokenizerBase,
-                         get_last_embedding: bool = True) -> FloatTensorT[
+                         tokenizer: PreTrainedTokenizerBase) -> FloatTensorT[
     'B,Opt[SrcSeqLen],EmbedLen']:
     batch_encoding = tokenizer(text, return_tensors="pt", padding=True)
     src_ids = batch_encoding.input_ids.to(settings.DEVICE)
     src_mask = batch_encoding.attention_mask.to(settings.DEVICE)
-    embedding = model.encode(src_ids=src_ids, src_mask=src_mask)
-    return embedding[:, -1, :] if get_last_embedding else embedding
+
+    batch_size = len(text)
+    tgt_ids = torch.LongTensor([tokenizer.sep_token_id]).unsqueeze(0).to(
+        settings.DEVICE).repeat(batch_size, 1)
+    tgt_mask = (tgt_ids != tokenizer.pad_token_id).unsqueeze(-2)
+
+    if isinstance(model, EncoderDecoderTransformer):
+        embedding: FloatTensorT[
+            'TaskSize,EmbedLen'] = model.encoder_decoder_embedding(
+            src_ids=src_ids,
+            tgt_ids=tgt_ids,
+            src_mask=src_mask,
+            tgt_mask=tgt_mask
+        )
+    elif isinstance(model, DecoderTransformer):
+        embedding: FloatTensorT[
+            'TaskSize,EmbedLen'] = model.decoder_embedding(
+            src_ids=src_ids,
+            src_mask=src_mask,
+        )
+    else:
+        raise NotImplementedError
+    return embedding
 
 
 def forward_controller(model: BaseTransformer, text: List[str],
@@ -71,7 +94,8 @@ def generate_controller(model: BaseTransformer, text: List[str],
                           src_mask=src_mask)
 
 
-def tagging_embedding_controller(model: LEDForConditionalGeneration, text: List[str],
+def tagging_embedding_controller(model: LEDForConditionalGeneration,
+                                 text: List[str],
                                  tag_text: List[str],
                                  tokenizer: PreTrainedTokenizerBase,
                                  max_src_len: int = None,

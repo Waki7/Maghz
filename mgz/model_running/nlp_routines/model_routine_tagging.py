@@ -57,7 +57,7 @@ def run_prototype(model: BaseTransformer, batch: TagQAMetaTaskBatch) -> \
     if isinstance(batch, Sent2TagMetaTaskBatch) and isinstance(model,
                                                                EncoderDecoderTransformer):
         query_embeds: FloatTensorT[
-            'TaskSize,EmbedLen'] = model.full_embedding(
+            'TaskSize,EmbedLen'] = model.encoder_decoder_embedding(
             src_ids=batch.queries,
             tgt_ids=batch.tgt_tag_ids_queries,
             src_mask=batch.query_masks,
