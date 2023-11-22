@@ -1273,7 +1273,8 @@ class LEDModel(LEDPretrainedModel):
             src_mask=src_mask,
             pad_token_id=self.config.pad_token_id,
         )
-        encoder_outputs = self.encode(src_ids=src_ids, src_mask=src_mask)
+        encoder_outputs = self.encoder.forward(src_ids=src_ids,
+                                               src_mask=src_mask)
         decoder_hidden_state = self.decoder.forward(
             encoder_hidden_states=encoder_outputs,
             tgt_ids=tgt_ids,
