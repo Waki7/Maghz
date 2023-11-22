@@ -1375,7 +1375,7 @@ class LEDForConditionalGeneration(LEDPretrainedModel):
             src_mask=src_mask,
             pad_token_id=self.config.pad_token_id,
         )
-        return self.led.encode(src_ids=src_ids, src_mask=src_mask, )
+        return self.led.forward(src_ids=src_ids, src_mask=src_mask)
 
     def decode(self,
                transformer_ctx: TransformerContext,
