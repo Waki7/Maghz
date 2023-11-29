@@ -108,7 +108,7 @@ with torch.no_grad():
                 # embedding = embedding_controller(model_mgz, text, tokenizer)
             if use_generation:
                 model_mgz.eval()
-                response = generate_controller(model=model_mgz, text=text,
+                response = generate_controller(model=model_mgz, txts=text,
                                                tokenizer=tokenizer)
                 # print('generated_ids', response)
                 summary: List[str] = tokenizer.batch_decode(response,

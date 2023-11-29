@@ -27,14 +27,15 @@ from mgz.models.nlp.base_transformer import BaseTransformer, \
 
 
 @torch.no_grad()
-def embedding_controller(model: BaseTransformer, text: List[str],
+def embedding_controller(model: BaseTransformer, txts: List[str],
                          tokenizer: PreTrainedTokenizerBase) -> FloatTensorT[
-    'B,Opt[SrcSeqLen],EmbedLen']:
-    batch_encoding = tokenizer(text, return_tensors="pt", padding=True)
+    'B,EmbedLen']:
+    batch_encoding = tokenizer.__call__(txts, padding=True, truncation=True,
+                                        return_tensors='pt')
     src_ids = batch_encoding.input_ids.to(settings.DEVICE)
     src_mask = batch_encoding.attention_mask.to(settings.DEVICE)
 
-    batch_size = len(text)
+    batch_size = len(txts)
     tgt_ids = torch.LongTensor([tokenizer.sep_token_id]).unsqueeze(0).to(
         settings.DEVICE).repeat(batch_size, 1)
     tgt_mask = (tgt_ids != tokenizer.pad_token_id).unsqueeze(-2)
@@ -75,11 +76,13 @@ def forward_controller(model: BaseTransformer, text: List[str],
                          src_mask=src_mask, tgt_mask=tgt_mask)
 
 
-def generate_controller(model: BaseTransformer, text: List[str],
+@torch.no_grad()
+def generate_controller(model: BaseTransformer, txts: List[str],
                         tokenizer: PreTrainedTokenizerBase,
                         ):
-    batch_size = len(text)
-    batch_encoding = tokenizer(text, return_tensors="pt")
+    batch_size = len(txts)
+    batch_encoding = tokenizer.__call__(txts, padding=True, truncation=True,
+                                        return_tensors='pt')
     src_ids: LongTensorT['B,SrcSeqLen'] = batch_encoding.input_ids.to(
         settings.DEVICE)
     # bart for summarization uses sep token for the first token in the decoder,
