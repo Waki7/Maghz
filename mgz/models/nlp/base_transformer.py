@@ -328,7 +328,6 @@ class BaseTransformer(BaseModel):
         new_ids: LongTensorT['n_beams*B,1'] = tgt_ids.repeat(n_beams, 1)
         all_ids: LongTensorT['n_beams*B,TgtSeqStep'] = new_ids.clone()
         for i in range(0, max_len):
-            print(new_ids.shape)
             logits: FloatTensorT['n_beams*B,VocabSize'] = \
                 self.decode(generation_ids=new_ids,
                             src_mask=src_mask,
