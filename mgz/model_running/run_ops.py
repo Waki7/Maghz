@@ -27,15 +27,15 @@ from mgz.models.nlp.base_transformer import BaseTransformer, \
 
 
 @torch.no_grad()
-def embedding_controller(model: BaseTransformer, txts: List[str],
+def embedding_controller(model: BaseTransformer, texts: List[str],
                          tokenizer: PreTrainedTokenizerBase) -> FloatTensorT[
     'B,EmbedLen']:
-    batch_encoding = tokenizer.__call__(txts, padding=True, truncation=True,
+    batch_encoding = tokenizer.__call__(texts, padding=True, truncation=True,
                                         return_tensors='pt')
     src_ids = batch_encoding.input_ids.to(settings.DEVICE)
     src_mask = batch_encoding.attention_mask.to(settings.DEVICE)
 
-    batch_size = len(txts)
+    batch_size = len(texts)
     tgt_ids = torch.LongTensor([tokenizer.sep_token_id]).unsqueeze(0).to(
         settings.DEVICE).repeat(batch_size, 1)
     tgt_mask = (tgt_ids != tokenizer.pad_token_id).unsqueeze(-2)
@@ -59,11 +59,11 @@ def embedding_controller(model: BaseTransformer, txts: List[str],
     return embedding
 
 
-def forward_controller(model: BaseTransformer, text: List[str],
+def forward_controller(model: BaseTransformer, texts: List[str],
                        tokenizer: PreTrainedTokenizerBase):
-    batch_encoding = tokenizer(text, return_tensors="pt")
+    batch_encoding = tokenizer(texts, return_tensors="pt")
     src_ids = batch_encoding.input_ids.to(settings.DEVICE)
-    batch_size = len(text)
+    batch_size = len(texts)
     tgt_ids = torch.LongTensor([tokenizer.sep_token_id]).unsqueeze(0).to(
         settings.DEVICE).repeat(batch_size, 1)
     src_mask = batch_encoding.attention_mask.to(settings.DEVICE)
@@ -77,11 +77,11 @@ def forward_controller(model: BaseTransformer, text: List[str],
 
 
 @torch.no_grad()
-def generate_controller(model: BaseTransformer, txts: List[str],
+def generate_controller(model: BaseTransformer, texts: List[str],
                         tokenizer: PreTrainedTokenizerBase,
                         ):
-    batch_size = len(txts)
-    batch_encoding = tokenizer.__call__(txts, padding=True, truncation=True,
+    batch_size = len(texts)
+    batch_encoding = tokenizer.__call__(texts, padding=True, truncation=True,
                                         return_tensors='pt')
     src_ids: LongTensorT['B,SrcSeqLen'] = batch_encoding.input_ids.to(
         settings.DEVICE)

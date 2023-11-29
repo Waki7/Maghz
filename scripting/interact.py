@@ -100,7 +100,7 @@ with torch.no_grad():
         if use_mgz:
             model_mgz, tokenizer = model_selectors(use_model, use_mgz=True)
             if use_encode:
-                logits = forward_controller(model=model_mgz, text=text,
+                logits = forward_controller(model=model_mgz, texts=text,
                                             tokenizer=tokenizer)
                 print(
                     'encoding with shape {} \n {}'.format(logits.shape, logits))
@@ -108,7 +108,7 @@ with torch.no_grad():
                 # embedding = embedding_controller(model_mgz, text, tokenizer)
             if use_generation:
                 model_mgz.eval()
-                response = generate_controller(model=model_mgz, txts=text,
+                response = generate_controller(model=model_mgz, texts=text,
                                                tokenizer=tokenizer)
                 # print('generated_ids', response)
                 summary: List[str] = tokenizer.batch_decode(response,

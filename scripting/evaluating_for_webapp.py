@@ -41,7 +41,7 @@ def encode(text: str) -> Tuple[
     with torch.no_grad():
         torch.manual_seed(5)
         logits: FloatTensorT['B,SrcSeqLen,EmbedLen'] = \
-            embedding_controller(model=MODELS[MODEL_NAME], txts=[text, ],
+            embedding_controller(model=MODELS[MODEL_NAME], texts=[text, ],
                                  tokenizer=TOKENIZERS[MODEL_NAME],
                                  get_last_embedding=False)
         embedding: FloatTensorT['SrcSeqLen,EmbedLen'] = logits[0]
