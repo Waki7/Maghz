@@ -98,7 +98,7 @@ def generate_controller(model: BaseTransformer, texts: List[str],
 
 
 def tagging_embedding_controller(model: LEDForConditionalGeneration,
-                                 text: List[str],
+                                 texts: List[str],
                                  tag_text: List[str],
                                  tokenizer: PreTrainedTokenizerBase,
                                  max_src_len: int = None,
