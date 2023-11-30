@@ -54,7 +54,8 @@ def lookup_or_init_model(model_cls: Type[BaseTransformer], model_id: str,
     model_node.model.verify_tokenizer(model_node.tokenizer)
     return model_node
 
-def get_models_path()->DirPath:
+
+def get_models_path() -> DirPath:
     return CACHED_INDEXER.root_path
 
 
@@ -68,6 +69,8 @@ class Indexer:
         self.roots: Dict[str, List[str]] = {}
         self.runtime_model_cache: Dict[str, BaseTransformer] = {}
         self.runtime_tokenizer_cache: Dict[str, PreTrainedTokenizer] = {}
+
+        self.detached = not os.path.exists(self.root_path)
 
     def to_json(self, as_str=False) -> Union[dict, str]:
         obj_dict = {}
@@ -132,8 +135,12 @@ class Indexer:
     def lookup_or_init(self, model_id: str,
                        model_cls: Type[BaseTransformer],
                        quantization_config: BitsAndBytesConfig = None) -> ModelNode:
-        self.check_state()
-        model_dir: DirPath = self.get_or_add_to_root(model_id)
+        if not self.detached:
+            self.check_state()
+            model_dir: DirPath = self.get_or_add_to_root(model_id)
+        else:
+            model_dir: DirPath = self.path_from_id(model_id,
+                                                   create_if_not_exist=False)
 
         # TODO, cleaner way to distinguish the models that are available to load
         model: Optional[BaseTransformer] = \
