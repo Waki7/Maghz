@@ -11,19 +11,17 @@ from torch.optim.lr_scheduler import LambdaLR
 from transformers import PreTrainedTokenizerBase
 
 import mgz.settings as settings
+from archive.models.bert_basic import make_model
 from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch, \
     SentenceDataset
 from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask
 from mgz.model_running.base_routine import run_epoch, TrainState
 from mgz.model_running.learning_ops import LabelSmoothing, DummyOptimizer, \
     DummyScheduler, SimpleLossCompute, rate
-from mgz.models.nlp.base_transformer import BaseTransformer
-from archive.models.bert_basic import make_model
-from mgz.models.nlp.led import LEDForConditionalGeneration
-from mgz.typing import *
-
 from mgz.models.nlp.base_transformer import BaseTransformer, \
     EncoderDecoderTransformer, DecoderTransformer
+from mgz.models.nlp.led import LEDForConditionalGeneration
+from mgz.typing import *
 
 
 @torch.no_grad()
@@ -109,7 +107,7 @@ def tagging_embedding_controller(model: LEDForConditionalGeneration,
     if max_tgt_len is None:
         max_tgt_len = model.get_max_decoder_positions()
 
-    src_encodings = tokenizer(text, return_tensors="pt",
+    src_encodings = tokenizer(texts, return_tensors="pt",
                               max_length=max_src_len, truncation=True)
     src_ids: LongTensorT['B,SrcSeqLen'] = src_encodings.input_ids.to(
         settings.DEVICE)

@@ -293,7 +293,6 @@ class BaseTransformer(BaseModel):
         if max_new_tokens is None:
             max_new_tokens = self.config.max_length
         max_tokens = max_new_tokens + tgt_ids.shape[1]
-
         n_beams = self.config.num_beams
         max_len = self.config.max_length
 
@@ -336,7 +335,7 @@ class BaseTransformer(BaseModel):
             new_ids: LongTensorT[
                 'n_beams*B,1'] = beam_search.select_ids_from_logprobs(
                 log_probs=probs, input_ids=all_ids).unsqueeze(-1)
-            beam_search.reoder_transformer_context(context)
+            beam_search.reorder_transformer_context(context)
             all_ids = LongTensorT(torch.cat([all_ids, new_ids], dim=-1))
             if beam_search.is_done:
                 break

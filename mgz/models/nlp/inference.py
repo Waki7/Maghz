@@ -58,8 +58,8 @@ class Greedy:
         # todo, not the best, cache for call to finalizing later
         return next_tokens
 
-    def reoder_transformer_context(self,
-                                   transformer_context: TransformerContext):
+    def reorder_transformer_context(self,
+                                    transformer_context: TransformerContext):
         return
 
     def get_best_sequence(self,
@@ -152,8 +152,8 @@ class BeamInference:
             self.next_indices = next_indices
         return beam_next_tokens
 
-    def reoder_transformer_context(self,
-                                   transformer_context: TransformerContext):
+    def reorder_transformer_context(self,
+                                    transformer_context: TransformerContext):
         for i in range(0, len(transformer_context.all_past_keys)):
             # B = NBeams * B in this case
             beam_indices: LongTensorT['NBeams,B'] = \
