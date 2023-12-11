@@ -810,6 +810,7 @@ class MultiHeadedAttention(nn.Module):
                 n_head_reshape(self.k_proj(key)))
             value_st = transformer_ctx.add_value(n_head_reshape(
                 self.v_proj(value)))
+
         else:
             key_st = n_head_reshape(self.k_proj(key))
             value_st = n_head_reshape(self.v_proj(value))
@@ -818,7 +819,6 @@ class MultiHeadedAttention(nn.Module):
         query_st = query_st.view(*proj_shape)
         key_st = key_st.view(*proj_shape)
         value_st = value_st.view(*proj_shape)
-
         # 2) Apply attention on all the projected vectors in batch.
         x = _attention(
             query_st, key_st, value_st, mask=mask,
@@ -1062,7 +1062,6 @@ class LEDPretrainedModel(EncoderDecoderTransformer, ABC):
             src_mask = nn.functional.pad(
                 src_mask, (0, padding_len), value=False
             )  # no attention on the padding tokens
-
         return src_ids, src_mask
 
 
@@ -1281,8 +1280,7 @@ class LEDModel(LEDPretrainedModel):
         src_ids, src_mask = self._pre_encode_pad_if_needed(
             src_ids=src_ids,
             src_mask=src_mask,
-            pad_token_id=self.config.pad_token_id,
-        )
+            pad_token_id=self.config.pad_token_id, )
         encoder_outputs = self.encoder.forward(src_ids=src_ids,
                                                src_mask=src_mask)
         decoder_hidden_state = self.decoder.forward(
@@ -1419,6 +1417,7 @@ class LEDForConditionalGeneration(LEDPretrainedModel):
 
         Returns:
         """
+        assert src_ids.shape[0] == tgt_ids.shape[0]
         output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.led.forward(
             src_ids=src_ids, src_mask=src_mask,
             tgt_ids=tgt_ids, tgt_mask=tgt_mask)

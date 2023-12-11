@@ -7,8 +7,7 @@ from enum import Enum
 from functools import partial
 
 import torch.utils.data
-from torch.nn.functional import pad
-from transformers import PreTrainedTokenizer, BatchEncoding
+from transformers import PreTrainedTokenizerBase, BatchEncoding
 
 from mgz.ds.base_dataset import BaseDataset, DataState
 from mgz.typing import *
@@ -40,7 +39,7 @@ def subsequent_mask(size: SrcSeqLen):
 
 
 def strings_to_padded_id_tensor(txts: List[SrcStringT],
-                                tokenizer: PreTrainedTokenizer,
+                                tokenizer: PreTrainedTokenizerBase,
                                 max_len,
                                 device=torch.device('cpu')) -> \
         LongTensorT['B,SrcSeqLen']:
@@ -58,18 +57,18 @@ def strings_to_padded_id_tensor(txts: List[SrcStringT],
 
 
 def strings_to_padded_id_tensor_w_mask(txts: List[SrcStringT],
-                                       tokenizer: PreTrainedTokenizer,
+                                       tokenizer: PreTrainedTokenizerBase,
                                        max_len,
                                        device):
-    txt = strings_to_padded_id_tensor(txts, tokenizer, max_len,
-                                      device)
+    txt: LongTensorT['B,SrcSeqLen'] = \
+        strings_to_padded_id_tensor(txts, tokenizer, max_len, device)
     mask = (txt != tokenizer.pad_token_id).long()
     return txt, mask
 
 
 def question_answer_to_padded_id_tensor(context: SrcStringT,
                                         question: TgtStringT,
-                                        tokenizer: PreTrainedTokenizer,
+                                        tokenizer: PreTrainedTokenizerBase,
                                         max_len, device):
     input_encodings: BatchEncoding = (
         tokenizer.__call__(
@@ -134,7 +133,7 @@ class TagQAMetaTaskBatch:
 
     @staticmethod
     def collate_batch(batch: List[Tuple[SrcStringT, TgtStringT, LabelT]],
-                      tokenizer: PreTrainedTokenizer,
+                      tokenizer: PreTrainedTokenizerBase,
                       device,
                       n_support_per_cls: int,
                       n_query_per_cls: int,
@@ -248,7 +247,7 @@ class Sent2TagMetaTaskBatch(TagQAMetaTaskBatch, ABC):
 
     @staticmethod
     def collate_batch(batch: List[Tuple[SrcStringT, TgtStringT, LabelT]],
-                      tokenizer: PreTrainedTokenizer,
+                      tokenizer: PreTrainedTokenizerBase,
                       device,
                       n_support_per_cls: int,
                       n_query_per_cls: int,
@@ -364,8 +363,8 @@ class Sent2SentBatch:
     @staticmethod
     def collate_batch(
             batch: List[Tuple[SrcStringT, TgtStringT]],
-            src_tokenizer: PreTrainedTokenizer,
-            tgt_tokenizer: PreTrainedTokenizer,
+            src_tokenizer: PreTrainedTokenizerBase,
+            tgt_tokenizer: PreTrainedTokenizerBase,
             device,
             max_src_len: int,
             max_tgt_len: int
@@ -412,7 +411,7 @@ class Sent2SentBatch:
 class SentenceDataset(BaseDataset, ABC):
     __metaclass__ = ABCMeta
 
-    def __init__(self, tokenizer: PreTrainedTokenizer,
+    def __init__(self, tokenizer: PreTrainedTokenizerBase,
                  max_src_len: SrcSeqLen,
                  max_tgt_len: TgtSeqLen,
                  dataset_dir: str = None):
@@ -426,8 +425,8 @@ class SentenceDataset(BaseDataset, ABC):
                 SummaryT, List[SummaryT], SrcStringT, List[
                     SrcStringT]]]] = []
 
-        self.tokenizer_src: PreTrainedTokenizer = tokenizer
-        self.tokenizer_tgt: PreTrainedTokenizer = tokenizer
+        self.tokenizer_src: PreTrainedTokenizerBase = tokenizer
+        self.tokenizer_tgt: PreTrainedTokenizerBase = tokenizer
         self.vocab_src: Dict[str, int] = self.tokenizer_src.get_vocab()
         self.vocab_tgt: Dict[str, int] = self.tokenizer_tgt.get_vocab()
 

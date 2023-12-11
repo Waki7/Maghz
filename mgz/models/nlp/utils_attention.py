@@ -12,17 +12,19 @@ def _led_attention():
 def _attention(query: FloatTensorT,
                key: FloatTensorT,
                value: FloatTensorT,
-               mask: IntTensorT = None,
+               mask: IntTensorT[
+                   'B*NHeads,TgtSeqLen|SrcSeqLen|1,SrcSeqLen'] = None,
                dropout_p: float = None) -> \
         Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], torch.Tensor]:
     "Compute 'Scaled Dot Product Attention'"
     scores: FloatTensorT['B,TgtSeqLen,SrcSeqLen'] = \
-        torch.matmul(query, key.transpose(-2, -1))
-    # same mask per head
+        FloatTensorT(torch.matmul(query, key.transpose(-2, -1)))
+
+    # Same mask per head
     if mask is not None:
         assert mask.shape[0] == scores.shape[
-            0], 'make sure mask aligns score shape {} vs mask shape {} '.format(
-            scores.shape, mask.shape)
+            0], 'make sure mask aligns mask shape {} vs score shape {} '.format(
+            mask.shape, scores.shape)
         mask = mask.unsqueeze(1)
         scores = scores.masked_fill(mask == 0, -1e4)
 

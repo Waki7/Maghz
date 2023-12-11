@@ -14,7 +14,8 @@ import mgz.settings as settings
 from archive.models.bert_basic import make_model
 from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch, \
     SentenceDataset
-from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask
+from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask, \
+    strings_to_padded_id_tensor_w_mask
 from mgz.model_running.base_routine import run_epoch, TrainState
 from mgz.model_running.learning_ops import LabelSmoothing, DummyOptimizer, \
     DummyScheduler, SimpleLossCompute, rate
@@ -107,21 +108,16 @@ def tagging_embedding_controller(model: LEDForConditionalGeneration,
     if max_tgt_len is None:
         max_tgt_len = model.get_max_decoder_positions()
 
-    src_encodings = tokenizer(texts, return_tensors="pt",
-                              max_length=max_src_len, truncation=True)
-    src_ids: LongTensorT['B,SrcSeqLen'] = src_encodings.input_ids.to(
-        settings.DEVICE)
-    src_mask = src_encodings.attention_mask.to(settings.DEVICE)
+    src_ids, src_mask = strings_to_padded_id_tensor_w_mask(texts, tokenizer,
+                                                           max_src_len,
+                                                           settings.DEVICE)
 
-    tgt_encodings = tokenizer(tag_text, return_tensors="pt",
-                              max_length=max_tgt_len, truncation=True)
-    tgt_ids: LongTensorT['EmbedLen'] = tgt_encodings.input_ids.to(
-        settings.DEVICE)
-    tgt_mask = tgt_encodings.attention_mask.to(settings.DEVICE)
-
+    tgt_ids, tgt_mask = strings_to_padded_id_tensor_w_mask(tag_text, tokenizer,
+                                                           max_tgt_len,
+                                                           settings.DEVICE)
     # don't need tgt_mask because you are generating one token at a time
-    return model.forward(src_ids=src_ids, tgt_ids=tgt_ids,
-                         src_mask=src_mask, tgt_mask=tgt_mask)
+    return model.encoder_decoder_embedding(src_ids=src_ids, tgt_ids=tgt_ids,
+                                           src_mask=src_mask, tgt_mask=tgt_mask)
 
 
 def train_worker(
