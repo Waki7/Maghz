@@ -8,6 +8,7 @@ import mgz.log_utils as log_utils
 import mgz.model_running.run_ops as run_ops
 import mgz.version_control as vc
 from mgz.ds import BaseDataset
+from mgz.model_running.base_routine import TrainState
 from mgz.typing import *
 
 
@@ -42,7 +43,7 @@ class ModelTransitionEdge:
         self.ds = ds
 
         # Temporary Data
-        self.train_state = run_ops.TrainState()
+        self.train_state = TrainState()
         self.training_metrics: Dict[vc.Metrics, float] = {}
 
         run_identifer = "data_{}".format(

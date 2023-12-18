@@ -135,8 +135,6 @@ def led_main_train():
         betas = (0.9, 0.98)
         eps = 1e-4
         if quantize:
-            # settings.print_trainable_parameters(model_node.model)
-            # exit(3)
             optimizer = \
                 bitsandbytes.optim.Adam8bit(
                     [p for n, p in model_node.model.named_parameters() if

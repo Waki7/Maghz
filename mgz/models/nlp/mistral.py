@@ -764,16 +764,16 @@ class MistralModel(MistralPreTrainedModel):
 
 class MistralForCausalLM(MistralPreTrainedModel):
     def get_encoder(self):
-        return self.model.encoder
+        raise NotImplementedError
 
     def get_max_encoder_positions(self):
-        return self.get_encoder().embed_positions.weight.shape[0]
+        raise NotImplementedError
 
     def get_decoder(self):
-        return self.model.decoder
+        raise NotImplementedError
 
     def get_max_decoder_positions(self):
-        return self.get_decoder().embed_positions.weight.shape[0]
+        return self.model.embed_tokens.weight.shape[0]
 
     @classmethod
     def load_model(cls, path: str,

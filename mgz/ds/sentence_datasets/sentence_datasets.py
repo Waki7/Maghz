@@ -189,17 +189,13 @@ class TagQAMetaTaskBatch:
                 if pos_tag not in neg_tags:
                     negative_examples.add(neg_sample_idx)
             neg_sampling_tries += 1
-
-        pos_batch: List[Tuple[SrcStringT, TgtStringT, LabelT]] = [
-            (
-                ds.tokenizer_src.bos_token + pos_tag + '?' + ds.tokenizer_src.eos_token +
-                ds.data[i][SampleType.INPUT_TEXT], pos_tag, 1) for i in
-            positive_examples]
-        neg_batch: List[Tuple[SrcStringT, TgtStringT, LabelT]] = [
-            (
-                ds.tokenizer_src.bos_token + pos_tag + '?' + ds.tokenizer_src.eos_token +
-                ds.data[i][SampleType.INPUT_TEXT], pos_tag, 0) for i in
-            negative_examples]
+        tag_qa_text = "Is this about " + pos_tag + '?: '
+        pos_batch: List[Tuple[SrcStringT, TgtStringT, LabelT]] = \
+            [(ds.data[i][SampleType.INPUT_TEXT], tag_qa_text, 1) for i in
+             positive_examples]
+        neg_batch: List[Tuple[SrcStringT, TgtStringT, LabelT]] = \
+            [(ds.data[i][SampleType.INPUT_TEXT], tag_qa_text, 0) for i in
+             negative_examples]
 
         # TODO fix so we catch this earlier
         min_to_have_1_query = n_support_per_cls + 1

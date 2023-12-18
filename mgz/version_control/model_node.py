@@ -56,7 +56,18 @@ class ModelNode:
     @classmethod
     def load_from_id(cls, model_cls: Type[BaseTransformer], model_id: str,
                      tokenizer_id: str = None,
-                     quantization_config: BitsAndBytesConfig = None):
+                     quantization_config: BitsAndBytesConfig = None,
+                     quantize_8bit: bool = False):
+        if quantize_8bit and quantization_config is None:
+            try:
+                from accelerate.utils import BnbQuantizationConfig
+                import bitsandbytes
+                quantization_config = BnbQuantizationConfig(
+                    load_in_8bit=quantize_8bit, )
+            except ImportError:
+                print("Module 'some_module' is not installed.")
+                quantization_config = None
+
         node = vc.lookup_or_init_model(model_cls, model_id, tokenizer_id,
                                        quantization_config=quantization_config)
         model_dir = vc.CACHED_INDEXER.path_from_id(node.model_id)

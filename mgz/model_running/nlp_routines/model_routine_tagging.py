@@ -6,14 +6,13 @@ import torch.utils.data
 from accelerate import Accelerator
 from tqdm import tqdm
 
-import mgz.version_control as vc
 import mgz.settings as settings
+import mgz.version_control as vc
 import spaces as sp
 from mgz.ds.base_dataset import BaseDataset
 from mgz.ds.sentence_datasets.sentence_datasets import Sent2TagMetaTaskBatch, \
     TagQAMetaTaskBatch
 from mgz.model_running.base_routine import BaseProtocol
-from mgz.model_running.run_ops import run_epoch
 from mgz.models.nlp.base_transformer import BaseTransformer, \
     EncoderDecoderTransformer, DecoderTransformer
 from mgz.typing import *
@@ -21,6 +20,19 @@ from mgz.version_control.metrics import Metrics
 
 if TYPE_CHECKING:
     from mgz.version_control import ModelNode, ModelTransitionEdge
+
+
+def predict_with_centers(
+        support_embedding: FloatTensorT['NClasses,TaskSize,EmbedLen'],
+        query_embedding: FloatTensorT['TaskSize,EmbedLen']) -> \
+        ProbTensorT['NQuery,NClasses']:
+    distance_to_supports_per_cls: FloatTensorT['NQuery,NClasses'] = \
+        torch.linalg.norm(
+            query_embedding[:, None, :] - support_embedding[None, :, :], dim=-1,
+            ord=2)
+    cls_probs = ProbTensorT(torch.softmax(
+        -1 * distance_to_supports_per_cls, dim=-1))
+    return cls_probs
 
 
 def run_prototype(model: BaseTransformer, batch: TagQAMetaTaskBatch) -> \
@@ -75,12 +87,8 @@ def run_prototype(model: BaseTransformer, batch: TagQAMetaTaskBatch) -> \
         raise ValueError('Bad combination of batch and model')
     assert isinstance(model, DecoderTransformer)
     query_lbls: LongTensorT['TaskSize'] = batch.query_lbls
-    distance_to_supports_per_cls: FloatTensorT['NQuery,NClasses'] = \
-        torch.linalg.norm(
-            query_embeds[:, None, :] - support_centers[None, :, :], dim=-1,
-            ord=2)
-    cls_probs = ProbTensorT(torch.softmax(
-        -1 * distance_to_supports_per_cls, dim=-1))
+    cls_probs: ProbTensorT['TaskSize,NClasses'] = predict_with_centers(
+        support_centers, query_embeds)
     return cls_probs, query_lbls
 
 
