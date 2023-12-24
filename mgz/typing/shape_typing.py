@@ -12,25 +12,26 @@ import torch
 ##############################################
 B = TypeVar("Batch")
 N = TypeVar("N")  # arbitrary count
-NHeads = int  # NewType("NHeads", int)  # something like n attention heads
+NHeads = TypeVar(
+    "NHeads")  # NewType("NHeads", int)  # something like n attention heads
 SrcSeqLen = TypeVar(
     "SrcSeqLen")  # NewType("SeqLen", int)
-TgtSeqLen = int  # NewType("TgtSeqLen", int)
-TgtSeqStep = int  # NewType("TgtSeqStep", int)
-NClasses = int  # NewType("NClasses", int)
-NBeams = int  # NewType("NBeams", int)
-NDim = int  # NewType("NDim", int)
-VocabSize = int  # NewType("VocabSize", int)
-OutNClasses = int  # NewType("OutNClasses", int)
+TgtSeqLen = TypeVar("TgtSeqLen")  # NewType("TgtSeqLen", int)
+TgtSeqStep = TypeVar("TgtSeqStep")  # NewType("TgtSeqStep", int)
+NClasses = TypeVar("NClasses")  # NewType("NClasses", int)
+NBeams = TypeVar("NBeams")  # NewType("NBeams", int)
+NDim = TypeVar("NDim")  # NewType("NDim", int)
+VocabSize = TypeVar("VocabSize")  # NewType("VocabSize", int)
+OutNClasses = TypeVar("OutNClasses")  # NewType("OutNClasses", int)
 
 # META LEARNING
 TaskSize = TypeVar("NShot")
 NQuery = TypeVar("NQuery")
 NSupport = TypeVar("NSupport")
 
-C = int  # NewType("Channel", int)
-H = int  # NewType("Height", int)
-W = int  # NewType("Width", int)
+C = TypeVar("C")  # NewType("Channel", int)
+H = TypeVar("H")  # NewType("Height", int)
+W = TypeVar("W")  # NewType("Width", int)
 EmbedLen = TypeVar("EmbedLen")  # NewType("EmbeddingSize", int)
 Shape = TypeVar("Shape")
 DType = TypeVar("DType")
@@ -60,7 +61,6 @@ LabelT = int  # NewType("Label", int)
 Opt = Optional
 
 StateDictT = Dict[str, torch.Tensor]
-
 
 
 class IntListT(List, Generic[Shape, DType]):

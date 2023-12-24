@@ -1,6 +1,6 @@
 import os
-from distutils.core import setup
 import platform
+from distutils.core import setup
 
 from setuptools import find_packages
 
@@ -121,15 +121,18 @@ setup(
         'GPUtil',
         'altair',
         'evaluate',
+        'chardet',
+        'pytorchvideo',
         'scikit-learn',
         'accelerate',
         'bs4',
         'typing_extensions==4.4.0',
         'peft',
-        'bitsandbytes',
+        'bitsandbytes==0.41.0',
         'optimum',
         'torch>=2.1.0',
         'torchtext',
+        'pyarrow==11.0.0',
         # 'torchvision',
         # 'torchaudio',
         # 'torchdata',

@@ -3,13 +3,12 @@ from __future__ import annotations
 import json
 import os
 
-from transformers import PreTrainedTokenizer, BitsAndBytesConfig
-
 import mgz.version_control as vc
 from mgz.models.base_model import BaseModel
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.typing import *
 from mgz.version_control.metrics import Metrics
+from transformers import PreTrainedTokenizer, BitsAndBytesConfig
 
 if TYPE_CHECKING:
     from mgz.models.nlp.led import LEDModel, LEDForConditionalGeneration
@@ -52,6 +51,17 @@ class ModelNode:
                     'metrics': self.metrics,
                     'edges': [edge.to_json() for edge in self.edges_out]}
         return json.dumps(obj_dict, indent=4, separators=(',', ': '))
+
+    def freeze_parameters(self, exempt_search_string: str = None):
+        if exempt_search_string is None:
+            for param in self.model.parameters():
+                param.requires_grad = False
+        else:
+            for name, param in self.model.named_parameters():
+                if exempt_search_string in name:
+                    param.requires_grad = True
+                else:
+                    param.requires_grad = False
 
     @classmethod
     def load_from_id(cls, model_cls: Type[BaseTransformer], model_id: str,

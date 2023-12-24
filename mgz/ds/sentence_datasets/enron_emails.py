@@ -9,7 +9,7 @@ from pathlib import Path
 
 import torch.utils.data
 from tqdm import tqdm
-from transformers import PreTrainedTokenizer
+from transformers import PreTrainedTokenizer, LlamaTokenizer, LlamaTokenizerFast
 
 import spaces as sp
 from mgz.ds.base_dataset import BaseDataset, DataState
@@ -236,10 +236,10 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
         [all_tags.extend(subcategories.values()) for subcategories in
          CATEGORIES.values()]
         max_tgt_len = max([len(tokenizer.tokenize(tag)) for tag in all_tags])
-        super(EnronEmails, self).__init__(tokenizer=tokenizer,
-                                          max_src_len=max_src_len,
-                                          max_tgt_len=max_tgt_len,
-                                          dataset_dir=dataset_dir)
+        super(EnronEmailsTagging, self).__init__(tokenizer=tokenizer,
+                                                 max_src_len=max_src_len,
+                                                 max_tgt_len=max_tgt_len,
+                                                 dataset_dir=dataset_dir)
         # --- Initialization flags ---
         self.training_ratio = training_ratio
         self.validation_ratio = .2
@@ -292,10 +292,37 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
 
 
 class EnronEmailsTagQA(EnronEmailsTagging, MetaLearningMixIn):
+
+    def __init__(self, tokenizer: Union[LlamaTokenizerFast, LlamaTokenizer],
+                 max_src_len: SrcSeqLen, n_query_per_cls: List[int] = 5,
+                 n_support_per_cls: List[int] = 5,
+                 n_episodes: int = 100,
+                 training_ratio: float = 0.75,
+                 dataset_dir: str = None):
+        assert isinstance(tokenizer, LlamaTokenizerFast) or isinstance(
+            tokenizer, LlamaTokenizer), \
+            f'This dataset requires the LLamaTokenizer found {type(tokenizer)}'
+        super(EnronEmailsTagQA, self).__init__(tokenizer=tokenizer,
+                                               max_src_len=max_src_len,
+                                               dataset_dir=dataset_dir,
+                                               n_query_per_cls=n_query_per_cls,
+                                               n_support_per_cls=n_support_per_cls,
+                                               n_episodes=n_episodes,
+                                               training_ratio=training_ratio)
+
     def get_collate_fn(self, device: Union[int, torch.device]):
         assert self.loaded, "Dataset not loaded"
         return partial(TagQAMetaTaskBatch.default_collate_fn, self, device)
 
+
+    @overrides(EnronEmailsTagging)
+    def __getitem__(self, idx) -> (SrcStringT, TgtStringT):
+        tags = list(self._tag_to_sample_idx_map.keys())
+        tag_idx = idx % len(self._tag_to_sample_idx_map)
+        selected_tag: TgtStringT = tags[tag_idx]
+        rand_sample_for_tag: SrcStringT = self.data[random.choice(
+            self._tag_to_sample_idx_map[selected_tag])][SampleType.INPUT_TEXT]
+        return rand_sample_for_tag, selected_tag
 
 def inspect_catchphrase_diffs():
     # please install HuggingFace ds by pip install ds

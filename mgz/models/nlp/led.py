@@ -1351,6 +1351,9 @@ class LEDForConditionalGeneration(LEDPretrainedModel):
                              torch.zeros((1, self.led.shared.num_embeddings)))
         self.lm_head = nn.Linear(config.d_model,
                                  self.led.shared.num_embeddings, bias=False)
+        self.embedding_head = nn.Linear(config.d_model,
+                                        self.led.shared.num_embeddings,
+                                        bias=False)
 
         # Initialize weights and apply final processing
         self.apply(self._init_weights)

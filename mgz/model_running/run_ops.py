@@ -105,21 +105,14 @@ def generate_controller(model: BaseTransformer, texts: List[str],
     Returns:
         Tensor: Generated sequences.
     """
-    batch_size = len(texts)
-    batch_encoding = tokenizer.__call__(texts, padding=True, truncation=True,
-                                        return_tensors='pt')
-    src_ids: LongTensorT['B,SrcSeqLen'] = batch_encoding.input_ids.to(
+    model_inputs = tokenizer(texts, return_tensors="pt").to(
         settings.DEVICE)
-    # bart for summarization uses sep token for the first token in the decoder,
-    # I'm not sure this is true for all models
-    tgt_ids = torch.LongTensor([tokenizer.sep_token_id]).unsqueeze(0).to(
-        settings.DEVICE).repeat(batch_size, 1)
-    src_mask = batch_encoding.attention_mask.to(settings.DEVICE)
-    src_ids, src_mask = model._pre_encode_pad_if_needed(src_ids, src_mask,
-                                                        tokenizer.pad_token_id)
-    # don't need tgt_mask because you are generating one token at a time
-    return model.generate(src_ids=src_ids, tgt_ids=tgt_ids,
-                          src_mask=src_mask)
+    # model.config.max_length = 7
+    generated_ids = model.generate(
+        src_ids=model_inputs.input_ids,
+        src_mask=model_inputs.attention_mask,
+        max_new_tokens=2000)
+    return tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
 
 
 def tagging_embedding_controller(model: EncoderDecoderTransformer,

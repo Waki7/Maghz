@@ -1,11 +1,15 @@
-from transformers import BertTokenizer, BertModel, BertForQuestionAnswering
-from transformers.modeling_utils import ModelOutput
-tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
-# model: BertModel = BertModel.from_pretrained("bert-base-cased")
-model: BertModel = BertForQuestionAnswering.from_pretrained("bert-base-cased")
-# to_cuda(model)
-text = "Replace me by any text you'd like."
-encoded_input = tokenizer(text, return_tensors='pt')
-output: ModelOutput = model(**encoded_input)
-# to_cpu(output)
-print(output)
+import bitsandbytes as bnb
+import torch
+
+torch.set_default_dtype(torch.float16)
+model = torch.nn.ModuleList([
+    bnb.nn.Linear4bit(
+        4096, 4096, False, torch.float32, False, 'fp4'
+    ) for _ in range(50)
+])
+model.cuda()  # An illegal memory access was encountered
+
+del model
+
+torch.cuda.empty_cache()
+device = torch.cuda.current_device()  # where cuda is numba

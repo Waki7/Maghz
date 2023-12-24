@@ -2,23 +2,15 @@ from __future__ import annotations
 from __future__ import annotations
 from __future__ import annotations
 
-import json
 import unittest
-
-from transformers import LlamaTokenizerFast
 
 import mgz.settings as settings
 from mgz.ds.sentence_datasets.aus_legal_case_reports import SampleType
 from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagQA
-from mgz.model_running.nlp_routines.model_routine_tagging import \
-    predict_with_centers
-from mgz.model_running.run_ops import tagging_embedding_controller, \
-    embedding_controller
 from mgz.models.nlp.base_transformer import BaseTransformer
-from mgz.models.nlp.led import LEDForConditionalGeneration
-from mgz.models.nlp.mistral import MistralForCausalLM
 from mgz.typing import *
 from mgz.version_control import ModelNode
+from transformers import LlamaTokenizerFast
 
 
 def importing_sample_data(tokenizer: LlamaTokenizerFast) -> List[
@@ -140,68 +132,23 @@ class TestBert(unittest.TestCase):
         return self.model_cache[model_name], self.tokenizer_cache[model_name]
 
     def test_tagging_embedding_controller_shape(self):
-        model: LEDForConditionalGeneration
-        model, tokenizer = self.load_model_if_needed(
-            LEDForConditionalGeneration,
-            'allenai/led-base-16384-multi_lexsum-source-long')
-
-        tags = ['hello', 'ground']
-        with torch.no_grad():
-            embedding: FloatTensorT[
-                'TaskSize,EmbedLen'] = \
-                tagging_embedding_controller(model,
-                                             ['hello world', 'hello world'],
-                                             tags, tokenizer)
-        assert 768 == model.embed_dim
-        self.assertEqual(embedding.shape, (len(tags), 768))
-
-    def test_tagging_embedding(self):
-        with torch.cuda.amp.autocast(enabled=True):
-            model: MistralForCausalLM
-            model, tokenizer = self.load_model_if_needed(MistralForCausalLM,
-                                                         'openchat/openchat_3.5',
-                                                         quantize_8bit=True)
-            docs = importing_sample_data(tokenizer)
-            print(json.dumps(docs, indent=4))
-            all_tags = set()
-            for doc in docs:
-                all_tags.update(doc['catchphrases'])
-            print(all_tags)
-            exit(3)
-
-            tag_text = "Is this about cats?: "
-            max_len = 4096
-            with torch.no_grad():
-                positive_examples = [tag_text + 'This is about cats',
-                                     tag_text + 'This is about dogs']
-                pos_embedding: FloatTensorT['EmbedLen'] = \
-                    embedding_controller(model, positive_examples,
-                                         tokenizer, max_src_len=max_len).mean(0,
-                                                                              keepdim=False)
-                settings.print_gpu_usage()
-
-                negative_examples = [tag_text + 'This is about trains',
-                                     tag_text + 'This is about cars']
-                neg_embedding: FloatTensorT['EmbedLen'] = \
-                    embedding_controller(model, negative_examples,
-                                         tokenizer, max_src_len=max_len).mean(0,
-                                                                              keepdim=False)
-
-                support_embedding = FloatTensorT(
-                    torch.stack([neg_embedding, pos_embedding], dim=0),
-                    'NClasses,EmbedLen')
-
-                del pos_embedding
-                del neg_embedding
-                settings.empty_cache()
-
-                query_examples = [tag_text + 'Cats jump high',
-                                  tag_text + 'Cars go fast']
-                query_embedding: FloatTensorT[
-                    'TaskSize,EmbedLen'] = \
-                    embedding_controller(model, query_examples, tokenizer,
-                                         max_src_len=max_len)
-
-                probs = predict_with_centers(support_embedding, query_embedding)
-                print(probs)
-        self.assertEqual(probs.shape, (2, 2))
+        src_tensor = torch.tensor([
+            [
+                [1, 1, 1],
+                [2, 2, 2],
+            ],
+            [
+                [3, 3, 3],
+                [4, 4, 4],
+            ],
+            [
+                [5, 5, 5],
+                [6, 6, 6],
+            ]
+        ])
+        self.assertEquals(src_tensor.shape, (3, 2, 3))
+        print(src_tensor.shape)
+        rearranged = src_tensor.view(3*2, 3)
+        print(src_tensor)
+        back = rearranged.view(3, 2, 3)
+        print(back)

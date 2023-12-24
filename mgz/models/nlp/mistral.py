@@ -177,28 +177,6 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     return q_embed, k_embed
 
 
-class LEDLearnedPositionalEmbedding(nn.Embedding):
-    """
-    This module learns positional embeddings up to a fixed maximum size.
-    """
-
-    def __init__(self, num_embeddings: int, embedding_dim: int):
-        super().__init__(num_embeddings, embedding_dim)
-
-    def forward(self, input_ids: torch.Tensor,
-                transformer_ctx: TransformerContext = None):
-        """`input_ids' shape is expected to be [bsz x seqlen]."""
-        past_key_values_length = transformer_ctx.get_seq_len_so_far() \
-            if transformer_ctx is not None else 0
-        bsz, seq_len = input_ids.shape[:2]
-        positions = torch.arange(
-            past_key_values_length, past_key_values_length + seq_len,
-            dtype=torch.long, device=self.weight.device
-        ).expand(bsz, -1)
-
-        return super().forward(positions)
-
-
 class MistralMLP(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -288,12 +266,13 @@ class MistralAttention(nn.Module):
             key: FloatTensorT['B,SrcSeqLen,EmbedLen'],
             value: FloatTensorT['B,SrcSeqLen,EmbedLen'],
             position_ids: LongTensorT['TgtSeqStep|SrcSeqLen'],
-            padding_mask: IntTensorT['B,Opt[TgtSeqLen],TgtSeqLen'] = None,
+            src_mask: IntTensorT['B,Opt[TgtSeqLen],TgtSeqLen'],
+            padding_mask: IntTensorT['B,TgtSeqLen'] = None,
             transformer_ctx: TransformerContext = None
     ) -> FloatTensorT['B,SrcSeqLen,EmbedLen']:
-        if padding_mask is not None and padding_mask.dim() == 2:
+        if src_mask is not None and src_mask.dim() == 2:
             # Same mask applied to all tgt sequence if not specified
-            mask = padding_mask.unsqueeze(1)
+            mask = src_mask.unsqueeze(1)
         nbatches, q_len, _ = query.size()
 
         query_st = self.q_proj(query)
@@ -355,13 +334,13 @@ class MistralFlashAttention2(MistralAttention):
 
     def forward(
             self,
-            # Embed Length must be divisible by num_heads
             query: FloatTensorT['B,TgtSeqLen,EmbedLen'],
             key: FloatTensorT['B,SrcSeqLen,EmbedLen'],
             value: FloatTensorT['B,SrcSeqLen,EmbedLen'],
             position_ids: LongTensorT['TgtSeqStep|SrcSeqLen'],
-            transformer_ctx: TransformerContext = None,
-            padding_mask: Optional[torch.LongTensor] = None,
+            src_mask: IntTensorT['B,Opt[TgtSeqLen],TgtSeqLen'],
+            padding_mask: IntTensorT['B,TgtSeqLen'] = None,
+            transformer_ctx: TransformerContext = None
     ) -> FloatTensorT['B,SrcSeqLen,EmbedLen']:
         nbatches, q_len, _ = query.size()
 
@@ -449,7 +428,6 @@ class MistralFlashAttention2(MistralAttention):
             key_st.transpose(1, 2))
         value_st: FloatTensorT['B,NHeads,TgtSeqLen,EmbedLen'] = (
             value_st.transpose(1, 2))
-
         attn_output = self._flash_attention_forward(
             query_st,
             key_st,
@@ -572,7 +550,6 @@ class MistralFlashAttention2(MistralAttention):
 
         indices_k, cu_seqlens_k, max_seqlen_in_batch_k = _get_unpad_data(
             padding_mask)
-
         key_layer = index_first_axis(
             key_layer.reshape(batch_size * kv_seq_len, num_heads, head_dim),
             indices_k)
@@ -633,17 +610,19 @@ class MistralDecoderLayer(nn.Module):
             hidden_states: FloatTensorT['B,SrcSeqLen,EmbedLen'],
             position_ids: LongTensorT['TgtSeqStep|SrcSeqLen'],
             src_mask: IntTensorT['B,SrcSeqLen,SrcSeqLen'],
+            padding_mask: IntTensorT['B,TgtSeqLen'],
             transformer_ctx: TransformerContext = None
     ) -> FloatTensorT['B,TgtSeqLen|1,EmbedLen']:
         residual = hidden_states
 
         hidden_states = self.input_layernorm(hidden_states)
-
         hidden_states = \
             self.self_attn.forward(
                 query=hidden_states, key=hidden_states,
                 value=hidden_states,
-                padding_mask=src_mask, transformer_ctx=transformer_ctx,
+                src_mask=src_mask,
+                padding_mask=padding_mask,
+                transformer_ctx=transformer_ctx,
                 position_ids=position_ids
             )
         hidden_states = residual + hidden_states
@@ -709,6 +688,35 @@ class MistralModel(MistralPreTrainedModel):
 
         self.apply(self._init_weights)
 
+    def _prepare_decoder_attention_mask(
+            self, attention_mask, input_shape, inputs_embeds,
+            past_key_values_length, sliding_window
+    ):
+        # create causal mask
+        # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
+        combined_attention_mask = None
+        if input_shape[-1] > 1:
+            combined_attention_mask = _make_sliding_window_causal_mask(
+                input_shape,
+                inputs_embeds.dtype,
+                device=inputs_embeds.device,
+                past_key_values_length=past_key_values_length,
+                sliding_window=sliding_window,
+            )
+
+        if attention_mask is not None:
+            # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
+            expanded_attn_mask = _expand_mask(attention_mask,
+                                              inputs_embeds.dtype,
+                                              tgt_len=input_shape[-1]).to(
+                inputs_embeds.device
+            )
+            combined_attention_mask = (
+                expanded_attn_mask if combined_attention_mask is None else expanded_attn_mask + combined_attention_mask
+            )
+
+        return combined_attention_mask
+
     def get_input_embeddings(self):
         return self.shared
 
@@ -732,6 +740,25 @@ class MistralModel(MistralPreTrainedModel):
         input_embeds = self.embed_tokens(src_ids)
         hidden_state = input_embeds
 
+        padding_mask = src_mask
+        if padding_mask is not None and (hasattr(self.config,
+                                                 "_flash_attn_2_enabled") and self.config._flash_attn_2_enabled):
+            is_padding_right = (
+                    padding_mask[:, -1].sum().item() != src_ids.shape[0])
+            if is_padding_right:
+                raise ValueError(
+                    "You are attempting to perform batched generation with padding_side='right'"
+                    " this may lead to unexpected behaviour for Flash Attention version of Mistral. Make sure to "
+                    " call `tokenizer.padding_side  = 'left'` before tokenizing the input. "
+                )
+        src_mask = self._prepare_decoder_attention_mask(
+            src_mask,
+            src_ids.shape,
+            input_embeds,
+            transformer_ctx.get_seq_len_so_far() if transformer_ctx else 0,
+            sliding_window=self.config.sliding_window,
+        )
+
         seq_length = src_ids.shape[1]
         prev_length = transformer_ctx.get_seq_len_so_far() if transformer_ctx else 0
         position_ids = torch.arange(
@@ -739,7 +766,6 @@ class MistralModel(MistralPreTrainedModel):
             dtype=torch.long, device=src_ids.device
         )
         position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
-
         decoder_layer: MistralDecoderLayer
         for idx, decoder_layer in enumerate(self.layers):
             if self.gradient_checkpointing and self.training:
@@ -748,6 +774,7 @@ class MistralModel(MistralPreTrainedModel):
                     hidden_state,
                     position_ids,
                     src_mask,
+                    padding_mask,
                     transformer_ctx.for_layer(idx) if transformer_ctx else None,
                     use_reentrant=True,
                 )
@@ -755,6 +782,7 @@ class MistralModel(MistralPreTrainedModel):
                 hidden_state = decoder_layer.forward(hidden_states=hidden_state,
                                                      position_ids=position_ids,
                                                      src_mask=src_mask,
+                                                     padding_mask=padding_mask,
                                                      transformer_ctx=transformer_ctx.for_layer(
                                                          idx) if transformer_ctx else None)
 
@@ -763,6 +791,12 @@ class MistralModel(MistralPreTrainedModel):
 
 
 class MistralForCausalLM(MistralPreTrainedModel):
+
+    @classmethod
+    def modules_to_not_convert(cls):
+        return ['model.encoder.embed_tokens', 'model.decoder.embed_tokens',
+                'lm_head' + 'embedding_head']
+
     def get_encoder(self):
         raise NotImplementedError
 
@@ -773,7 +807,7 @@ class MistralForCausalLM(MistralPreTrainedModel):
         raise NotImplementedError
 
     def get_max_decoder_positions(self):
-        return self.model.embed_tokens.weight.shape[0]
+        return self.model.embed_tokens.weight.shape[1]
 
     @classmethod
     def load_model(cls, path: str,
@@ -795,14 +829,10 @@ class MistralForCausalLM(MistralPreTrainedModel):
             with init_empty_weights():
                 model = MistralForCausalLM(
                     MistralConfig.from_dict(config)).half()
+            if not os.path.exists(os.path.join(path, 'weights.bin')):
+                return None
             if quantization_config:
-                # model = quantize_model(model)
-                #
-                # model = load_checkpoint_and_dispatch(model,
-                #                                      checkpoint=os.path.join(
-                #                                          path,
-                #                                          'weights.bin'),
-                #                                      device_map="auto")
+                quantization_config.llm_int8_skip_modules = cls.modules_to_not_convert()
                 model = load_and_quantize_model(model,
                                                 weights_location=os.path.join(
                                                     path,
@@ -836,6 +866,10 @@ class MistralForCausalLM(MistralPreTrainedModel):
             model_id,
             use_flash_attention_2=True,
             torch_dtype=torch.float16, device_map={"": torch.device('cpu')}, )
+        model_hug.add_module('embedding_head', nn.Linear(
+            model_hug.config.hidden_size,
+            model_hug.config.hidden_size,
+            bias=False))
         config = model_hug.config
         if config.pad_token_id is None:
             config.pad_token_id = tokenizer.pad_token_id
@@ -854,8 +888,11 @@ class MistralForCausalLM(MistralPreTrainedModel):
         self.model = MistralModel(config)
         self.lm_head = nn.Linear(config.hidden_size,
                                  self.model.embed_tokens.num_embeddings,
+                                 # 4096,
                                  bias=False)
-
+        self.embedding_head = nn.Linear(config.hidden_size,
+                                        config.hidden_size,
+                                        bias=False)
         # Initialize weights and apply final processing
         self.apply(self._init_weights)
 
@@ -868,7 +905,6 @@ class MistralForCausalLM(MistralPreTrainedModel):
     ) -> FloatTensorT['B,EmbedLen']:
         output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.model.forward(
             src_ids=src_ids, src_mask=src_mask)
-
         if pred_eos:
             # get the last embedding, not an average of the embeddings
             sequence_lengths = \
@@ -877,8 +913,7 @@ class MistralForCausalLM(MistralPreTrainedModel):
             bsz = output.shape[0]
             output_eos = output[torch.arange(bsz), sequence_lengths, :]
             return output_eos
-
-        return output[:, -1, :]
+        return self.embedding_head(output[:, -1, :])
 
     @overrides(DecoderTransformer)
     def forward(

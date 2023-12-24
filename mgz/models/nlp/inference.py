@@ -54,7 +54,8 @@ class Greedy:
             next_token_scores_processed, dim=1, keepdim=False
         )
         self.sequence.append(next_tokens)
-        self.is_done = self.stopping_criteria(input_ids, next_token_scores)
+        self.is_done = (self.stopping_criteria(input_ids, next_token_scores) or
+                        torch.all(input_ids[:, -1] == self.eos_token_id))
         # todo, not the best, cache for call to finalizing later
         return next_tokens
 

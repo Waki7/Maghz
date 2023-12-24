@@ -52,7 +52,7 @@ def strings_to_padded_id_tensor(txts: List[SrcStringT],
                            # TODO: set return_overflowing_tokens to True
                            return_overflowing_tokens=False,
                            pad_to_multiple_of=max_len,
-                           return_tensors='pt'))
+                           return_tensors='pt',))
     return input_encodings.input_ids.to(device).to(torch.int32)
 
 
@@ -131,8 +131,35 @@ class TagQAMetaTaskBatch:
     def get_support_centers(self) -> FloatTensorT['NClasses,EmbedLen']:
         return self.supports.mean(dim=1, keepdim=False)
 
+    def summarize_batch(self, tokenizer: PreTrainedTokenizerBase):
+        queries: List[str] = tokenizer.batch_decode(self.queries,
+                                                    skip_special_tokens=True)
+        neg_supports: List[str] = tokenizer.batch_decode(
+            self.supports[0, :, :], skip_special_tokens=True)
+        pos_supports: List[str] = tokenizer.batch_decode(
+            self.supports[1, :, :], skip_special_tokens=True)
+        print('---------')
+        print('---------')
+        print('---------')
+        print(f"Queries ({len(queries)}):")
+        for i, query in enumerate(queries, start=1):
+            print(f"  {i}. {query}")
+
+        # Print negative supports
+        print(f"Negative Supports ({len(neg_supports)}):")
+        for i, neg_support in enumerate(neg_supports, start=1):
+            print(f"  {i}. {neg_support}")
+
+        # Print positive supports
+        print(f"Positive Supports ({len(pos_supports)}):")
+        for i, pos_support in enumerate(pos_supports, start=1):
+            print(f"  {i}. {pos_support}")
+
+        print('Correct Labels:', self.query_lbls)
+        print('---------')
+
     @staticmethod
-    def collate_batch(batch: List[Tuple[SrcStringT, TgtStringT, LabelT]],
+    def collate_batch(batch: List[Tuple[SrcStringT, LabelT]],
                       tokenizer: PreTrainedTokenizerBase,
                       device,
                       n_support_per_cls: int,
@@ -140,12 +167,12 @@ class TagQAMetaTaskBatch:
                       max_src_len: int,
                       max_tgt_len: int = None) -> TagQAMetaTaskBatch:
         assert max_tgt_len is None, "max_tgt_len must not be set for this task"
-        srcs, tgts, labels = zip(*batch)
+        srcs, labels = zip(*batch)
         src_ids: LongTensorT['B,SrcSeqLen'] = \
-            question_answer_to_padded_id_tensor(context=srcs, question=tgts,
-                                                tokenizer=tokenizer,
-                                                max_len=max_src_len,
-                                                device=device)
+            strings_to_padded_id_tensor(txts=srcs,
+                                        tokenizer=tokenizer,
+                                        max_len=max_src_len,
+                                        device=device)
         label_tensor = LongTensorT(
             torch.tensor(labels, dtype=torch.long, device=device))
         return TagQAMetaTaskBatch(src_ids=src_ids,
@@ -189,12 +216,15 @@ class TagQAMetaTaskBatch:
                 if pos_tag not in neg_tags:
                     negative_examples.add(neg_sample_idx)
             neg_sampling_tries += 1
-        tag_qa_text = "Is this about " + pos_tag + '?: '
-        pos_batch: List[Tuple[SrcStringT, TgtStringT, LabelT]] = \
-            [(ds.data[i][SampleType.INPUT_TEXT], tag_qa_text, 1) for i in
+        tag_qa_text = (f"GPT4 Correct User: Is this e-mail about {pos_tag}? "
+                       f"<|end_of_turn|>GPT4 Correct Assistant: ")
+        pos_batch: List[Tuple[SrcStringT, LabelT]] = \
+            [(tag_qa_text + ds.data[i][SampleType.INPUT_TEXT], 1)
+             for i in
              positive_examples]
-        neg_batch: List[Tuple[SrcStringT, TgtStringT, LabelT]] = \
-            [(ds.data[i][SampleType.INPUT_TEXT], tag_qa_text, 0) for i in
+        neg_batch: List[Tuple[SrcStringT, LabelT]] = \
+            [(tag_qa_text + ds.data[i][SampleType.INPUT_TEXT], 0)
+             for i in
              negative_examples]
 
         # TODO fix so we catch this earlier

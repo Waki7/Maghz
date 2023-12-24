@@ -284,17 +284,14 @@ class BaseTransformer(BaseModel):
     def generate(self,
                  src_ids: LongTensorT['B,SrcSeqLen'],
                  src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
-                 tgt_ids: LongTensorT['B,TgtSeqLen'] = None,
+                 tgt_ids: LongTensorT['B,TgtSeqLen'],
                  max_new_tokens: int = None,
                  ) -> LongTensorT['TgtSeqLen']:
-        if tgt_ids is None:
-            tgt_ids = torch.LongTensor([self.config.sep_token_id]).unsqueeze(
-                0).to(settings.DEVICE).repeat(src_ids.shape[0], 1)
         if max_new_tokens is None:
             max_new_tokens = self.config.max_length
         max_tokens = max_new_tokens + tgt_ids.shape[1]
         n_beams = self.config.num_beams
-        max_len = self.config.max_length
+        max_len = max_tokens
 
         if self.is_encoder_decoder():
             memory: FloatTensorT['B,SrcSeqLen,EmbedLen'] = self.encode(

@@ -7,7 +7,7 @@ import torch.utils.data
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
 
-import mgz.models.nlp.metrics as metrics
+import mgz.metrics.nlp.metrics as metrics
 import mgz.version_control as vc
 import mgz.settings as settings
 from mgz.ds.base_dataset import BaseDataset

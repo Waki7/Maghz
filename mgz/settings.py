@@ -1,12 +1,12 @@
+import os
 import random
-from pathlib import Path
 
 import numpy as np
-import os
-
-os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'garbage_collection_threshold:0.6,max_split_size_mb:128'
+print('CUDA_LAUNCH_BLOCKING', os.environ['CUDA_LAUNCH_BLOCKING'])
 import torch
-import os
 
 
 # torch.autograd.set_detect_anomaly(True)
@@ -51,6 +51,7 @@ DTYPE_LONG = torch.long
 DTYPE_X = torch.half  # torch.float torch.half
 ARGS = {'device': DEVICE, 'dtype': DTYPE_X}
 SEED = 23
+VRAM = 24
 torch.manual_seed(SEED)
 np.random.seed(SEED)
 random.seed(SEED)
@@ -91,7 +92,8 @@ def print_trainable_parameters(model):
         all_param += param.numel()
         if param.requires_grad:
             trainable_params += param.numel()
-            print(name, param.numel(), param.device, param.requires_grad, param.dtype)
+            print(name, param.numel(), param.device, param.requires_grad,
+                  param.dtype)
     print(
         f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param}"
     )
