@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 
 from mgz.models.nlp.mistral import MistralForCausalLM
-from mgz.models.nlp.led import LEDForConditionalGeneration
 
 os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 # from mgz.models.nlp.bart_interface import BARTHubInterface
@@ -58,12 +57,12 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
         ds = EnronEmailsTagQA(model_node.tokenizer,
                               max_src_len=4096,
                               n_episodes=1000,
-                              n_query_per_cls=[1],
+                              n_query_per_cls=[2],
                               n_support_per_cls=[2, 3, 4, 4, 5, 5])
         val_ds = EnronEmailsTagQA(model_node.tokenizer,
                                   max_src_len=4096,
                                   n_episodes=25,
-                                  n_query_per_cls=[1],
+                                  n_query_per_cls=[2],
                                   n_support_per_cls=[2, 3, 4, 4, 5, 5])
     if old_enron:
         ds = EnronEmailsTagging(model_node.tokenizer,
@@ -125,20 +124,20 @@ def led_main_train():
                 quantize = False
 
         model_node: ModelNode = \
-            ModelNode.load_from_id(LEDForConditionalGeneration, model_name,
-            # ModelNode.load_from_id(MistralForCausalLM, model_name,
+            ModelNode.load_from_id(MistralForCausalLM, model_name,
                                    model_name,
                                    quantization_config=quantization_cfg)
+        # ModelNode.load_from_id(LEDForConditionalGeneration, model_name,
         model_node.model.train()
 
-        # model_node.freeze_parameters('embedding_head')
+        model_node.freeze_parameters('embedding_head')
 
         settings.print_gpu_usage()
         ds, val_ds = dataset_select(model_node, aus=False, enron=True)
-        loss_fn = torch.nn.CrossEntropyLoss(label_smoothing=1.0)
+        loss_fn = torch.nn.CrossEntropyLoss(label_smoothing=0.9)
         training_cfg = {}
-        lr = 0.0001
-        weight_decay = 0.0001
+        lr = 0.00005
+        weight_decay = 0.00001
         betas = (0.9, 0.98)
         eps = 1e-4
 

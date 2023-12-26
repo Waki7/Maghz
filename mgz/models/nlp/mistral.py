@@ -791,6 +791,11 @@ class MistralModel(MistralPreTrainedModel):
 
 
 class MistralForCausalLM(MistralPreTrainedModel):
+    @staticmethod
+    def get_embedding_head(n_tokens: int, hidden_size: int):
+        return nn.Linear(n_tokens,
+                         hidden_size,
+                         bias=False)
 
     @classmethod
     def modules_to_not_convert(cls):
@@ -866,11 +871,11 @@ class MistralForCausalLM(MistralPreTrainedModel):
             model_id,
             use_flash_attention_2=True,
             torch_dtype=torch.float16, device_map={"": torch.device('cpu')}, )
-        model_hug.add_module('embedding_head', nn.Linear(
-            model_hug.config.hidden_size,
-            model_hug.config.hidden_size,
-            bias=False))
         config = model_hug.config
+        model_hug.add_module('embedding_head',
+                             cls.get_embedding_head(
+                                 model_hug.model.embed_tokens.num_embeddings,
+                                 config.hidden_size))
         if config.pad_token_id is None:
             config.pad_token_id = tokenizer.pad_token_id
         if config.sep_token_id is None:
@@ -890,7 +895,7 @@ class MistralForCausalLM(MistralPreTrainedModel):
                                  self.model.embed_tokens.num_embeddings,
                                  # 4096,
                                  bias=False)
-        self.embedding_head = nn.Linear(config.hidden_size,
+        self.embedding_head = nn.Linear(self.model.embed_tokens.num_embeddings,
                                         config.hidden_size,
                                         bias=False)
         # Initialize weights and apply final processing
@@ -913,7 +918,7 @@ class MistralForCausalLM(MistralPreTrainedModel):
             bsz = output.shape[0]
             output_eos = output[torch.arange(bsz), sequence_lengths, :]
             return output_eos
-        return self.embedding_head(output[:, -1, :])
+        return self.embedding_head(self.lm_head(output[:, -1, :]))
 
     @overrides(DecoderTransformer)
     def forward(

@@ -47,7 +47,7 @@ class TaggingRoutine(BaseProtocol):
                                  'NClasses,EmbedLen'],
                              query_embedding: FloatTensorT[
                                  'NQuery,EmbedLen']) -> \
-            ProbTensorT['NQuery,NClasses']:
+            FloatTensorT['NQuery,NClasses']:
         similarity_to_classes: FloatTensorT['NQuery,NClasses'] = None
         if self.distance_measure == DistanceMeasure.L1:
             similarity_to_classes = -1 * DistanceMeasuresPerClass.euclidean_distance(
@@ -66,7 +66,7 @@ class TaggingRoutine(BaseProtocol):
     def run_prototype_encoder_decoder(self, model: EncoderDecoderTransformer,
                                       batch: Sent2TagMetaTaskBatch,
                                       gpu_max_batch_size=4) -> \
-            Tuple[ProbTensorT['NQuery,NClasses'], LongTensorT['NQuery']]:
+            Tuple[FloatTensorT['NQuery,NClasses'], LongTensorT['NQuery']]:
         is_encoder_decoder = isinstance(model, EncoderDecoderTransformer) and \
                              isinstance(batch, Sent2TagMetaTaskBatch)
         assert is_encoder_decoder, 'Bad combination of model and batch'
@@ -105,14 +105,15 @@ class TaggingRoutine(BaseProtocol):
             tgt_mask=batch.tgt_tag_masks_queries
         )
         query_lbls: LongTensorT['TaskSize'] = batch.query_lbls
-        cls_probs: ProbTensorT['TaskSize,NClasses'] = self.predict_with_centers(
+        cls_logits: FloatTensorT[
+            'TaskSize,NClasses'] = self.predict_with_centers(
             support_centers, query_embeds)
-        return cls_probs, query_lbls
+        return cls_logits, query_lbls
 
     def run_prototype_decoder(self, model: DecoderTransformer,
                               batch: TagQAMetaTaskBatch,
                               gpu_max_batch_size=4) -> \
-            Tuple[ProbTensorT['NQuery,NClasses'], LongTensorT['NQuery']]:
+            Tuple[FloatTensorT['NQuery,NClasses'], LongTensorT['NQuery']]:
         is_decoder = isinstance(model, DecoderTransformer) and \
                      isinstance(batch, TagQAMetaTaskBatch)
         assert is_decoder, 'Bad combination of model and batch'
@@ -143,9 +144,45 @@ class TaggingRoutine(BaseProtocol):
         )
         assert isinstance(model, DecoderTransformer)
         query_lbls: LongTensorT['TaskSize'] = batch.query_lbls
-        cls_probs: ProbTensorT['TaskSize,NClasses'] = self.predict_with_centers(
+        cls_logits: FloatTensorT[
+            'TaskSize,NClasses'] = self.predict_with_centers(
             support_centers, query_embeds)
-        return cls_probs, query_lbls
+        return cls_logits, query_lbls
+
+    def run_batch(self, model: Union[EncoderDecoderTransformer,
+    DecoderTransformer],
+                  batch: Union[Sent2TagMetaTaskBatch, TagQAMetaTaskBatch],
+                  model_edge: ModelTransitionEdge,
+                  gpu_max_batch_size=4) -> \
+            Tuple[FloatTensorT['1'], float]:
+        optimizer, scheduler = model_edge.optimizer, model_edge.scheduler
+        cls_logits: ['NQuery,NClasses']
+        query_lbls: LongTensorT['NQuery']
+
+        if isinstance(model, EncoderDecoderTransformer):
+            cls_logits, query_lbls = self.run_prototype_encoder_decoder(model,
+                                                                        batch,
+                                                                        gpu_max_batch_size)
+        elif isinstance(model, DecoderTransformer):
+            cls_logits, query_lbls = self.run_prototype_decoder(model, batch,
+                                                                gpu_max_batch_size)
+        else:
+            raise NotImplementedError
+        loss = model_edge.loss_fn(cls_logits, query_lbls)
+
+        # Calculate accuracy
+        predictions: LongTensorT['NQuery'] = cls_logits.argmax(-1)
+        accuracy = (predictions == query_lbls).float().mean().item()
+        model_edge.record_metric(Metrics.TRAIN_ACC_MEAN, accuracy)
+
+        model_edge.train_state.step += 1
+        model_edge.record_metric(Metrics.TRAIN_LOSS_MEAN, loss.cpu().item())
+
+        model_edge.train_state.accum_step += 1
+        if (batch_num + 1) % gradient_accumulation_steps == 0:
+            optimizer.step()
+            optimizer.zero_grad()
+            if scheduler is not None: scheduler.step()
 
     def run_epoch(self,
                   model_node: ModelNode,

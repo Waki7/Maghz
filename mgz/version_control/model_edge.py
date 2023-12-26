@@ -5,7 +5,6 @@ import os
 from enum import Enum
 
 import mgz.log_utils as log_utils
-import mgz.model_running.run_ops as run_ops
 import mgz.version_control as vc
 from mgz.ds import BaseDataset
 from mgz.model_running.base_routine import TrainState
@@ -37,7 +36,7 @@ class ModelTransitionEdge:
         self.child: vc.ModelNode = None
         self.optimizer = optimizer
         self.loss_fn: Callable[
-            [ProbTensorT['B,NClasses'], LongTensorT['B']], FloatTensorT[
+            [FloatTensorT['B,NClasses'], LongTensorT['B']], FloatTensorT[
                 '1']] = loss_fn
         self.scheduler = scheduler
         self.ds = ds

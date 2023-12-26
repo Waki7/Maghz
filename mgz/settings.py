@@ -5,7 +5,6 @@ import numpy as np
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'garbage_collection_threshold:0.6,max_split_size_mb:128'
-print('CUDA_LAUNCH_BLOCKING', os.environ['CUDA_LAUNCH_BLOCKING'])
 import torch
 
 
@@ -29,7 +28,7 @@ def to_mps(tensor):
 _debug_use_cpu = False
 # _debug_use_cpu = True
 DEVICE = torch.device('cpu')
-
+print('cuda avail', torch.cuda.is_available())
 if torch.backends.mps.is_available() and not _debug_use_cpu:
     to_device = to_mps
     print('MPS available, will be running on apple GPU')

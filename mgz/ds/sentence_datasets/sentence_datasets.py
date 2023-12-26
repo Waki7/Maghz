@@ -38,11 +38,11 @@ def subsequent_mask(size: SrcSeqLen):
     return subsequent_mask == 0
 
 
-def strings_to_padded_id_tensor(txts: List[SrcStringT],
-                                tokenizer: PreTrainedTokenizerBase,
-                                max_len,
-                                device=torch.device('cpu')) -> \
-        LongTensorT['B,SrcSeqLen']:
+def strings_to_padded_id_tensor_w_mask(txts: List[SrcStringT],
+                                       tokenizer: PreTrainedTokenizerBase,
+                                       max_len,
+                                       device=torch.device('cpu')) -> \
+        Tuple[LongTensorT['B,SrcSeqLen'], IntTensorT['B,SrcSeqLen']]:
     """
     This does not truncate at all, minimum length will always be max_len.
     """
@@ -52,18 +52,17 @@ def strings_to_padded_id_tensor(txts: List[SrcStringT],
                            # TODO: set return_overflowing_tokens to True
                            return_overflowing_tokens=False,
                            pad_to_multiple_of=max_len,
-                           return_tensors='pt',))
-    return input_encodings.input_ids.to(device).to(torch.int32)
+                           return_tensors='pt', ))
+    return input_encodings.input_ids.to(device).to(torch.int32), \
+        input_encodings.attention_mask.to(device)
 
 
-def strings_to_padded_id_tensor_w_mask(txts: List[SrcStringT],
-                                       tokenizer: PreTrainedTokenizerBase,
-                                       max_len,
-                                       device):
-    txt: LongTensorT['B,SrcSeqLen'] = \
-        strings_to_padded_id_tensor(txts, tokenizer, max_len, device)
-    mask = (txt != tokenizer.pad_token_id).long()
-    return txt, mask
+def strings_to_padded_id_tensor(txts: List[SrcStringT],
+                                tokenizer: PreTrainedTokenizerBase,
+                                max_len,
+                                device):
+    return strings_to_padded_id_tensor_w_mask(txts, tokenizer, max_len,
+                                              device)[0]
 
 
 def question_answer_to_padded_id_tensor(context: SrcStringT,
@@ -88,6 +87,7 @@ def question_answer_to_padded_id_tensor(context: SrcStringT,
 class TagQAMetaTaskBatch:
     def __init__(self,
                  src_ids: LongTensorT['TaskSize,SrcSeqLen'],
+                 src_masks: IntTensorT['TaskSize,SrcSeqLen'],
                  labels: LongTensorT['TaskSize'],
                  n_support_per_cls: int,
                  pad_idx):
@@ -115,11 +115,15 @@ class TagQAMetaTaskBatch:
                 [src_ids[neg_sup_idxs, :], src_ids[pos_sup_idxs, :]],
                 dim=0)).to(
                 torch.long)
-        self.support_masks = (self.supports != pad_idx)
+        self.support_masks = \
+            LongTensorT(torch.stack(
+                [src_masks[neg_sup_idxs, :], src_masks[pos_sup_idxs, :]],
+                dim=0)).to(
+                torch.long)
 
         self.queries: LongTensorT[
             'TaskSize,SrcSeqLen'] = src_ids[neg_query_idxs + pos_query_idxs, :]
-        self.query_masks = (self.queries != pad_idx)
+        self.query_masks = src_masks[neg_query_idxs + pos_query_idxs, :]
 
         self.query_lbls = labels[neg_query_idxs + pos_query_idxs]
 
@@ -168,14 +172,15 @@ class TagQAMetaTaskBatch:
                       max_tgt_len: int = None) -> TagQAMetaTaskBatch:
         assert max_tgt_len is None, "max_tgt_len must not be set for this task"
         srcs, labels = zip(*batch)
-        src_ids: LongTensorT['B,SrcSeqLen'] = \
-            strings_to_padded_id_tensor(txts=srcs,
-                                        tokenizer=tokenizer,
-                                        max_len=max_src_len,
-                                        device=device)
+        src_ids, src_masks = \
+            strings_to_padded_id_tensor_w_mask(txts=srcs,
+                                               tokenizer=tokenizer,
+                                               max_len=max_src_len,
+                                               device=device)
         label_tensor = LongTensorT(
             torch.tensor(labels, dtype=torch.long, device=device))
         return TagQAMetaTaskBatch(src_ids=src_ids,
+                                  src_masks=src_masks,
                                   labels=label_tensor,
                                   pad_idx=tokenizer.pad_token_id,
                                   n_support_per_cls=n_support_per_cls)
@@ -232,7 +237,7 @@ class TagQAMetaTaskBatch:
         if len(neg_batch) < min_to_have_1_query or len(
                 pos_batch) < min_to_have_1_query:
             return None
-        batch = neg_batch + pos_batch
+        batch: List[Tuple[str, int]] = neg_batch + pos_batch
         return TagQAMetaTaskBatch.collate_batch(
             batch=batch,
             tokenizer=ds.tokenizer_src,
