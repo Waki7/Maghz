@@ -128,7 +128,7 @@ setup(
         'bs4',
         'typing_extensions==4.4.0',
         'peft',
-        'bitsandbytes==0.41.0',
+        'bitsandbytes==0.41.3',
         'optimum',
         'torch>=2.1.0',
         'torchtext',

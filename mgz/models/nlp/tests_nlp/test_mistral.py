@@ -3,9 +3,12 @@ from __future__ import annotations
 import os
 import unittest
 
+import torch.testing
+
 import mgz.settings as settings
-from mgz.models.nlp.led import LEDForConditionalGeneration
-from mgz.version_control import ModelNode
+from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagQA
+from mgz.models.nlp.mistral import MistralForCausalLM
+from mgz.version_control import Metrics, ModelNode
 
 os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 from mgz.typing import *
@@ -26,37 +29,82 @@ class TestLED(unittest.TestCase):
         pass
 
     # ------------------ TESTING LOADING ------------------
-    def test_attention(self):
-        local_path = 'allenai/led-base-16384-multi_lexsum-source-long'
-        tokenizer_name = 'allenai/led-base-16384-multi_lexsum-source-long'
+    def get_quantized_model(self, model_id: str, tokenizer_id: str = None):
 
-        tokenizer_local = LEDForConditionalGeneration.load_tokenizer(
-            local_path)
-        tokenizer_hug = LEDForConditionalGeneration.load_tokenizer(
-            local_path)
-        self.recursive_check(tokenizer_local, tokenizer_hug)
+        quantize = True
+        quantization_cfg = None
+        if quantize:
+            try:
+                from accelerate.utils import BnbQuantizationConfig
+                import bitsandbytes
+                quantization_cfg = BnbQuantizationConfig(
+                    load_in_8bit=quantize, )
+            except ImportError:
+                print("Module 'some_module' is not installed.")
+                quantization_cfg = None
+                quantize = False
+                print('verify_quantize_save_load test is skipped')
+                self.assertTrue(True)
+        model_node: ModelNode = \
+            ModelNode.load_from_id(MistralForCausalLM, model_id,
+                                   tokenizer_id,
+                                   quantization_config=quantization_cfg)
+        model_node.model.eval()
+        return model_node
 
-    def test_against_huggingface(self):
-        tokenizer = hug.LlamaTokenizerFast.from_pretrained(
-            "mistralai/Mistral-7B-v0.1")
-        # tokenizer = hug.LEDTokenizerFast.from_pretrained(
-        #     "allenai/led-base-16384-multi_lexsum-source-long")
-        x = tokenizer("hello world", return_tensors="pt").input_ids
-        self.assertEqual(tokenizer.pad_token_id, 1)
-        self.assertEqual(tokenizer.sep_token_id, 2)
-        self.assertEqual(tokenizer.eos_token_id, 2)
-        self.assertEqual(tokenizer.bos_token_id, 0)
-        self.assertEqual(tokenizer.unk_token_id, 3)
-        self.assertEqual(1, 0)
+    def val_routine(self, model_node,
+                    ) -> Dict[Metrics, Union[float, List[float]]]:
 
-        hug_model = hug.MistralForSequenceClassification.from_pretrained(
-            "mistralai/Mistral-7B-v0.1")
+        from mgz.model_running.nlp_routines.model_routine_tagging import \
+            DistanceMeasure, TaggingRoutine
+        val_ds = EnronEmailsTagQA(model_node.tokenizer,
+                                  max_src_len=4096,
+                                  n_episodes=1,
+                                  n_query_per_cls=[1],
+                                  n_support_per_cls=[2, 3, 4, 4, 5, 5])
+        routine = TaggingRoutine(
+            distance_measure=DistanceMeasure.L2,
+            tokenizer=model_node.tokenizer, )
+        metrics: Dict[Metrics, Union[float, List[float]]] = routine.evaluate(
+            model_node=model_node, val_ds=val_ds)
+        return metrics
 
-        expected_logits = hug_model(x).logits
-        del hug_model
+    @torch.no_grad()
+    def test_quantize_save_load(self):
+        import gc
+        model_name = 'openchat/openchat_3.5'
+        test_ids = torch.ones((1, 10), dtype=torch.long).to(settings.DEVICE)
+        test_mask = torch.ones((1, 10), dtype=torch.long).to(settings.DEVICE)
 
-        mgz_model = LEDForConditionalGeneration.from_pretrained(
-            "mistralai/Mistral-7B-v0.1")
+        with torch.cuda.amp.autocast(enabled=True):
+            model_node = self.get_quantized_model(model_name, model_name)
+            original_metrics = self.val_routine(model_node)
+            original_embedding = model_node.model.decoder_embedding(test_ids,
+                                                                    test_mask).cpu()
+
+            path = model_node.get_path()
+            path = os.path.join(path, "test_save_load")
+            model_node.store_model_node(path=path)
+
+        model_node.model = model_node.model.cpu()
+        del model_node
+        settings.empty_cache()
+        gc.collect()
+        settings.print_gpu_usage()
+        with torch.cuda.amp.autocast(enabled=True):
+            new_model_node = self.get_quantized_model(
+                model_name + '/test_save_load', model_name)
+            new_metrics = self.val_routine(new_model_node)
+            new_embedding = new_model_node.model.decoder_embedding(test_ids,
+                                                                   test_mask).cpu()
+
+            print('original_embedding', original_embedding)
+            print('new_embedding', new_embedding)
+            print('original_metrics', original_metrics)
+            print('new_metrics', new_metrics)
+            self.assertTrue(abs(
+                original_metrics[Metrics.VAL_ACC_MEAN] - new_metrics[
+                    Metrics.VAL_ACC_MEAN]) < 0.1)
 
     def test_mistral_tokenizer(self):
         test_string = ['This is a test',

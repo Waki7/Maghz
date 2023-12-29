@@ -8,12 +8,16 @@ from tqdm import tqdm
 from transformers import PreTrainedTokenizer
 
 import mgz.metrics.nlp.metrics as metrics
-import mgz.version_control as vc
 import mgz.settings as settings
+import mgz.version_control as vc
 from mgz.ds.base_dataset import BaseDataset
-from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch
+from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch, \
+    Sent2TagMetaTaskBatch, TagQAMetaTaskBatch
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.typing import *
+
+if TYPE_CHECKING:
+    from mgz.version_control import ModelTransitionEdge, ModelNode, Metrics
 
 
 class TrainState:
@@ -41,9 +45,9 @@ def run_epoch(
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler.LRScheduler = None,
         accum_iter=1,
-        train_state=TrainState(),
         log_interval=40,
         accuracy_interval=120,
+        model_edge: ModelTransitionEdge = None,
 ) -> (torch.Tensor, TrainState):
     """Train a single epoch"""
     start = time.time()
@@ -65,14 +69,14 @@ def run_epoch(
         loss, loss_node = loss_fn(logits, batch.tgt, batch.ntokens)
         # loss_node = loss_node / accum_iter
         loss_node.backward()
-        train_state.step += 1
-        train_state.samples += batch.src.shape[0]
-        train_state.tokens += batch.ntokens
+        model_edge.train_state.step += 1
+        model_edge.train_state.samples += batch.src.shape[0]
+        model_edge.train_state.tokens += batch.ntokens
         if i % accum_iter == 0:
             optimizer.step()
             optimizer.zero_grad(set_to_none=True)
             n_accum += 1
-            train_state.accum_step += 1
+            model_edge.train_state.accum_step += 1
         if scheduler is not None: scheduler.step()
 
         total_loss += loss
@@ -96,7 +100,7 @@ def run_epoch(
         # cuda / mps / gpu usage and managing
         settings.empty_cache()
         settings.print_gpu_usage()
-    return total_loss / total_tokens, train_state
+    return total_loss / total_tokens, model_edge.train_state
 
 
 @torch.no_grad()
@@ -134,15 +138,87 @@ class BaseProtocol(object):
     def __init__(self):
         pass
 
-    def train(self, model_node: vc.ModelNode, ds: BaseDataset,
-              model_edge: vc.ModelTransitionEdge,
-              batch_size=8, device=None, distributed: bool = False,
-              turn_off_shuffle=False, ) -> vc.ModelNode:
+    @abstractmethod
+    def _check(self, ds: BaseDataset):
         raise NotImplementedError
 
-    def evaluate(self, model_node: vc.ModelNode, val_ds: BaseDataset,
-                 device=None, ):
+    @abstractmethod
+    def run_batch(self, model: BaseTransformer,
+                  batch: Union[Sent2TagMetaTaskBatch, TagQAMetaTaskBatch],
+                  model_edge: ModelTransitionEdge,
+                  gpu_max_batch_size=4) -> \
+            Tuple[FloatTensorT['1'], float]:
         raise NotImplementedError
 
+    @abstractmethod
+    def train_epoch(self,
+                    model_node: ModelNode,
+                    data_loader: torch.utils.data.DataLoader[
+                        TagQAMetaTaskBatch],
+                    val_data_loader: torch.utils.data.DataLoader[
+                        TagQAMetaTaskBatch],
+                    model_edge: ModelTransitionEdge,
+                    log_interval=5,
+                    val_interval=50,
+                    gradient_accumulation_steps=8,
+                    debug=False,
+                    ) -> ModelNode:
+        raise NotImplementedError
+
+    @abstractmethod
+    @torch.no_grad()
+    def val_model(self,
+                  val_data_loader: torch.utils.data.DataLoader[
+                      TagQAMetaTaskBatch],
+                  model_node: ModelNode,
+                  training_edge: ModelTransitionEdge = None
+                  ) -> Dict[Metrics, Union[float, List[float]]]:
+        raise NotImplementedError
+
+    @abstractmethod
     def predict(self, model_node: vc.ModelNode):
         raise NotImplementedError
+
+    def train(self, model_node: vc.ModelNode, ds: BaseDataset,
+              model_edge: vc.ModelTransitionEdge, device=None,
+              distributed: bool = False,
+              turn_off_shuffle=False,
+              val_ds: BaseDataset = None, n_epochs=1) -> vc.ModelNode:
+        model_node.model.train()
+        self._check(ds)
+
+        if val_ds is None:
+            val_ds = ds.gen_validation_data()
+        else:
+            val_ds = val_ds.load_validation_data()
+        train_ds = ds.load_training_data()
+
+        if device is None:
+            device = settings.DEVICE
+
+        train_dl = train_ds.create_dataloaders(device, batch_size=1,
+                                               is_distributed=distributed,
+                                               turn_off_shuffle=turn_off_shuffle)
+        val_dl = val_ds.create_dataloaders(device, batch_size=1,
+                                           is_distributed=distributed,
+                                           turn_off_shuffle=turn_off_shuffle)
+        for i in range(0, n_epochs):
+            self.train_epoch(
+                model_node,
+                data_loader=train_dl,
+                val_data_loader=val_dl,
+                model_edge=model_edge
+            )
+        return model_node
+
+    def evaluate(self, model_node: ModelNode, val_ds: BaseDataset,
+                 device=None, )->Dict[Metrics, Union[float, List[float]]]:
+        if device is None:
+            device = settings.DEVICE
+        val_ds.load_validation_data()
+        val_dl = val_ds.create_dataloaders(device, batch_size=1,
+                                           is_distributed=False,
+                                           turn_off_shuffle=True)
+        metrics: Dict[Metrics, Union[float, List[float]]] = self.val_model(val_dl, model_node)
+        return metrics
+

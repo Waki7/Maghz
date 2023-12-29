@@ -1,15 +1,13 @@
 from __future__ import annotations
-from __future__ import annotations
-
-import time
 
 import torch.utils.data
-import torch.utils.data
+import transformers as hug
 from tqdm import tqdm
 
 import mgz.settings as settings
 from mgz.ds.sentence_datasets.sentence_datasets import Sent2TagMetaTaskBatch, \
     TagQAMetaTaskBatch
+from mgz.model_running.base_routine import BaseProtocol
 from mgz.typing import *
 from mgz.version_control.metrics import Metrics
 
@@ -17,37 +15,57 @@ if TYPE_CHECKING:
     from mgz.version_control import ModelNode, ModelTransitionEdge
 
 
-class BaseProtocol(object):
+class BaseNLPProtocol(BaseProtocol):
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    def __init__(self):
-        pass
+    def __init__(self,
+                 tokenizer: hug.PreTrainedTokenizerBase = None,
+                 debug: bool = False):
+        self.tokenizer = tokenizer
+        self.debug = debug
 
-    def run_epoch(self,
-                  model_node: ModelNode,
-                  data_loader: torch.utils.data.DataLoader[TagQAMetaTaskBatch],
-                  val_data_loader: torch.utils.data.DataLoader[
-                      TagQAMetaTaskBatch],
-                  model_edge: ModelTransitionEdge,
-                  log_interval=5,
-                  val_interval=50,
-                  gradient_accumulation_steps=8,
-                  debug=False,
-                  ) -> ModelNode:
+    def debug_log_batch_info(self, batch: TagQAMetaTaskBatch):
+        if self.debug:
+            print(
+                '_____________________________________________________________________')
+            print(f' First email that has a {batch.query_lbls[0]} tag-----')
+            print(self.tokenizer.batch_decode(batch.queries,
+                                              skip_special_tokens=True)[0])
+            print(f' Second email that has a {batch.query_lbls[0]} tag-----')
+            print(self.tokenizer.batch_decode(batch.queries,
+                                              skip_special_tokens=True)[1])
+
+    def debug_log_predictions(self, similarity_to_classes: FloatTensorT[
+        'NQuery,EmbedLen']):
+        if self.debug:
+            print('predictions ', torch.argmax(similarity_to_classes, dim=-1))
+
+    @overrides(BaseProtocol)
+    def train_epoch(self,
+                    model_node: ModelNode,
+                    data_loader: torch.utils.data.DataLoader[
+                        TagQAMetaTaskBatch],
+                    val_data_loader: torch.utils.data.DataLoader[
+                        TagQAMetaTaskBatch],
+                    model_edge: ModelTransitionEdge,
+                    log_interval=5,
+                    val_interval=50,
+                    gradient_accumulation_steps=4,
+                    debug=False,
+                    ) -> ModelNode:
         """Train a single epoch"""
         model, tokenizer = model_node.model, model_node.tokenizer
         model.train()
 
-        start = time.time()
         batch: Sent2TagMetaTaskBatch
         if not model_node.has_initial_metrics():
             model_node.store_metrics(
                 self.val_model(val_data_loader, model_node, model_edge))
         optimizer = model_edge.optimizer
         scheduler = model_edge.scheduler
-        batch_num = 0
-        i: int
+        batch_num: int = 0
+        model_edge.start_timer()
 
         for i, batch in tqdm(enumerate(data_loader), total=len(data_loader)):
             if batch is None:
@@ -59,29 +77,21 @@ class BaseProtocol(object):
             loss_w_grad: FloatTensorT['1']
             accuracy: float
             loss_w_grad, accuracy = self.run_batch(model, batch, model_edge)
+
             (loss_w_grad / gradient_accumulation_steps).backward()
             if (batch_num + 1) % gradient_accumulation_steps == 0:
                 optimizer.step()
                 optimizer.zero_grad()
                 if scheduler is not None: scheduler.step()
                 model_edge.train_state.accum_step += 1
-
             model_edge.train_state.step += 1
 
             if (batch_num + 1) % log_interval == 0:
-                lr = model_edge.optimizer.param_groups[0]["lr"]
-                elapsed = time.time() - start
-                print(("Epoch Step: %6d | Accumulation Step: %3d | Loss: %6.2f "
-                       + "| Tasks / Sec: %7.1f | Learning Rate: %6.1e")
-                      % (
-                          i, i, loss_w_grad,
-                          model_edge.train_state.step / elapsed,
-                          lr))
+                model_edge.print_train_step_info()
 
             if (batch_num + 1) % val_interval == 0:
                 self.val_model(val_data_loader, model_node, model_edge)
             settings.empty_cache()
-            batch_num += 1
         return model_edge.complete_model_transition()
 
     @torch.no_grad()
@@ -114,7 +124,7 @@ class BaseProtocol(object):
             accuracy: float
             loss_w_grad, accuracy = self.run_batch(model, batch, training_edge)
 
-            accuracies.append(accuracy.item())
+            accuracies.append(accuracy)
             print(f'Val Accuracy Moving Avg: {np.mean(accuracies)}')
         if training_edge is not None:
             training_edge.record_validation(accuracies)

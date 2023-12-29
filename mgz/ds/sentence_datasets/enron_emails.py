@@ -25,8 +25,8 @@ CATEGORIES = {
     1: {
         1: "Company Business or strategy",
         2: "Purely Personal",
-        3: "Personal but in professional context",
-        4: "Logistic Arrangements",
+        3: "Personal but in professional context (e.g., it was good working with you)",
+        4: "Logistic Arrangements (meeting scheduling, technical support, etc)",
         5: "Employment arrangements",
         6: "Document editing or checking collaboration",
         7: "missing attachment",
@@ -138,13 +138,12 @@ class EnronEmails(SentenceDataset):
             # Read txt file formatted as e-mail with library email
             emails: email.message.Message = email.message_from_file(
                 open(email_path))
-
             data_entry: Dict[SampleType, Union[str, List[str]]] = \
                 {SampleType.KEY: emails.get('Message-ID'),
+                 SampleType.FILE_NAME: email_path,
                  SampleType.NAME: emails.get('Subject'),
                  SampleType.CATCHPHRASES: tags_for_email,
-                 SampleType.INPUT_TEXT: '\n'.join([emails.get('Subject'),
-                                                   emails.get_payload()])}
+                 SampleType.INPUT_TEXT: '\n'.join([emails.as_string()])}
             self.data.append(data_entry)
         self.loaded = True
 
@@ -191,6 +190,8 @@ class EnronEmails(SentenceDataset):
                     email_file_paths.append(os.path.join(dir, file))
                 if file.endswith('.cats'):
                     label_file_paths.append(os.path.join(dir, file))
+        email_file_paths = sorted(email_file_paths)
+        label_file_paths = sorted(label_file_paths)
         assert len(email_file_paths) == len(
             label_file_paths), 'expect lengths to be the same instead they are {} vs {}'.format(
             len(email_file_paths), len(label_file_paths))
@@ -314,7 +315,6 @@ class EnronEmailsTagQA(EnronEmailsTagging, MetaLearningMixIn):
         assert self.loaded, "Dataset not loaded"
         return partial(TagQAMetaTaskBatch.default_collate_fn, self, device)
 
-
     @overrides(EnronEmailsTagging)
     def __getitem__(self, idx) -> (SrcStringT, TgtStringT):
         tags = list(self._tag_to_sample_idx_map.keys())
@@ -323,6 +323,7 @@ class EnronEmailsTagQA(EnronEmailsTagging, MetaLearningMixIn):
         rand_sample_for_tag: SrcStringT = self.data[random.choice(
             self._tag_to_sample_idx_map[selected_tag])][SampleType.INPUT_TEXT]
         return rand_sample_for_tag, selected_tag
+
 
 def inspect_catchphrase_diffs():
     # please install HuggingFace ds by pip install ds

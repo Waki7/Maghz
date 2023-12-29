@@ -141,7 +141,6 @@ class Indexer:
         else:
             model_dir: DirPath = self.path_from_id(model_id,
                                                    create_if_not_exist=False)
-
         # TODO, cleaner way to distinguish the models that are available to load
         model: Optional[BaseTransformer] = \
             model_cls.load_model(model_dir, quantization_config)
@@ -170,7 +169,8 @@ class Indexer:
                 'Model {} not found. Checked in directory {}'.format(model_id,
                                                                      os.path.abspath(
                                                                          model_dir)))
-        return ModelNode(model, tokenizer, model_id)
+        return ModelNode(model, tokenizer, model_id,
+                         quantization_config=quantization_config)
 
     def save_to_index(self, model_node: ModelNode) -> DirPath:
         self.check_state()

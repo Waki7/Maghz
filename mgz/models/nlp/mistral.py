@@ -5,10 +5,12 @@ import inspect
 import json
 import os
 from abc import ABC
+from pathlib import Path
 
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers as hug
+from accelerate.utils import BnbQuantizationConfig
 from torch import nn
 from transformers import BitsAndBytesConfig, MistralConfig
 from transformers.activations import ACT2FN
@@ -655,12 +657,21 @@ class MistralPreTrainedModel(DecoderTransformer, ABC):
             return None
 
     @overrides(BaseTransformer)
-    def save(self, path: DirPath):
+    def save(self, path: DirPath,
+             quantization_config: Optional[BnbQuantizationConfig] = None):
+        if not os.path.exists(path):
+            os.makedirs(path)
         with open(os.path.normpath(os.path.join(path, 'config.json')),
                   'w') as f:
             json.dump(self.config.to_dict(), f)
-        torch.save(self.state_dict(),
-                   os.path.normpath(os.path.join(path, 'weights.bin')))
+        if quantization_config is not None:
+            weights_path: FilePath = os.path.normpath(
+                os.path.join(path, 'embedding_head.bin'))
+            torch.save(self.embedding_head.state_dict(), weights_path)
+        else:
+            weights_path: FilePath = os.path.normpath(
+                os.path.join(path, 'weights.bin'))
+            torch.save(self.state_dict(), weights_path)
 
     def _init_weights(self, module):
         std = self.config.initializer_range
@@ -793,9 +804,7 @@ class MistralModel(MistralPreTrainedModel):
 class MistralForCausalLM(MistralPreTrainedModel):
     @staticmethod
     def get_embedding_head(n_tokens: int, hidden_size: int):
-        return nn.Linear(n_tokens,
-                         hidden_size,
-                         bias=False)
+        return nn.Linear(hidden_size, hidden_size, bias=False)
 
     @classmethod
     def modules_to_not_convert(cls):
@@ -815,7 +824,7 @@ class MistralForCausalLM(MistralPreTrainedModel):
         return self.model.embed_tokens.weight.shape[1]
 
     @classmethod
-    def load_model(cls, path: str,
+    def load_model(cls, path: DirPath,
                    quantization_config: BitsAndBytesConfig = None) -> Optional[
         MistralForCausalLM]:
         from accelerate import init_empty_weights, load_checkpoint_and_dispatch
@@ -834,25 +843,35 @@ class MistralForCausalLM(MistralPreTrainedModel):
             with init_empty_weights():
                 model = MistralForCausalLM(
                     MistralConfig.from_dict(config)).half()
-            if not os.path.exists(os.path.join(path, 'weights.bin')):
-                return None
-            if quantization_config:
+                assert isinstance(model, MistralForCausalLM)
+
+            weight_path = os.path.join(path, 'weights.bin')
+            embedding_weight_path = os.path.join(path, 'embedding_head.bin')
+            if not os.path.exists(weight_path):
+                weight_path = os.path.join(Path(path).parent.absolute(),
+                                           'weights.bin')
+                if not os.path.exists(weight_path):
+                    weight_path = os.path.join(
+                        Path(path).parent.parent.absolute(),
+                        'weights.bin')
+            if quantization_config is not None:
+                if not os.path.exists(weight_path):
+                    return None
                 quantization_config.llm_int8_skip_modules = cls.modules_to_not_convert()
                 model = load_and_quantize_model(model,
-                                                weights_location=os.path.join(
-                                                    path,
-                                                    'weights.bin'),
+                                                weights_location=weight_path,
                                                 bnb_quantization_config=quantization_config,
-                                                device_map={
-                                                    "": settings.DEVICE})
+                                                device_map="auto")
+                if os.path.exists(embedding_weight_path):
+                    model.embedding_head.load_state_dict(
+                        torch.load(embedding_weight_path))
             else:
+                if not os.path.exists(weight_path):
+                    return None
                 model = load_checkpoint_and_dispatch(model,
-                                                     checkpoint=os.path.join(
-                                                         path,
-                                                         'weights.bin'),
+                                                     checkpoint=weight_path,
                                                      device_map={
                                                          "": settings.DEVICE})
-            assert isinstance(model, MistralForCausalLM)
             return model
         except FileNotFoundError:
             return None
@@ -895,9 +914,9 @@ class MistralForCausalLM(MistralPreTrainedModel):
                                  self.model.embed_tokens.num_embeddings,
                                  # 4096,
                                  bias=False)
-        self.embedding_head = nn.Linear(self.model.embed_tokens.num_embeddings,
-                                        config.hidden_size,
-                                        bias=False)
+        self.embedding_head = self.get_embedding_head(
+            self.model.embed_tokens.num_embeddings,
+            config.hidden_size)
         # Initialize weights and apply final processing
         self.apply(self._init_weights)
 
@@ -906,19 +925,22 @@ class MistralForCausalLM(MistralPreTrainedModel):
             self,
             src_ids: LongTensorT['B,TgtSeqLen'],
             src_mask: IntTensorT['B,1|TgtSeqLen,TgtSeqLen'],
-            pred_eos: bool = False,
     ) -> FloatTensorT['B,EmbedLen']:
+        # context = TransformerContext(src_ids.shape[0],
+        #                              self.embed_dim,
+        #                              self.n_decoder_layers,
+        #                              n_heads=self.n_attention_heads,
+        #                              n_key_value_heads=self.n_key_value_heads,
+        #                              encoder_memory=None)
+        context = None
         output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.model.forward(
-            src_ids=src_ids, src_mask=src_mask)
-        if pred_eos:
-            # get the last embedding, not an average of the embeddings
-            sequence_lengths = \
-                (torch.eq(src_ids, self.config.eos_token_id).long().argmax(
-                    -1) - 1)
-            bsz = output.shape[0]
-            output_eos = output[torch.arange(bsz), sequence_lengths, :]
-            return output_eos
-        return self.embedding_head(self.lm_head(output[:, -1, :]))
+            src_ids=src_ids, src_mask=src_mask, transformer_ctx=context)
+        # lm_logits = self.lm_head(output[:, -1, :])
+        # return lm_logits
+
+        embedding = self.embedding_head(output[:, -1, :])
+        return embedding
+        # return output[:, -1, :]
 
     @overrides(DecoderTransformer)
     def forward(
@@ -942,7 +964,7 @@ class MistralForCausalLM(MistralPreTrainedModel):
         output: FloatTensorT['B,1,EmbedLen'] = self.model.forward(
             src_ids=generation_ids, src_mask=src_mask,
             transformer_ctx=transformer_ctx)
-        lm_logits = self.lm_head(output)
+        lm_logits = self.lm_head(output[:, -1, :])
         return lm_logits
 
     @staticmethod

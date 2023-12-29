@@ -56,24 +56,24 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
     if enron:
         ds = EnronEmailsTagQA(model_node.tokenizer,
                               max_src_len=4096,
-                              n_episodes=1000,
+                              n_episodes=500,
                               n_query_per_cls=[2],
-                              n_support_per_cls=[2, 3, 4, 4, 5, 5])
+                              n_support_per_cls=[2, 3, 4, 5, 6, 7])
         val_ds = EnronEmailsTagQA(model_node.tokenizer,
                                   max_src_len=4096,
                                   n_episodes=25,
                                   n_query_per_cls=[2],
-                                  n_support_per_cls=[2, 3, 4, 4, 5, 5])
+                                  n_support_per_cls=[2, 3, 4, 5, 6, 7])
     if old_enron:
         ds = EnronEmailsTagging(model_node.tokenizer,
                                 max_src_len=3000,
                                 n_episodes=2000,
-                                n_query_per_cls=[2],
+                                n_query_per_cls=[1],
                                 n_support_per_cls=[1, 2, 3])
         val_ds = EnronEmailsTagging(model_node.tokenizer,
                                     max_src_len=3000,
                                     n_episodes=25,
-                                    n_query_per_cls=[2],
+                                    n_query_per_cls=[1],
                                     n_support_per_cls=[1, 2, 3])
     return ds, val_ds
 
@@ -105,6 +105,7 @@ def led_main_train():
     # Mistral Models
     # model_name = 'mistralai/Mistral-7B-v0.1'
     model_name = 'openchat/openchat_3.5'
+    # model_name = 'openchat/openchat_3.5/data_EnronEmailsTagQA_2/BEST'
     # model_name = 'facebook/bart-large-cnn'
     # model_cls = BartForBinaryTagging
     print('... loading model and tokenizer')
@@ -129,39 +130,34 @@ def led_main_train():
                                    quantization_config=quantization_cfg)
         # ModelNode.load_from_id(LEDForConditionalGeneration, model_name,
         model_node.model.train()
-
-        model_node.freeze_parameters('embedding_head')
-
         settings.print_gpu_usage()
         ds, val_ds = dataset_select(model_node, aus=False, enron=True)
-        loss_fn = torch.nn.CrossEntropyLoss(label_smoothing=0.9)
+        loss_fn = torch.nn.CrossEntropyLoss(label_smoothing=0.5)
+
         training_cfg = {}
-        lr = 0.00005
-        weight_decay = 0.00001
+        lr = 0.0001
+        weight_decay = 0.0000
         betas = (0.9, 0.98)
         eps = 1e-4
 
+        model_node.freeze_parameters('embedding_head')
         trainable_params = [p for n, p in model_node.model.named_parameters() if
                             p.requires_grad]
-        any_quantized = [p for p in trainable_params if
-                         p.dtype == torch.uint8]
-        print(trainable_params)
-        [print(n, p.dtype) for n, p in model_node.model.named_parameters()]
-        if quantize:
-            import bitsandbytes
-            optimizer = \
-                bitsandbytes.optim.PagedAdam(trainable_params,
-                                             lr=lr, weight_decay=weight_decay, )
-        else:
-            optimizer = \
-                torch.optim.Adam(trainable_params, lr=lr,
-                                 weight_decay=weight_decay,
-                                 eps=eps)
+
+        optimizer = model_node.get_optimizer(quantize=quantize, lr=lr,
+                                             params=trainable_params,
+                                             weight_decay=weight_decay,
+                                             eps=eps, betas=betas)
+
         # scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda)
         train_transition_edge = ModelTransitionEdge(model_node, loss_fn,
                                                     optimizer, ds)
-        TaggingRoutine(
-            distance_measure=DistanceMeasure.L1).train(
+        routine = TaggingRoutine(
+            distance_measure=DistanceMeasure.L2,
+            tokenizer=model_node.tokenizer, )
+
+        # routine.evaluate(model_node=model_node, val_ds=val_ds)
+        routine.train(
             model_node=model_node, ds=ds, val_ds=val_ds,
             model_edge=train_transition_edge,
             device=settings.DEVICE, distributed=False,

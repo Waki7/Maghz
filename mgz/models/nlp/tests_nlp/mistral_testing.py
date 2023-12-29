@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import math
+import os
 import time
 
 from mgz import settings
+from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagQA
 from mgz.models.nlp.mistral import MistralForCausalLM
 from mgz.models.nlp.mistral_hug import MistralForCausalLMHug
 from mgz.typing import *
-from mgz.version_control import ModelNode
+from mgz.version_control import ModelNode, Metrics
 
 
 @torch.no_grad()
@@ -172,7 +175,7 @@ def mistral_mgz():
 
             If you have already certified compliance with the Policies and Procedures during the 2001 calendar year, you need not re-certify at this time, although you are still required to to review and become familiar with the revised Policies and Procedures.  If you have not certified compliance with the Policies and Procedures during the 2001 calendar year, then you must do so within two weeks of your receipt of this message.  The LegalOnline site will allow you to quickly and conveniently certify your compliance on-line with your SAP Personal ID number.  If you have any questions concerning the Policies or Procedures, please call Bob Bruce at extension 5-7780 or Donna Lowry at extension 3-1939. 
             """
-            f"<|end_of_turn|>GPT4 Correct Assistant: ")
+            f"<|end_of_turn|>GPT4 Correct Assistant: 1. Is this e-mail about company business or strategy?: \n\n")
         text = [tag_qa_text]
 
         model_inputs = tokenizer(text, return_tensors="pt").to(
@@ -182,6 +185,11 @@ def mistral_mgz():
             src_mask=model_inputs.attention_mask,
             tgt_ids=model_inputs.input_ids,
             max_new_tokens=2000)
+
+        print(model_inputs.input_ids[:, -5:],
+              tokenizer.batch_decode(model_inputs.input_ids[:, -5:]))
+        print(generated_ids[:, -5:],
+              tokenizer.batch_decode(generated_ids[:, -5:]))
         print(tokenizer.batch_decode(generated_ids))
 
 
@@ -265,7 +273,65 @@ def mistral_mgz_hug():
         print(tokenizer.batch_decode(generated_ids))
 
 
+def verify_quantize_save_load():
+    from mgz.models.nlp.mistral import MistralForCausalLM
+
+    from mgz.model_running.nlp_routines.model_routine_tagging import \
+        DistanceMeasure, TaggingRoutine
+
+    model_name = 'openchat/openchat_3.5'
+
+    with torch.cuda.amp.autocast(enabled=True):
+        quantize = True
+        quantization_cfg = None
+        if quantize:
+            try:
+                from accelerate.utils import BnbQuantizationConfig
+                import bitsandbytes
+                quantization_cfg = BnbQuantizationConfig(
+                    load_in_8bit=quantize, )
+            except ImportError:
+                print("Module 'some_module' is not installed.")
+                quantization_cfg = None
+                quantize = False
+                print('verify_quantize_save_load test is skipped')
+                return
+
+        model_node: ModelNode = \
+            ModelNode.load_from_id(MistralForCausalLM, model_name,
+                                   model_name,
+                                   quantization_config=quantization_cfg)
+        val_ds = EnronEmailsTagQA(model_node.tokenizer,
+                                  max_src_len=4096,
+                                  n_episodes=1,
+                                  n_query_per_cls=[1],
+                                  n_support_per_cls=[2, 3, 4, 4, 5, 5])
+        routine = TaggingRoutine(
+            distance_measure=DistanceMeasure.L2,
+            tokenizer=model_node.tokenizer, )
+        original_metrics: Dict[
+            Metrics, Union[float, List[float]]] = routine.evaluate(
+            model_node=model_node, val_ds=val_ds)
+        path = model_node.get_path()
+        path = os.path.join(path, "test_save_load")
+        model_node.store_model_node(path=path)
+
+        model_node: ModelNode = \
+            ModelNode.load_from_id(MistralForCausalLM,
+                                   model_name + '/test_save_load',
+                                   model_name,
+                                   quantization_config=quantization_cfg)
+        new_metrics: Dict[
+            Metrics, Union[float, List[float]]] = routine.evaluate(
+            model_node=model_node, val_ds=val_ds)
+        print('original_metrics', original_metrics)
+        print('new_metrics', new_metrics)
+        assert (math.abs(
+            original_metrics[Metrics.VAL_ACC_MEAN] - new_metrics[
+                Metrics.VAL_ACC_MEAN]) < 0.1)
+
+
 if __name__ == '__main__':
     start_time = time.time()
-    mistral_mgz() # 16.888160467147827
+    verify_quantize_save_load()  # 16.888160467147827
     print('time taken', time.time() - start_time)

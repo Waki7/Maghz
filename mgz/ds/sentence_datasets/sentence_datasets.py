@@ -16,6 +16,7 @@ from mgz.typing import *
 class SampleType(str, Enum):
     # MultiLexSum keys
     ID = 'id'
+    FILE_NAME = 'file_name'
     INPUT_TEXT = 'sources'
     SUMMARY_TINY = 'summary/tiny'
     SUMMARY_SHORT = 'summary/short'
@@ -221,14 +222,18 @@ class TagQAMetaTaskBatch:
                 if pos_tag not in neg_tags:
                     negative_examples.add(neg_sample_idx)
             neg_sampling_tries += 1
-        tag_qa_text = (f"GPT4 Correct User: Is this e-mail about {pos_tag}? "
-                       f"<|end_of_turn|>GPT4 Correct Assistant: ")
+        qa_prefix = f"GPT4 Correct User: Does the tag \"{pos_tag}\" apply to the e-mail? "
+        qa_suffix = (f"<|end_of_turn|>GPT4 Correct Assistant: "
+                     f"Does the tag \"{pos_tag}\" apply to the e-mail? In one word:")  # last line is prompting because it seems to always start with this line (mistral openchat 3.5 does)
         pos_batch: List[Tuple[SrcStringT, LabelT]] = \
-            [(tag_qa_text + ds.data[i][SampleType.INPUT_TEXT], 1)
+            [(qa_prefix + ds.data[i][
+                SampleType.INPUT_TEXT] + qa_suffix, 1)
              for i in
              positive_examples]
+
         neg_batch: List[Tuple[SrcStringT, LabelT]] = \
-            [(tag_qa_text + ds.data[i][SampleType.INPUT_TEXT], 0)
+            [(qa_prefix + ds.data[i][
+                SampleType.INPUT_TEXT] + qa_suffix, 0)
              for i in
              negative_examples]
 
@@ -237,6 +242,7 @@ class TagQAMetaTaskBatch:
         if len(neg_batch) < min_to_have_1_query or len(
                 pos_batch) < min_to_have_1_query:
             return None
+
         batch: List[Tuple[str, int]] = neg_batch + pos_batch
         return TagQAMetaTaskBatch.collate_batch(
             batch=batch,
@@ -541,7 +547,7 @@ class MetaLearningMixIn(SentenceDataset, ABC):
         Map from tag to sample idx, to know which samples each tag apply to.
         Used to populate self._tag_to_sample_idx_map
         """
-        self._tag_to_sample_idx_map = {}
+        self._tag_to_sample_idx_map: Dict[str, List[int]] = {}
         for i in range(len(self.data)):
             for catchphrase in self.data[i][SampleType.CATCHPHRASES]:
                 if catchphrase not in self._tag_to_sample_idx_map:

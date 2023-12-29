@@ -186,7 +186,7 @@ class BaseTransformer(BaseModel):
         raise NotImplementedError
 
     @classmethod
-    def load_model(cls, path: str,
+    def load_model(cls, path: DirPath,
                    quantization_config: BitsAndBytesConfig = None) -> Self:
         raise NotImplementedError
 
@@ -323,11 +323,11 @@ class BaseTransformer(BaseModel):
 
         new_ids: LongTensorT['n_beams*B,1'] = tgt_ids.repeat(n_beams, 1)
         all_ids: LongTensorT['n_beams*B,TgtSeqStep'] = new_ids.clone()
-        for i in range(0, max_len):
+        for i in range(0, 1):
             logits: FloatTensorT['n_beams*B,VocabSize'] = \
                 self.decode(generation_ids=new_ids,
                             src_mask=src_mask,
-                            transformer_ctx=context)[:, -1, :]
+                            transformer_ctx=context)
             probs = FloatTensorT(torch.log_softmax(logits, dim=-1))
             new_ids: LongTensorT[
                 'n_beams*B,1'] = beam_search.select_ids_from_logprobs(

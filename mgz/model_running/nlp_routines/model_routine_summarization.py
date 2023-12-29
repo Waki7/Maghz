@@ -6,7 +6,6 @@ import spaces as sp
 # from mgz.ds import DataState
 from mgz.ds.base_dataset import BaseDataset
 from mgz.model_running.base_routine import BaseProtocol
-from mgz.model_running.run_ops import run_epoch
 
 
 class SummarizationRoutine(BaseProtocol):

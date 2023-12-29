@@ -3,12 +3,15 @@ from __future__ import annotations
 import json
 import os
 
+from accelerate.utils import BnbQuantizationConfig
+from torch.nn import Parameter
+from transformers import PreTrainedTokenizer, BitsAndBytesConfig
+
 import mgz.version_control as vc
 from mgz.models.base_model import BaseModel
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.typing import *
 from mgz.version_control.metrics import Metrics
-from transformers import PreTrainedTokenizer, BitsAndBytesConfig
 
 if TYPE_CHECKING:
     from mgz.models.nlp.led import LEDModel, LEDForConditionalGeneration
@@ -31,7 +34,8 @@ class ModelNode:
     def __init__(self, model: Union[
         BaseModel, BaseTransformer, LEDModel, LEDForConditionalGeneration],
                  tokenizer: PreTrainedTokenizer, model_id: str,
-                 metrics: Dict[Metrics, Union[List[float], float]] = None):
+                 metrics: Dict[Metrics, Union[List[float], float]] = None,
+                 quantization_config: Optional[BnbQuantizationConfig] = None):
         """
         Currently model_id is last in case we want to introduce the ability
         to have an auto populated ID.
@@ -42,8 +46,11 @@ class ModelNode:
         self.tokenizer = tokenizer
         self.edges_out: List[ModelTransitionEdge] = []
         self.edge_data = []
-
+        self.quantization_config = quantization_config
         self.metrics: Dict[Metrics, Union[float, List[float]]] = {}
+
+    def get_path(self) -> DirPath:
+        return vc.CACHED_INDEXER.path_from_id(self.model_id)
 
     def to_json(self) -> str:
         obj_dict = {'model_id': self.model_id, 'model_cls': self.model_cls,
@@ -62,6 +69,39 @@ class ModelNode:
                     param.requires_grad = True
                 else:
                     param.requires_grad = False
+
+    def split_parameters_group(self, match_string: str):
+        params_match = []
+        params_no_match = []
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                if match_string in name:
+                    params_match.append(param)
+                else:
+                    params_no_match.append(param)
+        return params_match, params_no_match
+
+    def get_optimizer(self, quantize: bool, lr: float,
+                      params: List[
+                          Union[Dict[str, Union[
+                              List[Parameter], float]], Parameter]] = None,
+                      weight_decay: float = 0.0, eps=1e-8,
+                      betas: Tuple[float, float] = (0.9, 0.999)
+                      ):
+        if params is None:
+            params = [p for n, p in self.model.named_parameters() if
+                      p.requires_grad]
+        import bitsandbytes
+        optimizer = \
+            bitsandbytes.optim.PagedAdam(params,
+                                         lr=lr, weight_decay=weight_decay,
+                                         betas=betas)
+        # else:
+        #     optimizer = \
+        #         torch.optim.Adam(params, lr=lr,
+        #                          weight_decay=weight_decay,
+        #                          eps=eps, betas=betas)
+        return optimizer
 
     @classmethod
     def load_from_id(cls, model_cls: Type[BaseTransformer], model_id: str,
@@ -117,6 +157,6 @@ class ModelNode:
         model_dir = vc.CACHED_INDEXER.path_from_id(self.model_id)
         if path is not None:
             model_dir = path
-        self.model.save(model_dir)
+        self.model.save(model_dir, self.quantization_config)
         self.tokenizer.save_pretrained(model_dir)
         self.store_metrics()
