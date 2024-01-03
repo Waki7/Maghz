@@ -18,12 +18,14 @@ if TYPE_CHECKING:
 class BaseNLPProtocol(BaseProtocol):
     __metaclass__ = ABCMeta
 
-    @abstractmethod
     def __init__(self,
                  tokenizer: hug.PreTrainedTokenizerBase = None,
-                 debug: bool = False):
+                 gpu_max_batch_size: int = 4,
+                 debug: bool = False,
+                 ):
         self.tokenizer = tokenizer
         self.debug = debug
+        self.gpu_max_batch_size = gpu_max_batch_size
 
     def debug_log_batch_info(self, batch: TagQAMetaTaskBatch):
         if self.debug:
@@ -32,7 +34,7 @@ class BaseNLPProtocol(BaseProtocol):
             print(f' First email that has a {batch.query_lbls[0]} tag-----')
             print(self.tokenizer.batch_decode(batch.queries,
                                               skip_special_tokens=True)[0])
-            print(f' Second email that has a {batch.query_lbls[0]} tag-----')
+            print(f' Second email that has a {batch.query_lbls[1]} tag-----')
             print(self.tokenizer.batch_decode(batch.queries,
                                               skip_special_tokens=True)[1])
 
@@ -84,6 +86,7 @@ class BaseNLPProtocol(BaseProtocol):
                 optimizer.zero_grad()
                 if scheduler is not None: scheduler.step()
                 model_edge.train_state.accum_step += 1
+
             model_edge.train_state.step += 1
 
             if (batch_num + 1) % log_interval == 0:

@@ -16,52 +16,156 @@ from tqdm import tqdm
 from transformers import PreTrainedTokenizer, LlamaTokenizerFast
 
 # from transformers import BartConfig, LEDConfig
+import mgz.settings as settings
+import torch.nn
+from mgz.model_running.run_ops import embedding_controller, \
+    tagging_embedding_controller, generate_controller
+from mgz.models.nlp.base_transformer import BaseTransformer
+from mgz.models.nlp.led import LEDForConditionalGeneration
+from mgz.models.nlp.mistral import MistralForCausalLM
+from mgz.typing import *
+from mgz.version_control import ModelNode
+from tqdm import tqdm
+from transformers import PreTrainedTokenizerBase, LEDTokenizerFast, \
+    LlamaTokenizerFast
 
+
+QUANTIZE = True
 DEVICE = settings.DEVICE
-
-TOKENIZERS: Dict[str, PreTrainedTokenizer] = {}
+DEBUG = False
+TOKENIZERS: Dict[str, PreTrainedTokenizerBase] = {}
 MODELS: Dict[str, BaseTransformer] = {}
-# MODEL_NAME = "allenai/led-base-16384-multi_lexsum-source-long/train_step_18215_data_data_cls-AusCaseReportsToTagGrouped-_valacc_None"
-MODEL_NAME = "openchat/openchat_3.5"
+TAGGING_MODEL = "/home/ceyer/Documents/Projects/LoA/backend/model_weights/tagging"
+SUMMARIZATION_MODEL = "/home/ceyer/Documents/Projects/LoA/backend/model_weights/summarization"
+
+if QUANTIZE:
+    try:
+        from accelerate.utils import BnbQuantizationConfig
+        import bitsandbytes
+
+        # quantization_cfg = BitsAndBytesConfig(load_in_8bit=quantize)
+        QUANT_CFG = BnbQuantizationConfig(
+            load_in_8bit=True, )
+    except ImportError:
+        print("Module 'some_module' is not installed.")
+        QUANT_CFG = None
+else:
+    QUANT_CFG = None
 
 
-def load_models():
-    print('loading model {}... '.format(MODEL_NAME))
-    model_node: ModelNode = lookup_or_init_model(MistralForCausalLM,
-                                                 MODEL_NAME,
-                                                 MODEL_NAME)
+def try_load_summarization_model():
+    if SUMMARIZATION_MODEL in MODELS:
+        return
+    print('loading model {} on device {}... '.format(
+        SUMMARIZATION_MODEL, DEVICE))
+    model_node: ModelNode = ModelNode.load_from_id(LEDForConditionalGeneration,
+                                                   SUMMARIZATION_MODEL,
+                                                   SUMMARIZATION_MODEL,
+                                                   quantization_config=QUANT_CFG)
     model: LEDForConditionalGeneration = model_node.model
-    tokenizer: PreTrainedTokenizer = model_node.tokenizer
+    tokenizer: PreTrainedTokenizerBase = model_node.tokenizer
     model.to(DEVICE)
     model.eval()
-    MODELS[model_node.model_id] = model
-    TOKENIZERS[model_node.model_id] = tokenizer
-    print('loaded model {}... '.format(MODEL_NAME))
+    MODELS[SUMMARIZATION_MODEL] = model
+    TOKENIZERS[SUMMARIZATION_MODEL] = tokenizer
+    print(
+        'loaded model {} on device {}... '.format(SUMMARIZATION_MODEL, DEVICE))
+
+
+def try_load_tagging_model():
+    if TAGGING_MODEL in MODELS:
+        return
+    print('loading model {} on device {}... '.format(
+        TAGGING_MODEL, DEVICE))
+    model_node: ModelNode = ModelNode.load_from_id(MistralForCausalLM,
+                                                   TAGGING_MODEL,
+                                                   TAGGING_MODEL,
+                                                   quantization_config=QUANT_CFG)
+    model: LEDForConditionalGeneration = model_node.model
+    tokenizer: PreTrainedTokenizerBase = model_node.tokenizer
+    model.to(DEVICE)
+    model.eval()
+    MODELS[TAGGING_MODEL] = model
+    TOKENIZERS[TAGGING_MODEL] = tokenizer
+    print('loaded model {} on device {}... '.format(TAGGING_MODEL, DEVICE))
+
+
+def try_load_models():
+    try_load_tagging_model()
+    try_load_summarization_model()
+
+
+def load_tokenizers():
+    tokenizer = LEDForConditionalGeneration.load_tokenizer(SUMMARIZATION_MODEL)
+    TOKENIZERS[SUMMARIZATION_MODEL] = tokenizer
+
+    tokenizer = MistralForCausalLM.load_tokenizer(TAGGING_MODEL)
+    TOKENIZERS[TAGGING_MODEL] = tokenizer
+
+
+
+def get_tagging_tokenizer() -> PreTrainedTokenizerBase:
+    if TAGGING_MODEL not in TOKENIZERS:
+        load_tokenizers()
+    return TOKENIZERS[TAGGING_MODEL]
+
+
+def clear_models():
+    MODELS.clear()
+    TOKENIZERS.clear()
 
 
 def estimate_vram_usage(model: torch.nn.Module, in_shape) -> int:
-    vram = settings.VRAM
     if DEVICE == torch.device('cpu'):
         return 1
-    return 4
+    return 8
 
 
+@torch.no_grad()
+def summarize(source_texts: List[SrcStringT]) -> List[SummaryT]:
+    if len(source_texts) == 0:
+        return []
+    with torch.no_grad():
+        model = cast(LEDForConditionalGeneration, MODELS[SUMMARIZATION_MODEL])
+        model.eval()
+        tokenizer = cast(LEDTokenizerFast, TOKENIZERS[SUMMARIZATION_MODEL])
+        response = generate_controller(model=model, texts=source_texts,
+                                       tokenizer=tokenizer)
+        summary: List[str] = tokenizer.batch_decode(response,
+                                                    skip_special_tokens=True)
+        return summary
+
+
+@torch.no_grad()
+def bulk_summarize_auto_batch(texts: List[SrcStringT]) -> List[SummaryT]:
+    if len(texts) == 0:
+        return []
+    bsz = estimate_vram_usage(SUMMARIZATION_MODEL, len(texts[0]))
+    summaries: List[SummaryT] = []
+    for i in tqdm(range(0, len(texts), bsz)):
+        batch_summaries = summarize(texts[i:min(i + bsz, len(texts))])
+        summaries.extend(batch_summaries)
+    return summaries
+
+
+@torch.no_grad()
 def embed(texts: List[SrcStringT]) -> List[NDArrayT['EmbedLen']]:
     if len(texts) == 0:
         return []
     with torch.no_grad():
         torch.manual_seed(5)
         embedding: FloatTensorT['B,EmbedLen'] = \
-            embedding_controller(model=MODELS[MODEL_NAME], texts=texts,
-                                 tokenizer=TOKENIZERS[MODEL_NAME])
+            embedding_controller(model=MODELS[TAGGING_MODEL], texts=texts,
+                                 tokenizer=TOKENIZERS[TAGGING_MODEL])
         return list(embedding.cpu().numpy())
 
 
+@torch.no_grad()
 def bulk_encode_auto_batch(texts: List[SrcStringT]) -> List[
     NDArrayT['EmbedLen']]:
     if len(texts) == 0:
         return []
-    bsz = estimate_vram_usage(MODEL_NAME, len(texts[0]))
+    bsz = estimate_vram_usage(SUMMARIZATION_MODEL, len(texts[0]))
     embeddings: List[NDArrayT['EmbedLen']] = []
     for i in tqdm(range(0, len(texts), bsz)):
         batch_embeddings = embed(texts[i:min(i + bsz, len(texts))])
@@ -69,18 +173,25 @@ def bulk_encode_auto_batch(texts: List[SrcStringT]) -> List[
     return embeddings
 
 
-def get_tag_apply_embedding(doc_text: str, tag_text: str) -> NDArrayT[
-    'EmbedLen']:
+def get_tag_apply_embedding(doc_text: SrcStringT, tag_text: TgtStringT) -> \
+        NDArrayT['EmbedLen']:
     with torch.no_grad():
-        model: LEDForConditionalGeneration = MODELS[MODEL_NAME]
-        torch.manual_seed(5)
-        logits: FloatTensorT['B,EmbedLen'] = \
-            embedding_controller(model=model, texts=[doc_text, ],
-                                 tokenizer=TOKENIZERS[MODEL_NAME], )
+        model = cast(LEDForConditionalGeneration, MODELS[TAGGING_MODEL])
+
+        logits: FloatTensorT['B,EmbedLen']
+        if DEBUG:
+            logits = FloatTensorT(torch.rand(1, model.embed_dim))
+        else:
+            logits = tagging_embedding_controller(model=model,
+                                                  texts=[doc_text, ],
+                                                  tag_text=[tag_text, ],
+                                                  tokenizer=TOKENIZERS[
+                                                      TAGGING_MODEL], )
         embedding: FloatTensorT['EmbedLen'] = logits.flatten()
         return embedding.cpu().numpy()
 
 
+@torch.no_grad()
 def predict_tag(association_embedding: NDArrayT['EmbedLen'],
                 positive_embedding: NDArrayT[
                     'EmbedLen'], negative_embedding: NDArrayT[
@@ -88,40 +199,27 @@ def predict_tag(association_embedding: NDArrayT['EmbedLen'],
     association_embedding = FloatTensorT(association_embedding)
     positive_embedding = FloatTensorT(positive_embedding)
     negative_embedding = FloatTensorT(negative_embedding)
-    print('association shape', association_embedding.shape)
-    print('positive shape', positive_embedding.shape)
-    print('positive shape', positive_embedding)
-    print('negative shape', negative_embedding.shape)
-    print('negative shape', negative_embedding)
+
     distance_from_pos = torch.linalg.norm(
         association_embedding - positive_embedding, dim=-1, ord=2)
-    print('distance from pos', distance_from_pos.shape)
-    print('distance from pos', distance_from_pos)
     distance_from_neg = torch.linalg.norm(
         association_embedding - negative_embedding, dim=-1, ord=2)
-    print('distance from neg', distance_from_neg.shape)
-    print('distance from neg', distance_from_neg)
     probabilities: FloatTensorT['2'] = FloatTensorT(torch.softmax(
-        -1 * torch.stack([distance_from_neg, distance_from_pos],
-                         dim=-1).float(),
+        -1 * torch.stack([distance_from_neg, distance_from_pos], dim=-1),
         dim=-1))
-    print(torch.stack([distance_from_neg, distance_from_pos],
-                      dim=-1).float())
-    print(probabilities)
-    exit(3)
     # pos is in index 0, pos in index 1, so when we take the argmax, we get 0
     # (false) or 1 (true)
     max_idx: int = probabilities.argmax(-1).item()
-    return bool(max_idx), probabilities
+    return bool(max_idx), float(probabilities[max_idx])
 
 
 def importing_sample_data() -> List[Dict[str, Union[int, str, FloatTensorT]]]:
     from mgz.ds.sentence_datasets.enron_emails import SampleType, \
         EnronEmailsTagging
     import transformers as hug
-    cfg: hug.LEDConfig = MODELS[MODEL_NAME].config
+    cfg: hug.LEDConfig = MODELS[SUMMARIZATION_MODEL].config
     # tokenizer = BartTokenizer.from_pretrained("facebook/bart-large")
-    tokenizer = TOKENIZERS[MODEL_NAME]
+    tokenizer = TOKENIZERS[SUMMARIZATION_MODEL]
 
     ds = EnronEmailsTagging(tokenizer,
                             max_src_len=2000,
@@ -216,7 +314,7 @@ def importing_sample_data() -> List[Dict[str, Union[int, str, FloatTensorT]]]:
 
 def hand_select():
     random.seed(14)
-    load_models()
+    try_load_models()
     sample_tags = []
     [sample_tags.extend(sample['tags']) for sample in importing_sample_data()]
     ordered_dict = OrderedDict((tag, None) for tag in sample_tags)
@@ -276,9 +374,9 @@ def hand_select():
 
 def validation():
     routine = TaggingRoutine()
-    model_node: ModelNode = ModelNode.load_from_id(MistralForCausalLM,
-                                                   MODEL_NAME,
-                                                   MODEL_NAME)
+    model_node: ModelNode = ModelNode.load_from_id(LEDForConditionalGeneration,
+                                                   SUMMARIZATION_MODEL,
+                                                   SUMMARIZATION_MODEL)
     tokenizer = cast(LlamaTokenizerFast, model_node.tokenizer)
     model_node.model.to(DEVICE)
     val_ds = EnronEmailsTagQA(tokenizer,

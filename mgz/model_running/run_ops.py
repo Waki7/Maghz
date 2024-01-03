@@ -4,6 +4,7 @@ import torch.utils.data
 from transformers import PreTrainedTokenizerBase
 
 import mgz.settings as settings
+from mgz.ds.sentence_datasets.gpt_input_augments import summarization_augment
 from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask, \
     strings_to_padded_id_tensor_w_mask
 from mgz.models.nlp.base_transformer import BaseTransformer, \
@@ -111,6 +112,34 @@ def generate_controller(model: BaseTransformer, texts: List[str],
     generated_ids = model.generate(
         src_ids=model_inputs.input_ids,
         src_mask=model_inputs.attention_mask,
+        tgt_ids=model_inputs.input_ids,
+        max_new_tokens=2000)
+    return tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+
+
+@torch.no_grad()
+def summarize_controller(model: DecoderTransformer, texts: List[str],
+                         tokenizer: PreTrainedTokenizerBase,
+                         ):
+    """
+    Generates sequences using a Transformer-based model for a list of input texts.
+
+    Args:
+        model (BaseTransformer): The Transformer-based model.
+        texts (List[str]): List of input texts to use as prompts.
+        tokenizer (PreTrainedTokenizerBase): Tokenizer for text encoding.
+
+    Returns:
+        Tensor: Generated sequences.
+    """
+    texts = [summarization_augment(text) for text in texts]
+    model_inputs = tokenizer(texts, return_tensors="pt").to(
+        settings.DEVICE)
+    # model.config.max_length = 7
+    generated_ids = model.generate(
+        src_ids=model_inputs.input_ids,
+        src_mask=model_inputs.attention_mask,
+        tgt_ids=model_inputs.input_ids,
         max_new_tokens=2000)
     return tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
 

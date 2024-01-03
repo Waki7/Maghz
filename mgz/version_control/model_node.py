@@ -85,7 +85,7 @@ class ModelNode:
                       params: List[
                           Union[Dict[str, Union[
                               List[Parameter], float]], Parameter]] = None,
-                      weight_decay: float = 0.0, eps=1e-8,
+                      weight_decay: float = 0.0, eps=1e-4,
                       betas: Tuple[float, float] = (0.9, 0.999)
                       ):
         if params is None:
@@ -93,9 +93,9 @@ class ModelNode:
                       p.requires_grad]
         import bitsandbytes
         optimizer = \
-            bitsandbytes.optim.PagedAdam(params,
+            bitsandbytes.optim.PagedAdam8bit(params,
                                          lr=lr, weight_decay=weight_decay,
-                                         betas=betas)
+                                         betas=betas, eps=eps)
         # else:
         #     optimizer = \
         #         torch.optim.Adam(params, lr=lr,

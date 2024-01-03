@@ -11,7 +11,7 @@ import transformers as hug
 from torch import nn
 from transformers import BitsAndBytesConfig, MistralConfig
 from transformers.activations import ACT2FN
-from transformers.utils.import_utils import is_flash_attn_available
+from transformers.utils.import_utils import is_flash_attn_2_available
 
 import mgz.settings as settings
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext, \
@@ -19,7 +19,7 @@ from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext,
 from mgz.typing import *
 from mgz.version_control.model_index import get_models_path
 
-if is_flash_attn_available():
+if is_flash_attn_2_available():
     from flash_attn import flash_attn_func
 
     _flash_supports_window_size = "window_size" in list(

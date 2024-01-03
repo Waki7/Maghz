@@ -9,7 +9,10 @@ from abc import ABC
 
 import torch.utils.checkpoint
 import transformers as hug
+from accelerate import init_empty_weights
+from accelerate.utils import load_and_quantize_model
 from torch import nn
+from transformers import BitsAndBytesConfig
 from transformers.activations import ACT2FN
 from transformers.models.bart.configuration_bart import BartConfig
 
@@ -505,19 +508,6 @@ class BartDecoder(nn.Module):
 
 
 class BartModel(BartPretrainedModel):
-    @classmethod
-    def load_model(cls, path: str) -> Optional[BartModel]:
-        try:
-            with open(os.path.normpath(os.path.join(path, 'config.json')),
-                      'r') as f:
-                config = json.load(f)
-            model = BartModel(
-                hug.BartConfig.from_dict(config))
-            model.load_state_dict(torch.load(os.path.join(path, 'weights.bin'),
-                                             map_location=torch.device('cpu')))
-            return model
-        except FileNotFoundError:
-            return None
 
     @classmethod
     def initial_save(cls, model_id: str, path: str):
@@ -570,15 +560,24 @@ class BartModel(BartPretrainedModel):
 
 class BartForConditionalGeneration(BartPretrainedModel):
     @classmethod
-    def load_model(cls, path: str) -> Optional[BartModel]:
+    def load_model(cls, path: str,
+                   quantization_config: BitsAndBytesConfig = None) -> Optional[
+        BartModel]:
         try:
             with open(os.path.normpath(os.path.join(path, 'config.json')),
                       'r') as f:
                 config = json.load(f)
-            model = BartForConditionalGeneration(
-                hug.BartConfig.from_dict(config))
-            model.load_state_dict(torch.load(os.path.join(path, 'weights.bin'),
-                                             map_location=torch.device('cpu')))
+            with init_empty_weights():
+                model = BartForConditionalGeneration(
+                    hug.BartConfig.from_dict(config))
+            weight_path = os.path.join(path, 'weights.bin')
+            if not os.path.exists(weight_path):
+                return None
+            model = load_and_quantize_model(model,
+                                            weights_location=weight_path,
+                                            bnb_quantization_config=quantization_config,
+                                            device_map="auto")
+            assert isinstance(model, BartModel)
             return model
         except FileNotFoundError:
             return None
@@ -592,8 +591,9 @@ class BartForConditionalGeneration(BartPretrainedModel):
         with open(os.path.normpath(os.path.join(path, 'config.json')),
                   'w') as f:
             json.dump(model_hug.config.to_dict(), f)
-        torch.save(model_hug.state_dict(),
-                   os.path.normpath(os.path.join(path, 'weights.bin')))
+        weight_path = os.path.normpath(os.path.join(path, 'weights.bin'))
+        torch.save(model_hug.state_dict(), weight_path)
+        logging.info('Saved model to %s', weight_path)
         tokenizer = hug.BartTokenizerFast.from_pretrained(model_id)
         tokenizer.save_pretrained(path)
 
@@ -728,3 +728,4 @@ class BartForConditionalGeneration(BartPretrainedModel):
                       layer_past[:2]) + layer_past[2:],
             )
         return reordered_past
+

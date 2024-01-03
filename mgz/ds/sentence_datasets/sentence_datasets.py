@@ -10,6 +10,7 @@ import torch.utils.data
 from transformers import PreTrainedTokenizerBase, BatchEncoding
 
 from mgz.ds.base_dataset import BaseDataset, DataState
+from mgz.ds.sentence_datasets.gpt_input_augments import tag_question_augment
 from mgz.typing import *
 
 
@@ -222,20 +223,22 @@ class TagQAMetaTaskBatch:
                 if pos_tag not in neg_tags:
                     negative_examples.add(neg_sample_idx)
             neg_sampling_tries += 1
-        qa_prefix = f"GPT4 Correct User: Does the tag \"{pos_tag}\" apply to the e-mail? "
-        qa_suffix = (f"<|end_of_turn|>GPT4 Correct Assistant: "
-                     f"Does the tag \"{pos_tag}\" apply to the e-mail? In one word:")  # last line is prompting because it seems to always start with this line (mistral openchat 3.5 does)
+
         pos_batch: List[Tuple[SrcStringT, LabelT]] = \
-            [(qa_prefix + ds.data[i][
-                SampleType.INPUT_TEXT] + qa_suffix, 1)
-             for i in
-             positive_examples]
+            [(
+                # ds.data[i][SampleType.FILE_NAME] +
+                tag_question_augment(ds.data[i][
+                                         SampleType.INPUT_TEXT], pos_tag), 1)
+                for i in
+                positive_examples]
 
         neg_batch: List[Tuple[SrcStringT, LabelT]] = \
-            [(qa_prefix + ds.data[i][
-                SampleType.INPUT_TEXT] + qa_suffix, 0)
-             for i in
-             negative_examples]
+            [(
+                #                 ds.data[i][SampleType.FILE_NAME] +
+                tag_question_augment(ds.data[i][
+                                         SampleType.INPUT_TEXT], pos_tag), 0)
+                for i in
+                negative_examples]
 
         # TODO fix so we catch this earlier
         min_to_have_1_query = n_support_per_cls + 1

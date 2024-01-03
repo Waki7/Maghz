@@ -72,7 +72,7 @@ class TestLED(unittest.TestCase):
     @torch.no_grad()
     def test_quantize_save_load(self):
         import gc
-        model_name = 'openchat/openchat_3.5'
+        model_name = 'allenai/led-base-16384-multi_lexsum-source-tiny'
         test_ids = torch.ones((1, 10), dtype=torch.long).to(settings.DEVICE)
         test_mask = torch.ones((1, 10), dtype=torch.long).to(settings.DEVICE)
 

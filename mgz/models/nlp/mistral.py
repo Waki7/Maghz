@@ -804,12 +804,12 @@ class MistralModel(MistralPreTrainedModel):
 class MistralForCausalLM(MistralPreTrainedModel):
     @staticmethod
     def get_embedding_head(n_tokens: int, hidden_size: int):
-        return nn.Linear(hidden_size, hidden_size, bias=False)
+        # return nn.Linear(hidden_size + 2, hidden_size, bias=False)
+        return nn.Linear(hidden_size , hidden_size, bias=False)
 
     @classmethod
     def modules_to_not_convert(cls):
-        return ['model.encoder.embed_tokens', 'model.decoder.embed_tokens',
-                'lm_head' + 'embedding_head']
+        return ['lm_head', 'embedding_head']
 
     def get_encoder(self):
         raise NotImplementedError
@@ -840,10 +840,13 @@ class MistralForCausalLM(MistralPreTrainedModel):
                                 quantization_config,
                                 config.quantization_config))
                     quantization_config = config.quantization_config
-            with init_empty_weights():
+            if torch.cuda.is_available():
+                with init_empty_weights():
+                    model = MistralForCausalLM(
+                        MistralConfig.from_dict(config)).half()
+            else:
                 model = MistralForCausalLM(
                     MistralConfig.from_dict(config)).half()
-                assert isinstance(model, MistralForCausalLM)
 
             weight_path = os.path.join(path, 'weights.bin')
             embedding_weight_path = os.path.join(path, 'embedding_head.bin')
@@ -857,7 +860,7 @@ class MistralForCausalLM(MistralPreTrainedModel):
             if quantization_config is not None:
                 if not os.path.exists(weight_path):
                     return None
-                quantization_config.llm_int8_skip_modules = cls.modules_to_not_convert()
+                quantization_config.skip_modules = cls.modules_to_not_convert()
                 model = load_and_quantize_model(model,
                                                 weights_location=weight_path,
                                                 bnb_quantization_config=quantization_config,
@@ -872,6 +875,7 @@ class MistralForCausalLM(MistralPreTrainedModel):
                                                      checkpoint=weight_path,
                                                      device_map={
                                                          "": settings.DEVICE})
+            assert isinstance(model, MistralForCausalLM)
             return model
         except FileNotFoundError:
             return None
@@ -921,28 +925,6 @@ class MistralForCausalLM(MistralPreTrainedModel):
         self.apply(self._init_weights)
 
     @overrides(DecoderTransformer)
-    def decoder_embedding(
-            self,
-            src_ids: LongTensorT['B,TgtSeqLen'],
-            src_mask: IntTensorT['B,1|TgtSeqLen,TgtSeqLen'],
-    ) -> FloatTensorT['B,EmbedLen']:
-        # context = TransformerContext(src_ids.shape[0],
-        #                              self.embed_dim,
-        #                              self.n_decoder_layers,
-        #                              n_heads=self.n_attention_heads,
-        #                              n_key_value_heads=self.n_key_value_heads,
-        #                              encoder_memory=None)
-        context = None
-        output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.model.forward(
-            src_ids=src_ids, src_mask=src_mask, transformer_ctx=context)
-        # lm_logits = self.lm_head(output[:, -1, :])
-        # return lm_logits
-
-        embedding = self.embedding_head(output[:, -1, :])
-        return embedding
-        # return output[:, -1, :]
-
-    @overrides(DecoderTransformer)
     def forward(
             self,
             src_ids: LongTensorT['B,SrcSeqLen'],
@@ -966,6 +948,110 @@ class MistralForCausalLM(MistralPreTrainedModel):
             transformer_ctx=transformer_ctx)
         lm_logits = self.lm_head(output[:, -1, :])
         return lm_logits
+
+    def _change_output_if_configured(self, output: FloatTensorT[
+        'B,Opt[SrcSeqLen],EmbedLen']) -> FloatTensorT[
+        'B,Opt[SrcSeqLen],EmbedLen+2']:
+        if self.embedding_head.weight.shape[1] == self.embed_dim + 2:
+            if len(output.shape) == 2:
+                output = FloatTensorT(
+                    torch.cat([output, torch.zeros_like(output[:, :2])],
+                              dim=-1))
+            else:
+                output = FloatTensorT(
+                    torch.cat([output, torch.zeros_like(output[:, :, :2])],
+                              dim=-1))
+        return output
+
+    @overrides(DecoderTransformer)
+    def decode_logits(self,
+                      src_ids: LongTensorT['B,SrcSeqLen'],
+                      src_mask: IntTensorT['B,SrcSeqLen'],
+                      ret_last: bool = True) -> (
+            LogitsTensorT)['B,Opt[SrcSeqLen],VocabSize']:
+        output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.model.forward(
+            src_ids=src_ids, src_mask=src_mask)
+        if ret_last:
+            output = output[:, -1, :]
+        output = self._change_output_if_configured(output)
+        lm_logits = self.lm_head(output)
+        return lm_logits
+
+    @overrides(DecoderTransformer)
+    def decoder_embedding(self,
+                          src_ids: LongTensorT['B,SrcSeqLen'],
+                          src_mask: IntTensorT['B,SrcSeqLen'],
+                          ret_last: bool = True) -> \
+            FloatTensorT['B,Opt[SrcSeqLen],EmbedLen']:
+        output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.model.forward(
+            src_ids=src_ids, src_mask=src_mask)
+        if ret_last:
+            output = output[:, -1, :]
+        output = self._change_output_if_configured(output)
+        embedding = self.embedding_head(output)
+        return embedding
+
+    @overrides(DecoderTransformer)
+    def decoder_embedding_w_logits(self,
+                                   src_ids: LongTensorT['B,SrcSeqLen'],
+                                   src_mask: IntTensorT['B,SrcSeqLen'],
+                                   ret_last: bool = True) -> \
+            Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], FloatTensorT[
+                'B,Opt[SrcSeqLen],VocabSize']]:
+        output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.model.forward(
+            src_ids=src_ids, src_mask=src_mask)
+        if ret_last:
+            output = output[:, -1, :]
+        output = self._change_output_if_configured(output)
+        lm_logits = self.lm_head(output)
+        embedding = self.embedding_head(output)
+        return embedding, lm_logits
+
+    @overrides(DecoderTransformer)
+    def decode_relevance(self,
+                         src_ids: LongTensorT['B,SrcSeqLen'],
+                         src_mask: IntTensorT['B,SrcSeqLen']) -> \
+            FloatTensorT['B,2']:
+
+        def get_llama_no_yes_scores(logits: FloatTensorT['NQuery,NClasses']):
+            assert logits.shape[-1] == 32002
+            n_yes = 4
+            Yes_id = 5613
+            block_Yes_id = 5592
+            yes_id = 9780
+            block_yes_id = 5081
+            yes_ids = [Yes_id, block_Yes_id, yes_id, block_yes_id]
+
+            n_no = 6
+            NO_id = 4032
+            block_NO_id = 7929
+            no_id = 1510
+            block_no_id = 708
+            No_id = 2501
+            block_No_id = 1770
+            no_ids = [NO_id, block_NO_id, no_id, block_no_id, No_id,
+                      block_No_id]
+
+            yes_no_logits = logits[:, no_ids + yes_ids]
+            no_score = torch.mean(yes_no_logits[:, :n_no], dim=-1)
+            yes_score = torch.mean(yes_no_logits[:, -n_yes:], dim=-1)
+            similarity_to_classes = FloatTensorT(
+                torch.stack([no_score, yes_score], dim=-1))
+            return similarity_to_classes
+
+        output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.model.forward(
+            src_ids=src_ids, src_mask=src_mask)
+        output = output[:, -1, :]
+        lm_logits = self.lm_head(output)
+        no_yes_score = get_llama_no_yes_scores(lm_logits)
+        # no_yes_score = nn.Tanh()(get_llama_no_yes_scores(lm_logits))
+
+        output = output
+        #         output = nn.Tanh()(output)
+        assert self.embedding_head.weight.shape[1] == self.embed_dim + 2
+        output = FloatTensorT(torch.cat([output, no_yes_score], dim=-1))
+        embedding = self.embedding_head(output)
+        return embedding
 
     @staticmethod
     def _reorder_cache(past, beam_idx):

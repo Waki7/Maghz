@@ -62,7 +62,7 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
         val_ds = EnronEmailsTagQA(model_node.tokenizer,
                                   max_src_len=4096,
                                   n_episodes=25,
-                                  n_query_per_cls=[2],
+                                  n_query_per_cls=[1],
                                   n_support_per_cls=[2, 3, 4, 5, 6, 7])
     if old_enron:
         ds = EnronEmailsTagging(model_node.tokenizer,
@@ -132,7 +132,8 @@ def led_main_train():
         model_node.model.train()
         settings.print_gpu_usage()
         ds, val_ds = dataset_select(model_node, aus=False, enron=True)
-        loss_fn = torch.nn.CrossEntropyLoss(label_smoothing=0.5)
+        # loss_fn = torch.nn.NLLLoss()
+        loss_fn = torch.nn.CrossEntropyLoss(label_smoothing=0.0)
 
         training_cfg = {}
         lr = 0.0001
@@ -154,14 +155,14 @@ def led_main_train():
                                                     optimizer, ds)
         routine = TaggingRoutine(
             distance_measure=DistanceMeasure.L2,
-            tokenizer=model_node.tokenizer, )
+            tokenizer=model_node.tokenizer, debug=False)
 
         # routine.evaluate(model_node=model_node, val_ds=val_ds)
         routine.train(
             model_node=model_node, ds=ds, val_ds=val_ds,
             model_edge=train_transition_edge,
             device=settings.DEVICE, distributed=False,
-            turn_off_shuffle=False, n_epochs=5, )
+            turn_off_shuffle=False, n_epochs=10, )
         torch.cuda.empty_cache()
 
 

@@ -9,7 +9,7 @@ from abc import ABC
 
 import torch.utils.checkpoint
 import transformers as hug
-from accelerate import init_empty_weights
+from accelerate import init_empty_weights, load_checkpoint_and_dispatch
 from accelerate.utils import load_and_quantize_model
 from torch import nn
 from transformers import BitsAndBytesConfig
@@ -1325,10 +1325,16 @@ class LEDForConditionalGeneration(LEDPretrainedModel):
             weight_path = os.path.join(path, 'weights.bin')
             if not os.path.exists(weight_path):
                 return None
-            model = load_and_quantize_model(model,
-                                            weights_location=weight_path,
-                                            bnb_quantization_config=quantization_config,
-                                            device_map="auto")
+            if quantization_config is not None:
+                model = load_and_quantize_model(model,
+                                                weights_location=weight_path,
+                                                bnb_quantization_config=quantization_config,
+                                                device_map="auto")
+            else:
+                model = load_checkpoint_and_dispatch(model,
+                                                     checkpoint=weight_path,
+                                                     device_map={
+                                                         "": settings.DEVICE})
             assert isinstance(model, LEDForConditionalGeneration)
             return model
         except FileNotFoundError:
