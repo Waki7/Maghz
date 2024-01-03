@@ -4,7 +4,8 @@ import torch.utils.data
 from transformers import PreTrainedTokenizerBase
 
 import mgz.settings as settings
-from mgz.ds.sentence_datasets.gpt_input_augments import summarization_augment
+from mgz.ds.sentence_datasets.gpt_input_augments import summarization_augment, \
+    tag_question_augment
 from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask, \
     strings_to_padded_id_tensor_w_mask
 from mgz.models.nlp.base_transformer import BaseTransformer, \
@@ -92,14 +93,14 @@ def forward_controller(model: BaseTransformer, texts: List[str],
 
 
 @torch.no_grad()
-def generate_controller(model: BaseTransformer, texts: List[str],
+def generate_controller(model: DecoderTransformer, texts: List[str],
                         tokenizer: PreTrainedTokenizerBase,
                         ):
     """
     Generates sequences using a Transformer-based model for a list of input texts.
 
     Args:
-        model (BaseTransformer): The Transformer-based model.
+        model (DecoderTransformer): The Transformer-based model.
         texts (List[str]): List of input texts to use as prompts.
         tokenizer (PreTrainedTokenizerBase): Tokenizer for text encoding.
 
@@ -144,6 +145,43 @@ def summarize_controller(model: DecoderTransformer, texts: List[str],
     return tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
 
 
+@torch.no_grad()
+def chat_tagging_embedding_controller(model: EncoderDecoderTransformer,
+                                      texts: List[str],
+                                      tag_text: List[str],
+                                      tokenizer: PreTrainedTokenizerBase,
+                                      max_src_len: int = None,
+                                      ) -> FloatTensorT['B,EmbedLen']:
+    """
+       Computes embeddings for a list of input texts and corresponding tag texts using a Decoder Transformer.
+
+       Args:
+           model (EncoderDecoderTransformer): The Encoder-Decoder Transformer model.
+           texts (List[str]): List of input texts to embed.
+           tag_text (List[str]): List of tag texts.
+           tokenizer (PreTrainedTokenizerBase): Tokenizer for text encoding.
+           max_src_len (int, optional): Maximum source sequence length. Defaults to None.
+
+       Returns:
+           FloatTensorT['B,EmbedLen']: Tensor containing the embeddings.
+       """
+    assert isinstance(model, DecoderTransformer)
+    assert len(texts) == len(tag_text)
+    if max_src_len is None:
+        max_src_len = model.get_max_decoder_positions()
+    src_qa_text = [tag_question_augment(text, tag) for text, tag in
+                   zip(texts, tag_text)]
+    src_ids, src_mask = strings_to_padded_id_tensor_w_mask(src_qa_text,
+                                                           tokenizer,
+                                                           max_src_len,
+                                                           settings.DEVICE)
+
+    # don't need tgt_mask because you are generating one token at a time
+    return model.decoder_embedding(src_ids=src_ids,
+                                   src_mask=src_mask)
+
+
+@torch.no_grad()
 def tagging_embedding_controller(model: EncoderDecoderTransformer,
                                  texts: List[str],
                                  tag_text: List[str],
@@ -165,6 +203,7 @@ def tagging_embedding_controller(model: EncoderDecoderTransformer,
     Returns:
         FloatTensorT['B,EmbedLen']: Tensor containing the embeddings.
     """
+    assert isinstance(model, EncoderDecoderTransformer)
     if max_src_len is None:
         max_src_len = model.get_max_encoder_positions()
     if max_tgt_len is None:

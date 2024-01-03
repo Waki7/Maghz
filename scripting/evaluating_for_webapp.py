@@ -2,33 +2,21 @@ from __future__ import annotations
 
 import random
 
-import mgz.settings as settings
 import torch.cuda.amp
+import torch.nn
+from tqdm import tqdm
+from transformers import PreTrainedTokenizerBase, \
+    LlamaTokenizerFast
+
+import mgz.settings as settings
 from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagQA
 from mgz.model_running.nlp_routines.model_routine_tagging import TaggingRoutine
-from mgz.model_running.run_ops import embedding_controller
-from mgz.models.nlp.base_transformer import BaseTransformer
-from mgz.models.nlp.led import LEDForConditionalGeneration
-from mgz.models.nlp.mistral import MistralForCausalLM
-from mgz.typing import *
-from mgz.version_control import ModelNode, lookup_or_init_model
-from tqdm import tqdm
-from transformers import PreTrainedTokenizer, LlamaTokenizerFast
-
-# from transformers import BartConfig, LEDConfig
-import mgz.settings as settings
-import torch.nn
 from mgz.model_running.run_ops import embedding_controller, \
-    tagging_embedding_controller, generate_controller
+    chat_tagging_embedding_controller, summarize_controller
 from mgz.models.nlp.base_transformer import BaseTransformer
-from mgz.models.nlp.led import LEDForConditionalGeneration
 from mgz.models.nlp.mistral import MistralForCausalLM
 from mgz.typing import *
 from mgz.version_control import ModelNode
-from tqdm import tqdm
-from transformers import PreTrainedTokenizerBase, LEDTokenizerFast, \
-    LlamaTokenizerFast
-
 
 QUANTIZE = True
 DEVICE = settings.DEVICE
@@ -36,7 +24,7 @@ DEBUG = False
 TOKENIZERS: Dict[str, PreTrainedTokenizerBase] = {}
 MODELS: Dict[str, BaseTransformer] = {}
 TAGGING_MODEL = "/home/ceyer/Documents/Projects/LoA/backend/model_weights/tagging"
-SUMMARIZATION_MODEL = "/home/ceyer/Documents/Projects/LoA/backend/model_weights/summarization"
+MAX_SRC_LEN = 4096
 
 if QUANTIZE:
     try:
@@ -53,25 +41,6 @@ else:
     QUANT_CFG = None
 
 
-def try_load_summarization_model():
-    if SUMMARIZATION_MODEL in MODELS:
-        return
-    print('loading model {} on device {}... '.format(
-        SUMMARIZATION_MODEL, DEVICE))
-    model_node: ModelNode = ModelNode.load_from_id(LEDForConditionalGeneration,
-                                                   SUMMARIZATION_MODEL,
-                                                   SUMMARIZATION_MODEL,
-                                                   quantization_config=QUANT_CFG)
-    model: LEDForConditionalGeneration = model_node.model
-    tokenizer: PreTrainedTokenizerBase = model_node.tokenizer
-    model.to(DEVICE)
-    model.eval()
-    MODELS[SUMMARIZATION_MODEL] = model
-    TOKENIZERS[SUMMARIZATION_MODEL] = tokenizer
-    print(
-        'loaded model {} on device {}... '.format(SUMMARIZATION_MODEL, DEVICE))
-
-
 def try_load_tagging_model():
     if TAGGING_MODEL in MODELS:
         return
@@ -81,9 +50,8 @@ def try_load_tagging_model():
                                                    TAGGING_MODEL,
                                                    TAGGING_MODEL,
                                                    quantization_config=QUANT_CFG)
-    model: LEDForConditionalGeneration = model_node.model
+    model: MistralForCausalLM = model_node.model
     tokenizer: PreTrainedTokenizerBase = model_node.tokenizer
-    model.to(DEVICE)
     model.eval()
     MODELS[TAGGING_MODEL] = model
     TOKENIZERS[TAGGING_MODEL] = tokenizer
@@ -92,16 +60,14 @@ def try_load_tagging_model():
 
 def try_load_models():
     try_load_tagging_model()
-    try_load_summarization_model()
 
 
 def load_tokenizers():
-    tokenizer = LEDForConditionalGeneration.load_tokenizer(SUMMARIZATION_MODEL)
-    TOKENIZERS[SUMMARIZATION_MODEL] = tokenizer
+    tokenizer = LlamaTokenizerFast.load_tokenizer(TAGGING_MODEL)
+    TOKENIZERS[TAGGING_MODEL] = tokenizer
 
     tokenizer = MistralForCausalLM.load_tokenizer(TAGGING_MODEL)
     TOKENIZERS[TAGGING_MODEL] = tokenizer
-
 
 
 def get_tagging_tokenizer() -> PreTrainedTokenizerBase:
@@ -118,7 +84,7 @@ def clear_models():
 def estimate_vram_usage(model: torch.nn.Module, in_shape) -> int:
     if DEVICE == torch.device('cpu'):
         return 1
-    return 8
+    return 6
 
 
 @torch.no_grad()
@@ -126,11 +92,11 @@ def summarize(source_texts: List[SrcStringT]) -> List[SummaryT]:
     if len(source_texts) == 0:
         return []
     with torch.no_grad():
-        model = cast(LEDForConditionalGeneration, MODELS[SUMMARIZATION_MODEL])
+        model = cast(MistralForCausalLM, MODELS[TAGGING_MODEL])
         model.eval()
-        tokenizer = cast(LEDTokenizerFast, TOKENIZERS[SUMMARIZATION_MODEL])
-        response = generate_controller(model=model, texts=source_texts,
-                                       tokenizer=tokenizer)
+        tokenizer = cast(LlamaTokenizerFast, TOKENIZERS[TAGGING_MODEL])
+        response = summarize_controller(model=model, texts=source_texts,
+                                        tokenizer=tokenizer)
         summary: List[str] = tokenizer.batch_decode(response,
                                                     skip_special_tokens=True)
         return summary
@@ -140,7 +106,7 @@ def summarize(source_texts: List[SrcStringT]) -> List[SummaryT]:
 def bulk_summarize_auto_batch(texts: List[SrcStringT]) -> List[SummaryT]:
     if len(texts) == 0:
         return []
-    bsz = estimate_vram_usage(SUMMARIZATION_MODEL, len(texts[0]))
+    bsz = estimate_vram_usage(TAGGING_MODEL, len(texts[0]))
     summaries: List[SummaryT] = []
     for i in tqdm(range(0, len(texts), bsz)):
         batch_summaries = summarize(texts[i:min(i + bsz, len(texts))])
@@ -165,7 +131,8 @@ def bulk_encode_auto_batch(texts: List[SrcStringT]) -> List[
     NDArrayT['EmbedLen']]:
     if len(texts) == 0:
         return []
-    bsz = estimate_vram_usage(SUMMARIZATION_MODEL, len(texts[0]))
+    model = cast(MistralForCausalLM, MODELS[TAGGING_MODEL])
+    bsz = estimate_vram_usage(model, len(texts[0]))
     embeddings: List[NDArrayT['EmbedLen']] = []
     for i in tqdm(range(0, len(texts), bsz)):
         batch_embeddings = embed(texts[i:min(i + bsz, len(texts))])
@@ -173,22 +140,31 @@ def bulk_encode_auto_batch(texts: List[SrcStringT]) -> List[
     return embeddings
 
 
-def get_tag_apply_embedding(doc_text: SrcStringT, tag_text: TgtStringT) -> \
-        NDArrayT['EmbedLen']:
-    with torch.no_grad():
-        model = cast(LEDForConditionalGeneration, MODELS[TAGGING_MODEL])
-
-        logits: FloatTensorT['B,EmbedLen']
+def get_tag_apply_embedding(doc_texts: List[SrcStringT],
+                            tag_texts: List[TgtStringT]) -> \
+        List[NDArrayT['EmbedLen']]:
+    with (torch.no_grad()):
+        model = cast(MistralForCausalLM, MODELS[TAGGING_MODEL])
+        logits: List[NDArrayT['EmbedLen']] = []
         if DEBUG:
-            logits = FloatTensorT(torch.rand(1, model.embed_dim))
+            batch_logits = FloatTensorT(
+                torch.rand(len(doc_texts), model.embed_dim)).cpu().numpy()
+            for j in range(batch_logits.shape[0]):
+                logits.append(NDArrayT(batch_logits[j].cpu().numpy()))
         else:
-            logits = tagging_embedding_controller(model=model,
-                                                  texts=[doc_text, ],
-                                                  tag_text=[tag_text, ],
-                                                  tokenizer=TOKENIZERS[
-                                                      TAGGING_MODEL], )
-        embedding: FloatTensorT['EmbedLen'] = logits.flatten()
-        return embedding.cpu().numpy()
+            bsz = estimate_vram_usage(model, len(doc_texts[0]))
+            for i in range(0, len(doc_texts), bsz):
+                batch_logits: FloatTensorT['bsz,EmbedLen'] = \
+                    chat_tagging_embedding_controller(model=model,
+                                                      texts=doc_texts[
+                                                            i:i + bsz],
+                                                      tag_text=tag_texts[
+                                                               i:i + bsz],
+                                                      tokenizer=TOKENIZERS[
+                                                          TAGGING_MODEL], )
+                for j in range(batch_logits.shape[0]):
+                    logits.append(NDArrayT(batch_logits[j].cpu().numpy()))
+        return logits
 
 
 @torch.no_grad()
@@ -196,9 +172,9 @@ def predict_tag(association_embedding: NDArrayT['EmbedLen'],
                 positive_embedding: NDArrayT[
                     'EmbedLen'], negative_embedding: NDArrayT[
             'EmbedLen']) -> Tuple[bool, float]:
-    association_embedding = FloatTensorT(association_embedding)
-    positive_embedding = FloatTensorT(positive_embedding)
-    negative_embedding = FloatTensorT(negative_embedding)
+    association_embedding = FloatTensorT(association_embedding).float()
+    positive_embedding = FloatTensorT(positive_embedding).float()
+    negative_embedding = FloatTensorT(negative_embedding).float()
 
     distance_from_pos = torch.linalg.norm(
         association_embedding - positive_embedding, dim=-1, ord=2)
@@ -217,12 +193,12 @@ def importing_sample_data() -> List[Dict[str, Union[int, str, FloatTensorT]]]:
     from mgz.ds.sentence_datasets.enron_emails import SampleType, \
         EnronEmailsTagging
     import transformers as hug
-    cfg: hug.LEDConfig = MODELS[SUMMARIZATION_MODEL].config
+    cfg: hug.MistralConfig = MODELS[TAGGING_MODEL].config
     # tokenizer = BartTokenizer.from_pretrained("facebook/bart-large")
-    tokenizer = TOKENIZERS[SUMMARIZATION_MODEL]
+    tokenizer = TOKENIZERS[TAGGING_MODEL]
 
     ds = EnronEmailsTagging(tokenizer,
-                            max_src_len=2000,
+                            max_src_len=MAX_SRC_LEN,
                             n_episodes=50,
                             n_query_per_cls=[3],
                             n_support_per_cls=[2]).load_validation_data()
@@ -325,6 +301,8 @@ def hand_select():
     sample_data = importing_sample_data()
     sampling = 100
     for i in tqdm(range(0, sampling)):
+        settings.print_gpu_usage()
+
         random_tag = random.choice(all_tags)
         print(f"print_check randomly sampled tag is {random_tag}")
 
@@ -337,50 +315,55 @@ def hand_select():
         while True:
             rand_neg = random.choice(sample_data)
             tries += 1
-            if random_tag not in rand_neg['tags']:
+            if random_tag not in rand_neg['tags'] or tries > timeout:
                 break
-            if tries > timeout:
-                continue
+        if tries > timeout:
+            continue
 
         neg_id = rand_neg['id']
         pos_id = rand_pos['id']
 
-        embeddings = []
+        doc_texts: Dict[int, str] = {}
+        embeddings: Dict[int, NDArrayT['EmbedLen']] = {}
         for sample in sample_data:
             if (sample['id'], random_tag) not in stored_embeddings.keys():
-                if sample['id'] == pos_id:
-                    print('positive')
-                if sample['id'] == neg_id:
-                    print('negative')
-                stored_embeddings[(sample['id'], random_tag)] = \
-                    get_tag_apply_embedding(sample['source_text'], random_tag)
-
-            embeddings.append(stored_embeddings[(sample['id'], random_tag)])
+                doc_texts[sample['id']] = sample['source_text']
+            else:
+                embeddings[sample['id']] = stored_embeddings[
+                    (sample['id'], random_tag)]
+        new_embeddings: List[NDArrayT['EmbedLen']] = \
+            get_tag_apply_embedding(list(doc_texts.values()),
+                                    [random_tag] * len(doc_texts))
+        new_embeddings = dict(zip(doc_texts.keys(), new_embeddings))
+        for id in doc_texts.keys():
+            embeddings[id] = new_embeddings[id]
+            stored_embeddings[(rand_pos['id'], random_tag)] = \
+                embeddings[id]
 
         pos_center = embeddings[pos_id]
-        print(f"print_check pos sample: \n\t{rand_pos['source_text']}")
+        logging.debug(f"print_check pos sample: \n\t{rand_pos['source_text']}")
         neg_center = embeddings[neg_id]
-        print(f"print_check neg sample: \n\t{rand_neg['source_text']}")
+        logging.debug(f"print_check neg sample: \n\t{rand_neg['source_text']}")
         for i, sample in enumerate(sample_data):
             embedding = embeddings[i]
             if i not in (pos_id, neg_id):
                 total += 1
                 pred, scores = predict_tag(embedding, pos_center, neg_center)
-                print(
+                logging.debug(
                     f"print_check prediction {pred}, real label is {random_tag in sample['tags']} with score {scores} for {random_tag}, source text is: \n\t {sample['source_text']}")
                 correct += int(pred == (random_tag in sample['tags']))
-        print(f"Accuracy so far {i} : {correct / total}")
+        logging.info(f"Accuracy so far {i} : {correct / total}")
 
 
 def validation():
     routine = TaggingRoutine()
-    model_node: ModelNode = ModelNode.load_from_id(LEDForConditionalGeneration,
-                                                   SUMMARIZATION_MODEL,
-                                                   SUMMARIZATION_MODEL)
+    model_node: ModelNode = ModelNode.load_from_id(MistralForCausalLM,
+                                                   TAGGING_MODEL,
+                                                   TAGGING_MODEL)
     tokenizer = cast(LlamaTokenizerFast, model_node.tokenizer)
     model_node.model.to(DEVICE)
     val_ds = EnronEmailsTagQA(tokenizer,
-                              max_src_len=2000,
+                              max_src_len=MAX_SRC_LEN,
                               n_episodes=50,
                               n_query_per_cls=[3],
                               n_support_per_cls=[2])
@@ -388,6 +371,7 @@ def validation():
 
 
 def main():
+    logging.basicConfig(level=logging.INFO)
     with torch.cuda.amp.autocast(enabled=True):
         hand_select()
 
