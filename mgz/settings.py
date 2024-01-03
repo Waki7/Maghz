@@ -4,7 +4,7 @@ import random
 import numpy as np
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'garbage_collection_threshold:0.6,max_split_size_mb:128'
+# os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'garbage_collection_threshold:0.6,max_split_size_mb:128'
 import torch
 
 
@@ -79,7 +79,17 @@ def print_gpu_usage(print_tag=''):
                 torch.cuda.memory_reserved(0) / 1024 / 1024 / 1024))
         print(print_tag, "torch.cuda.max_memory_reserved: %f GB" % (
                 torch.cuda.max_memory_reserved(0) / 1024 / 1024 / 1024))
-
+def get_available_gpu_mem():
+    if DEVICE == torch.device('cpu'):
+        return 0
+    elif DEVICE == torch.device('mps'):
+        return torch.mps.current_allocated_memory() / 1e9
+    elif torch.cuda.is_available():
+        t = torch.cuda.get_device_properties(0).total_memory
+        r = torch.cuda.memory_reserved(0)
+        a = torch.cuda.memory_allocated(0)
+        f = r - a
+        return f / 1e9
 
 def print_trainable_parameters(model):
     """
