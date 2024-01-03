@@ -9,6 +9,8 @@ from abc import ABC
 
 import torch.utils.checkpoint
 import transformers as hug
+from accelerate import init_empty_weights
+from accelerate.utils import load_and_quantize_model
 from torch import nn
 from transformers import BitsAndBytesConfig
 from transformers.activations import ACT2FN
@@ -16,7 +18,7 @@ from transformers.models.led.configuration_led import LEDConfig
 
 import mgz.settings as settings
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext, \
-    quantize_model, EncoderDecoderTransformer
+    EncoderDecoderTransformer
 from mgz.models.nlp.utils_attention import _attention
 from mgz.typing import *
 
@@ -1313,19 +1315,21 @@ class LEDForConditionalGeneration(LEDPretrainedModel):
             with open(os.path.normpath(os.path.join(path, 'config.json')),
                       'r') as f:
                 config = json.load(f)
-                if hasattr(config, 'quantization_config'):
-                    if (quantization_config != config.quantization_config):
-                        logging.warning(
-                            'quantization configs do not match, {} vs {}'.format(
-                                quantization_config,
-                                config.quantization_config))
-                    quantization_config = config.quantization_config
-            model = LEDForConditionalGeneration(LEDConfig.from_dict(config))
-            if quantization_config and quantization_config.load_in_8bit:
-                model = quantize_model(model)
-            model.load_state_dict(torch.load(os.path.join(path, 'weights.bin'),
-                                             map_location=torch.device('cpu')))
-            model.to(settings.DEVICE)
+            if torch.cuda.is_available():
+                with init_empty_weights():
+                    model = LEDForConditionalGeneration(
+                        hug.LEDConfig.from_dict(config))
+            else:
+                model = LEDForConditionalGeneration(
+                    hug.LEDConfig.from_dict(config))
+            weight_path = os.path.join(path, 'weights.bin')
+            if not os.path.exists(weight_path):
+                return None
+            model = load_and_quantize_model(model,
+                                            weights_location=weight_path,
+                                            bnb_quantization_config=quantization_config,
+                                            device_map="auto")
+            assert isinstance(model, LEDForConditionalGeneration)
             return model
         except FileNotFoundError:
             return None
@@ -1351,9 +1355,6 @@ class LEDForConditionalGeneration(LEDPretrainedModel):
                              torch.zeros((1, self.led.shared.num_embeddings)))
         self.lm_head = nn.Linear(config.d_model,
                                  self.led.shared.num_embeddings, bias=False)
-        self.embedding_head = nn.Linear(config.d_model,
-                                        self.led.shared.num_embeddings,
-                                        bias=False)
 
         # Initialize weights and apply final processing
         self.apply(self._init_weights)
@@ -1494,3 +1495,31 @@ class LEDClassificationHead(nn.Module):
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.out_proj(hidden_states)
         return hidden_states
+
+
+def main():
+    from mgz.version_control.model_node import ModelNode
+    model_name = 'allenai/led-base-16384-multi_lexsum-source-tiny'
+
+    quantize = True
+    quantization_cfg = None
+    if quantize:
+        try:
+            from accelerate.utils import BnbQuantizationConfig
+            import bitsandbytes
+            quantization_cfg = BnbQuantizationConfig(
+                load_in_8bit=quantize, )
+        except ImportError:
+            print("Module 'some_module' is not installed.")
+            quantization_cfg = None
+            quantize = False
+    model_node: ModelNode = \
+        ModelNode.load_from_id(LEDForConditionalGeneration, model_name,
+                               model_name,
+                               quantization_config=quantization_cfg)
+    model_node.model.eval()
+    return model_node
+
+
+if __name__ == '__main__':
+    main()
