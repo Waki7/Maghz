@@ -270,10 +270,6 @@ def mistral_mgz_hug():
         # src_mask = model_inputs.attention_mask.to(settings.DEVICE)
 
         # model.config.max_length = 7
-        print('generate')
-        print('src_ids', src_ids.shape)
-        print(model_node.model.get_max_decoder_positions())
-        exit(3)
         generated_ids = model_node.model.generate(
             src_ids=src_ids,
             src_mask=src_mask,
