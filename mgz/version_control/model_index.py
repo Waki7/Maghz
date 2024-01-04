@@ -90,11 +90,17 @@ class Indexer:
     @staticmethod
     def load_from_json(path=DEFAULT_INDEX_PATH):
         if not os.path.exists(path):
-            logging.warning(
-                'Indexer json file does not exist at {}, creating new one.'.format(
-                    os.path.abspath(path)))
             idxer = Indexer(os.path.dirname(path))
-            idxer.save_as_json()
+            try:
+                idxer.save_as_json()
+                logging.warning(
+                    'Indexer json file does not exist at {}, creating new '
+                    'one.'.format(os.path.abspath(path)))
+            except PermissionError:
+                logging.warning(
+                    'Indexer json file does not exist at {}, and cannot be '
+                    'created, continuing like normal.'.format(
+                        os.path.abspath(path)))
         with open(path) as file_object:
             # store file data in object
             data: Dict = json.load(file_object)

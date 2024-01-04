@@ -405,8 +405,8 @@ def dump_n_examples(n: int):
         SampleType.X_FOLDER,
         SampleType.X_ORIGIN,
         SampleType.X_FILENAME,
-        SampleType.FILE_NAME,
-        SampleType.CATCHPHRASES,
+        # SampleType.FILE_NAME,
+        # SampleType.CATCHPHRASES,
         SampleType.INPUT_TEXT
     ]
     docs = []
