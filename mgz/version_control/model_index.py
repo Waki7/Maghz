@@ -212,6 +212,6 @@ class Indexer:
 
 
 CACHED_INDEXER = Indexer.load_from_json()  # what's currently cached when the script is running
-if len(CACHED_INDEXER.roots) == 0:
+if len(CACHED_INDEXER.roots) == 0 and not CACHED_INDEXER.detached:
     CACHED_INDEXER.roots = DEFAULT_ROOTS
     CACHED_INDEXER.save_as_json()
