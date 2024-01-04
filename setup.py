@@ -109,7 +109,7 @@ setup(
         'numpy==1.24.3',
         'tensorflow>=2.11.0',
         'torchvision',
-        'transformers==4.35.2',
+        'transformers==4.36.2',
         'opencv-python',
         'array2gif',
         'Pillow',

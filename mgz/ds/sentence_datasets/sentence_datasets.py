@@ -42,18 +42,24 @@ def subsequent_mask(size: SrcSeqLen):
 
 def strings_to_padded_id_tensor_w_mask(txts: List[SrcStringT],
                                        tokenizer: PreTrainedTokenizerBase,
-                                       max_len,
-                                       device=torch.device('cpu')) -> \
+                                       max_len: int,
+                                       device=torch.device('cpu'),
+                                       pad_to_multiple_of: int = None) -> \
         Tuple[LongTensorT['B,SrcSeqLen'], IntTensorT['B,SrcSeqLen']]:
     """
     This does not truncate at all, minimum length will always be max_len.
     """
+    if pad_to_multiple_of is None:
+        pad_to_multiple_of = max_len
+    print('txts', txts)
+    print('txts', len(txts))
+    print('max_len', txts)
     input_encodings: BatchEncoding = (
-        tokenizer.__call__(txts, padding=True, truncation=True,
+        tokenizer.__call__(txts,
                            max_length=max_len,
-                           # TODO: set return_overflowing_tokens to True
-                           return_overflowing_tokens=False,
-                           pad_to_multiple_of=max_len,
+                           padding="max_length",
+                           truncation=True,
+                           pad_to_multiple_of=pad_to_multiple_of,
                            return_tensors='pt', ))
     return input_encodings.input_ids.to(device).to(torch.int32), \
         input_encodings.attention_mask.to(device)

@@ -67,8 +67,6 @@ class TestLED(unittest.TestCase):
         tgt_ids: LongTensorT['EmbedLen'] = tgt_encodings.input_ids
         tgt_mask = tgt_encodings.attention_mask
 
-        print('src_ids.shape', src_ids.shape)
-        print('tgt_ids.shape', tgt_ids.shape)
         # don't need tgt_mask because you are generating one token at a time
         a = self.model.forward(src_ids=src_ids, tgt_ids=tgt_ids,
                                src_mask=src_mask, tgt_mask=tgt_mask)

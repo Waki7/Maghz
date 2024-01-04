@@ -136,9 +136,14 @@ def summarize_controller(model: DecoderTransformer, texts: List[str],
         Tensor: Generated sequences.
     """
     assert isinstance(model, DecoderTransformer)
+    
     if max_src_len is None:
-        max_src_len = model.get_max_decoder_positions()
+        max_src_len = model.get_max_decoder_positions() - max_new_tokens
+    max_src_len = min(max_src_len,
+                      model.get_max_decoder_positions() - max_new_tokens)
+
     texts = [summarization_augment(text) for text in texts]
+
     src_ids, src_mask = strings_to_padded_id_tensor_w_mask(texts,
                                                            tokenizer,
                                                            max_src_len,

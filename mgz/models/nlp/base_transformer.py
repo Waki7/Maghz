@@ -287,7 +287,6 @@ class BaseTransformer(BaseModel):
                  tgt_ids: LongTensorT['B,TgtSeqLen'],
                  max_new_tokens: int = None,
                  ) -> LongTensorT['TgtSeqLen']:
-        print('wrong')
         if max_new_tokens is None:
             max_new_tokens = self.config.max_length
         max_tokens = max_new_tokens + tgt_ids.shape[1]

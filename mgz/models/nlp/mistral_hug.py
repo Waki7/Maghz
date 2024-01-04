@@ -115,7 +115,7 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         raise NotImplementedError
 
     def get_max_decoder_positions(self):
-        return self.model.embed_tokens.weight.shape[1]
+        return self.hug.model.embed_tokens.weight.shape[1]
 
     @overrides(BaseTransformer)
     def save(self, path: DirPath,
@@ -150,6 +150,7 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
                                 config.quantization_config))
                     quantization_config = config.quantization_config
             config = MistralConfig.from_dict(config)
+            config._attn_implementation = "flash_attention_2"
             if torch.cuda.is_available():
                 with init_empty_weights():
                     model = cls(config).half()
@@ -208,6 +209,7 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         if config.sep_token_id is None:
             config.sep_token_id = tokenizer.sep_token_id
         config._flash_attn_2_enabled = True
+        config._attn_implementation = "flash_attention_2"
 
         with open(os.path.normpath(os.path.join(path, 'config.json')),
                   'w') as f:
@@ -221,7 +223,7 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
 
     def __init__(self, config: MistralConfig):
         super().__init__(config)
-        config._flash_attn_2_enabled = True
+        torch.set_default_dtype(torch.float16)
         self.hug = hug.MistralForCausalLM(config)
 
         self.embedding_head = nn.Linear(config.hidden_size,
@@ -376,6 +378,9 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
                  tgt_ids: LongTensorT['B,TgtSeqLen'] = None,
                  max_new_tokens: int = None,
                  ) -> LongTensorT['TgtSeqLen']:
+        assert src_ids.shape[
+                   -1] - max_new_tokens < self.get_max_decoder_positions(), \
+            'TODO, find exact mechanism that triggers the stop'
         generate_output = self.hug.generate(src_ids,
                                             attention_mask=src_mask,
                                             max_new_tokens=max_new_tokens)

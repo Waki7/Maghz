@@ -114,8 +114,8 @@ def mistral_original():
 @torch.no_grad()
 def mistral_mgz():
     logging.basicConfig(level=logging.WARNING)
-    model_name = "/home/ceyer/Documents/Projects/LoA/backend/model_weights/tagging"
-    # model_name = 'openchat/openchat_3.5'
+    # model_name = "/home/ceyer/Documents/Projects/LoA/backend/model_weights/tagging"
+    model_name = 'openchat/openchat_3.5'
     print('... loading model and tokenizer')
     with torch.cuda.amp.autocast(enabled=True):
         quantize = True
@@ -176,8 +176,8 @@ def mistral_mgz():
             """
             f"<|end_of_turn|>GPT4 Correct Assistant: 1. Is this e-mail about company business or strategy?: \n\n")
         text = [tag_qa_text]
-        print(tokenizer.padding_side)
-        model_inputs = tokenizer(text, return_tensors="pt", padding=True, pad_to_multiple_of=4096).to(
+        model_inputs = tokenizer(text, return_tensors="pt", padding=True,
+                                 pad_to_multiple_of=4096).to(
             settings.DEVICE)
         src_ids, src_mask = model_inputs.input_ids, model_inputs.attention_mask
         # src_ids, src_mask = strings_to_padded_id_tensor_w_mask(text,
@@ -198,8 +198,8 @@ def mistral_mgz():
 @torch.no_grad()
 def mistral_mgz_hug():
     logging.basicConfig(level=logging.WARNING)
-    # model_name = "/home/ceyer/Documents/Projects/LoA/backend/model_weights/tagging"
-    model_name = 'openchat/openchat_3.5'
+    model_name = "/home/ceyer/Documents/Projects/LoA/backend/model_weights/tagging"
+    # model_name = 'openchat/openchat_3.5'
     print('... loading model and tokenizer')
     with torch.cuda.amp.autocast(enabled=True):
         quantize = True
@@ -220,9 +220,10 @@ def mistral_mgz_hug():
             ModelNode.load_from_id(MistralForCausalLMHug, model_name,
                                    model_name,
                                    quantization_config=quantization_cfg)
+        settings.print_gpu_usage()
         tokenizer = model_node.tokenizer
         model_node.model.eval()
-    with (torch.cuda.amp.autocast(enabled=True)):
+    with ((torch.cuda.amp.autocast(enabled=True))):
         tag_qa_text = (
             f"GPT4 Correct User: Is this e-mail about company business or strategy?: "
             """
@@ -258,19 +259,27 @@ def mistral_mgz_hug():
             If you have already certified compliance with the Policies and Procedures during the 2001 calendar year, you need not re-certify at this time, although you are still required to to review and become familiar with the revised Policies and Procedures.  If you have not certified compliance with the Policies and Procedures during the 2001 calendar year, then you must do so within two weeks of your receipt of this message.  The LegalOnline site will allow you to quickly and conveniently certify your compliance on-line with your SAP Personal ID number.  If you have any questions concerning the Policies or Procedures, please call Bob Bruce at extension 5-7780 or Donna Lowry at extension 3-1939. 
             """
             f"<|end_of_turn|>GPT4 Correct Assistant: ")
-        text = [tag_qa_text]
+        text = [tag_qa_text, tag_qa_text + " shoot"]
 
-        model_inputs = tokenizer(text, return_tensors="pt").to(
-            settings.DEVICE)
+        src_ids, src_mask = strings_to_padded_id_tensor_w_mask(text, tokenizer,
+                                                               4000,
+                                                               settings.DEVICE)
+        # tokenizer(text, return_tensors="pt",
+        #                          pad_to_multiple_of=4096, max_length=4096, truncation=True)
+        # src_ids = model_inputs.input_ids.to(settings.DEVICE)
+        # src_mask = model_inputs.attention_mask.to(settings.DEVICE)
 
         # model.config.max_length = 7
         print('generate')
+        print('src_ids', src_ids.shape)
+        print(model_node.model.get_max_decoder_positions())
+        exit(3)
         generated_ids = model_node.model.generate(
-            src_ids=model_inputs.input_ids,
-            src_mask=model_inputs.attention_mask,
-            tgt_ids=model_inputs.input_ids,
-            max_new_tokens=2000)
-        print(tokenizer.batch_decode(generated_ids))
+            src_ids=src_ids,
+            src_mask=src_mask,
+            tgt_ids=src_ids,
+            max_new_tokens=96)
+        print(tokenizer.batch_decode(generated_ids, skip_special_tokens=True))
 
 
 def verify_quantize_save_load():
@@ -333,6 +342,7 @@ def verify_quantize_save_load():
 
 if __name__ == '__main__':
     start_time = time.time()
+    # mistral_mgz()  # 16.888160467147827
     mistral_mgz_hug()  # 16.888160467147827
     # print('time taken for mistral mgz', time.time() - start_time)
     # mistral_original()  # 16.888160467147827
