@@ -14,7 +14,7 @@ from accelerate.utils import BnbQuantizationConfig
 from torch import nn
 from transformers import BitsAndBytesConfig, MistralConfig
 from transformers.activations import ACT2FN
-from transformers.utils.import_utils import is_flash_attn_available
+from transformers.utils.import_utils import is_flash_attn_2_available
 
 import mgz.settings as settings
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext, \
@@ -23,7 +23,7 @@ from mgz.models.nlp.utils_attention import _attention
 from mgz.typing import *
 from mgz.version_control.model_index import get_models_path
 
-if is_flash_attn_available():
+if is_flash_attn_2_available():
     from flash_attn import flash_attn_func, flash_attn_varlen_func
     from flash_attn.bert_padding import index_first_axis, pad_input, \
         unpad_input  # noqa
@@ -664,14 +664,14 @@ class MistralPreTrainedModel(DecoderTransformer, ABC):
         with open(os.path.normpath(os.path.join(path, 'config.json')),
                   'w') as f:
             json.dump(self.config.to_dict(), f)
-        if quantization_config is not None:
-            weights_path: FilePath = os.path.normpath(
-                os.path.join(path, 'embedding_head.bin'))
-            torch.save(self.embedding_head.state_dict(), weights_path)
-        else:
-            weights_path: FilePath = os.path.normpath(
-                os.path.join(path, 'weights.bin'))
-            torch.save(self.state_dict(), weights_path)
+        weights_path: FilePath = os.path.normpath(
+            os.path.join(path, 'embedding_head.bin'))
+        torch.save(self.embedding_head.state_dict(), weights_path)
+        weights_path: FilePath = os.path.normpath(
+            os.path.join(path, 'weights.bin'))
+        core_model = self.state_dict()
+        core_model.pop('embedding_head.weight')
+        torch.save(core_model, weights_path)
 
     def _init_weights(self, module):
         std = self.config.initializer_range
@@ -805,7 +805,7 @@ class MistralForCausalLM(MistralPreTrainedModel):
     @staticmethod
     def get_embedding_head(n_tokens: int, hidden_size: int):
         # return nn.Linear(hidden_size + 2, hidden_size, bias=False)
-        return nn.Linear(hidden_size , hidden_size, bias=False)
+        return nn.Linear(hidden_size, hidden_size, bias=False)
 
     @classmethod
     def modules_to_not_convert(cls):
@@ -857,24 +857,23 @@ class MistralForCausalLM(MistralPreTrainedModel):
                     weight_path = os.path.join(
                         Path(path).parent.parent.absolute(),
                         'weights.bin')
+
+            if not os.path.exists(weight_path) or not os.path.exists(
+                    embedding_weight_path):
+                return None
             if quantization_config is not None:
-                if not os.path.exists(weight_path):
-                    return None
                 quantization_config.skip_modules = cls.modules_to_not_convert()
                 model = load_and_quantize_model(model,
                                                 weights_location=weight_path,
                                                 bnb_quantization_config=quantization_config,
                                                 device_map="auto")
-                if os.path.exists(embedding_weight_path):
-                    model.embedding_head.load_state_dict(
-                        torch.load(embedding_weight_path))
             else:
-                if not os.path.exists(weight_path):
-                    return None
                 model = load_checkpoint_and_dispatch(model,
                                                      checkpoint=weight_path,
                                                      device_map={
                                                          "": settings.DEVICE})
+            model.embedding_head.load_state_dict(
+                torch.load(embedding_weight_path))
             assert isinstance(model, MistralForCausalLM)
             return model
         except FileNotFoundError:
@@ -895,10 +894,6 @@ class MistralForCausalLM(MistralPreTrainedModel):
             use_flash_attention_2=True,
             torch_dtype=torch.float16, device_map={"": torch.device('cpu')}, )
         config = model_hug.config
-        model_hug.add_module('embedding_head',
-                             cls.get_embedding_head(
-                                 model_hug.model.embed_tokens.num_embeddings,
-                                 config.hidden_size))
         if config.pad_token_id is None:
             config.pad_token_id = tokenizer.pad_token_id
         if config.sep_token_id is None:
@@ -909,6 +904,10 @@ class MistralForCausalLM(MistralPreTrainedModel):
             json.dump(model_hug.config.to_dict(), f)
         torch.save(model_hug.state_dict(),
                    os.path.normpath(os.path.join(path, 'weights.bin')))
+        torch.save(cls.get_embedding_head(
+            model_hug.model.embed_tokens.num_embeddings,
+            config.hidden_size).state_dict(),
+                   os.path.normpath(os.path.join(path, 'embedding_head.bin')))
 
     def __init__(self, config: MistralConfig):
         super().__init__(config)

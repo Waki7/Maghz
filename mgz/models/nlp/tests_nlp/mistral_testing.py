@@ -6,6 +6,8 @@ import time
 
 from mgz import settings
 from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagQA
+from mgz.ds.sentence_datasets.sentence_datasets import \
+    strings_to_padded_id_tensor_w_mask
 from mgz.models.nlp.mistral import MistralForCausalLM
 from mgz.models.nlp.mistral_hug import MistralForCausalLMHug
 from mgz.typing import *
@@ -14,9 +16,7 @@ from mgz.version_control import ModelNode, Metrics
 
 @torch.no_grad()
 def mistral_original():
-    import os
     import mgz.settings as settings
-    os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
     import transformers as hug
 
     logging.basicConfig(level=logging.WARNING)
@@ -97,8 +97,9 @@ def mistral_original():
         # print('mgz decoded', summary)
 
         tokenizer.pad_token_id = tokenizer.eos_token_id
+
         tokenized = tokenizer(text, return_tensors='pt',
-                              padding=True)
+                              padding=True, pad_to_multiple_of=4096)
         input_ids = tokenized.input_ids.to(settings.DEVICE)
         attention_mask = tokenized.attention_mask.to(settings.DEVICE)
         generated_ids = model_hug.generate(input_ids,
@@ -106,17 +107,15 @@ def mistral_original():
                                            max_new_tokens=1000)
         # print('generated_ids', generated_ids)
         summary: List[str] = tokenizer.batch_decode(generated_ids,
-                                                    skip_special_tokens=True)
+                                                    skip_special_tokens=False)
         print('hug decoded', summary)
 
 
 @torch.no_grad()
 def mistral_mgz():
-    import os
-    os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
-
     logging.basicConfig(level=logging.WARNING)
-    model_name = 'openchat/openchat_3.5'
+    model_name = "/home/ceyer/Documents/Projects/LoA/backend/model_weights/tagging"
+    # model_name = 'openchat/openchat_3.5'
     print('... loading model and tokenizer')
     with torch.cuda.amp.autocast(enabled=True):
         quantize = True
@@ -177,28 +176,29 @@ def mistral_mgz():
             """
             f"<|end_of_turn|>GPT4 Correct Assistant: 1. Is this e-mail about company business or strategy?: \n\n")
         text = [tag_qa_text]
-
-        model_inputs = tokenizer(text, return_tensors="pt").to(
+        print(tokenizer.padding_side)
+        model_inputs = tokenizer(text, return_tensors="pt", padding=True, pad_to_multiple_of=4096).to(
             settings.DEVICE)
+        src_ids, src_mask = model_inputs.input_ids, model_inputs.attention_mask
+        # src_ids, src_mask = strings_to_padded_id_tensor_w_mask(text,
+        #                                                        tokenizer,
+        #                                                        4096,
+        #                                                        settings.DEVICE)
         generated_ids = model_node.model.generate(
-            src_ids=model_inputs.input_ids,
-            src_mask=model_inputs.attention_mask,
-            tgt_ids=model_inputs.input_ids,
-            max_new_tokens=2000)
+            src_ids=src_ids,
+            src_mask=src_mask,
+            tgt_ids=src_ids,
+            max_new_tokens=100)
 
-        print(model_inputs.input_ids[:, -5:],
-              tokenizer.batch_decode(model_inputs.input_ids[:, -5:]))
-        print(generated_ids[:, -5:],
-              tokenizer.batch_decode(generated_ids[:, -5:]))
+        print(generated_ids[:, -100:],
+              tokenizer.batch_decode(generated_ids[:, -100:]))
         print(tokenizer.batch_decode(generated_ids))
 
 
 @torch.no_grad()
 def mistral_mgz_hug():
-    import os
-    os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
-
     logging.basicConfig(level=logging.WARNING)
+    # model_name = "/home/ceyer/Documents/Projects/LoA/backend/model_weights/tagging"
     model_name = 'openchat/openchat_3.5'
     print('... loading model and tokenizer')
     with torch.cuda.amp.autocast(enabled=True):
@@ -222,7 +222,6 @@ def mistral_mgz_hug():
                                    quantization_config=quantization_cfg)
         tokenizer = model_node.tokenizer
         model_node.model.eval()
-
     with (torch.cuda.amp.autocast(enabled=True)):
         tag_qa_text = (
             f"GPT4 Correct User: Is this e-mail about company business or strategy?: "
@@ -265,6 +264,7 @@ def mistral_mgz_hug():
             settings.DEVICE)
 
         # model.config.max_length = 7
+        print('generate')
         generated_ids = model_node.model.generate(
             src_ids=model_inputs.input_ids,
             src_mask=model_inputs.attention_mask,
@@ -333,5 +333,7 @@ def verify_quantize_save_load():
 
 if __name__ == '__main__':
     start_time = time.time()
-    verify_quantize_save_load()  # 16.888160467147827
-    print('time taken', time.time() - start_time)
+    mistral_mgz_hug()  # 16.888160467147827
+    # print('time taken for mistral mgz', time.time() - start_time)
+    # mistral_original()  # 16.888160467147827
+    print('time taken for mistral original', time.time() - start_time)

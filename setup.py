@@ -133,6 +133,7 @@ setup(
         'torchtext',
         'pyarrow==11.0.0',
         'bitsandbytes==0.41.3',
+        'flash-attn==2.4.2',
         # 'torchvision',
         # 'torchaudio',
         # 'torchdata',

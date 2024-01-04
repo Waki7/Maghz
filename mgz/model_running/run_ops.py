@@ -121,7 +121,9 @@ def generate_controller(model: DecoderTransformer, texts: List[str],
 @torch.no_grad()
 def summarize_controller(model: DecoderTransformer, texts: List[str],
                          tokenizer: PreTrainedTokenizerBase,
-                         ):
+                         max_src_len: int = None,
+                         max_new_tokens=1000,
+                         ) -> List[str]:
     """
     Generates sequences using a Transformer-based model for a list of input texts.
 
@@ -133,15 +135,20 @@ def summarize_controller(model: DecoderTransformer, texts: List[str],
     Returns:
         Tensor: Generated sequences.
     """
+    assert isinstance(model, DecoderTransformer)
+    if max_src_len is None:
+        max_src_len = model.get_max_decoder_positions()
     texts = [summarization_augment(text) for text in texts]
-    model_inputs = tokenizer(texts, return_tensors="pt").to(
-        settings.DEVICE)
+    src_ids, src_mask = strings_to_padded_id_tensor_w_mask(texts,
+                                                           tokenizer,
+                                                           max_src_len,
+                                                           settings.DEVICE)
     # model.config.max_length = 7
     generated_ids = model.generate(
-        src_ids=model_inputs.input_ids,
-        src_mask=model_inputs.attention_mask,
-        tgt_ids=model_inputs.input_ids,
-        max_new_tokens=2000)
+        src_ids=src_ids,
+        src_mask=src_mask,
+        tgt_ids=src_ids,
+        max_new_tokens=max_new_tokens)
     return tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
 
 

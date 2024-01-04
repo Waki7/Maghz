@@ -287,11 +287,11 @@ class BaseTransformer(BaseModel):
                  tgt_ids: LongTensorT['B,TgtSeqLen'],
                  max_new_tokens: int = None,
                  ) -> LongTensorT['TgtSeqLen']:
+        print('wrong')
         if max_new_tokens is None:
             max_new_tokens = self.config.max_length
         max_tokens = max_new_tokens + tgt_ids.shape[1]
         n_beams = self.config.num_beams
-        max_len = max_tokens
 
         if self.is_encoder_decoder():
             memory: FloatTensorT['B,SrcSeqLen,EmbedLen'] = self.encode(
@@ -302,7 +302,7 @@ class BaseTransformer(BaseModel):
             src_mask = src_mask.repeat(n_beams, 1)
         else:
             memory: FloatTensorT['B,SrcSeqLen,EmbedLen'] = None
-            src_mask = None
+        src_mask = src_mask.repeat(n_beams, 1)
 
         context = TransformerContext(src_ids.shape[0] * n_beams,
                                      self.embed_dim,
@@ -323,7 +323,7 @@ class BaseTransformer(BaseModel):
 
         new_ids: LongTensorT['n_beams*B,1'] = tgt_ids.repeat(n_beams, 1)
         all_ids: LongTensorT['n_beams*B,TgtSeqStep'] = new_ids.clone()
-        for i in range(0, 1):
+        for i in range(0, max_new_tokens):
             logits: FloatTensorT['n_beams*B,VocabSize'] = \
                 self.decode(generation_ids=new_ids,
                             src_mask=src_mask,

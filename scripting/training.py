@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 from mgz.models.nlp.mistral import MistralForCausalLM
+from mgz.models.nlp.mistral_hug import MistralForCausalLMHug
 
 os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 # from mgz.models.nlp.bart_interface import BARTHubInterface
@@ -125,7 +126,7 @@ def led_main_train():
                 quantize = False
 
         model_node: ModelNode = \
-            ModelNode.load_from_id(MistralForCausalLM, model_name,
+            ModelNode.load_from_id(MistralForCausalLMHug, model_name,
                                    model_name,
                                    quantization_config=quantization_cfg)
         # ModelNode.load_from_id(LEDForConditionalGeneration, model_name,

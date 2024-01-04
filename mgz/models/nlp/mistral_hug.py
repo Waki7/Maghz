@@ -5,12 +5,15 @@ import inspect
 import json
 import os
 from abc import ABC
+from pathlib import Path
 
 import torch.utils.checkpoint
 import transformers as hug
+from accelerate.utils import BnbQuantizationConfig
 from torch import nn
 from transformers import BitsAndBytesConfig, MistralConfig
 from transformers.activations import ACT2FN
+from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.utils.import_utils import is_flash_attn_2_available
 
 import mgz.settings as settings
@@ -79,14 +82,6 @@ class MistralPreTrainedModel(DecoderTransformer, ABC):
         except (FileNotFoundError, EnvironmentError) as e:
             return None
 
-    @overrides(BaseTransformer)
-    def save(self, path: DirPath):
-        with open(os.path.normpath(os.path.join(path, 'config.json')),
-                  'w') as f:
-            json.dump(self.config.to_dict(), f)
-        torch.save(self.state_dict(),
-                   os.path.normpath(os.path.join(path, 'weights.bin')))
-
     def _init_weights(self, module):
         std = self.config.initializer_range
         if isinstance(module, nn.Linear):
@@ -101,10 +96,14 @@ class MistralPreTrainedModel(DecoderTransformer, ABC):
 
 class MistralForCausalLMHug(MistralPreTrainedModel):
 
+    @staticmethod
+    def get_embedding_head(n_tokens: int, hidden_size: int):
+        # return nn.Linear(hidden_size + 2, hidden_size, bias=False)
+        return nn.Linear(hidden_size, hidden_size, bias=False)
+
     @classmethod
     def modules_to_not_convert(cls):
-        return ['model.encoder.embed_tokens', 'model.decoder.embed_tokens',
-                'lm_head' + 'embedding_head']
+        return ['lm_head', 'embedding_head']
 
     def get_encoder(self):
         raise NotImplementedError
@@ -118,10 +117,25 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
     def get_max_decoder_positions(self):
         return self.model.embed_tokens.weight.shape[1]
 
+    @overrides(BaseTransformer)
+    def save(self, path: DirPath,
+             quantization_config: Optional[BnbQuantizationConfig] = None):
+        if not os.path.exists(path):
+            os.makedirs(path)
+        with open(os.path.normpath(os.path.join(path, 'config.json')),
+                  'w') as f:
+            json.dump(self.config.to_dict(), f)
+        weights_path: FilePath = os.path.normpath(
+            os.path.join(path, 'embedding_head.bin'))
+        torch.save(self.embedding_head.state_dict(), weights_path)
+        weights_path: FilePath = os.path.normpath(
+            os.path.join(path, 'weights.bin'))
+        torch.save(self.hug.state_dict(), weights_path)
+
     @classmethod
-    def load_model(cls, path: str,
+    def load_model(cls, path: DirPath,
                    quantization_config: BitsAndBytesConfig = None) -> Optional[
-        MistralPreTrainedModel]:
+        MistralForCausalLMHug]:
         from accelerate import init_empty_weights, load_checkpoint_and_dispatch
         from accelerate.utils import load_and_quantize_model
         try:
@@ -135,27 +149,40 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
                                 quantization_config,
                                 config.quantization_config))
                     quantization_config = config.quantization_config
-            with init_empty_weights():
-                model = MistralForCausalLMHug(
-                    MistralConfig.from_dict(config)).half()
-            if not os.path.exists(os.path.join(path, 'weights.bin')):
-                return None
-            if quantization_config:
-                quantization_config.llm_int8_skip_modules = cls.modules_to_not_convert()
-                model = load_and_quantize_model(model,
-                                                weights_location=os.path.join(
-                                                    path,
-                                                    'weights.bin'),
-                                                bnb_quantization_config=quantization_config,
-                                                device_map={
-                                                    "": settings.DEVICE})
+            config = MistralConfig.from_dict(config)
+            if torch.cuda.is_available():
+                with init_empty_weights():
+                    model = cls(config).half()
             else:
-                model = load_checkpoint_and_dispatch(model,
-                                                     checkpoint=os.path.join(
-                                                         path,
-                                                         'weights.bin'),
-                                                     device_map={
-                                                         "": settings.DEVICE})
+                model = cls(config).half()
+
+            weight_path = os.path.join(path, 'weights.bin')
+            embedding_weight_path = os.path.join(path, 'embedding_head.bin')
+            if not os.path.exists(weight_path):
+                weight_path = os.path.join(Path(path).parent.absolute(),
+                                           'weights.bin')
+                if not os.path.exists(weight_path):
+                    weight_path = os.path.join(
+                        Path(path).parent.parent.absolute(),
+                        'weights.bin')
+
+            if not os.path.exists(weight_path) or not os.path.exists(
+                    embedding_weight_path):
+                return None
+            if quantization_config is not None:
+                quantization_config.skip_modules = cls.modules_to_not_convert()
+                model.hug = load_and_quantize_model(model.hug,
+                                                    weights_location=weight_path,
+                                                    bnb_quantization_config=quantization_config,
+                                                    device_map="auto")
+
+            else:
+                model.hug = load_checkpoint_and_dispatch(model.hug,
+                                                         checkpoint=weight_path,
+                                                         device_map={
+                                                             "": settings.DEVICE})
+            model.embedding_head.load_state_dict(
+                torch.load(embedding_weight_path))
             assert isinstance(model, MistralForCausalLMHug)
             return model
         except FileNotFoundError:
@@ -175,30 +202,28 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
             model_id,
             use_flash_attention_2=True,
             torch_dtype=torch.float16, device_map={"": torch.device('cpu')}, )
-        model_hug.add_module('embedding_head', nn.Linear(
-            model_hug.config.hidden_size,
-            model_hug.config.hidden_size,
-            bias=False))
         config = model_hug.config
         if config.pad_token_id is None:
             config.pad_token_id = tokenizer.pad_token_id
         if config.sep_token_id is None:
             config.sep_token_id = tokenizer.sep_token_id
         config._flash_attn_2_enabled = True
+
         with open(os.path.normpath(os.path.join(path, 'config.json')),
                   'w') as f:
-            json.dump(model_hug.config.to_dict(), f)
+            json.dump(config.to_dict(), f)
         torch.save(model_hug.state_dict(),
                    os.path.normpath(os.path.join(path, 'weights.bin')))
+        torch.save(cls.get_embedding_head(
+            model_hug.model.embed_tokens.num_embeddings,
+            config.hidden_size).state_dict(),
+                   os.path.normpath(os.path.join(path, 'embedding_head.bin')))
 
     def __init__(self, config: MistralConfig):
         super().__init__(config)
         config._flash_attn_2_enabled = True
-        self.model = hug.MistralModel(config)
-        self.lm_head = nn.Linear(config.hidden_size,
-                                 self.model.embed_tokens.num_embeddings,
-                                 # 4096,
-                                 bias=False)
+        self.hug = hug.MistralForCausalLM(config)
+
         self.embedding_head = nn.Linear(config.hidden_size,
                                         config.hidden_size,
                                         bias=False)
@@ -206,56 +231,143 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         self.apply(self._init_weights)
 
     @overrides(DecoderTransformer)
-    def decoder_embedding(
-            self,
-            src_ids: LongTensorT['B,TgtSeqLen'],
-            src_mask: IntTensorT['B,1|TgtSeqLen,TgtSeqLen'],
-            pred_eos: bool = False,
-    ) -> FloatTensorT['B,EmbedLen']:
-        # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs = self.model.forward(
-            input_ids=torch.LongTensor(src_ids),
-            attention_mask=src_ids,
-            output_hidden_states=True,
-            return_dict=False,
-        )
-
-        hidden_states = outputs[0]
-        logits = self.embedding_head(hidden_states)
-        return FloatTensorT(logits)
-
-    @overrides(DecoderTransformer)
     def forward(
             self,
             src_ids: LongTensorT['B,SrcSeqLen'],
             src_mask: IntTensorT['B,1|SrcSeqLen,SrcSeqLen'],
     ) -> FloatTensorT['B,TgtSeqLen,OutNClasses']:
-        # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs = self.model.forward(
-            input_ids=torch.LongTensor(src_ids),
-            attention_mask=src_ids,
-            output_hidden_states=True,
-            return_dict=False,
-        )
-
-        hidden_states = outputs[0]
-        logits = self.lm_head(hidden_states)
-        logits = logits.float()
-
-        # return FloatTensorT(CausalLMOutputWithPast(
-        #     logits=logits,
-        #     past_key_values=outputs.past_key_values,
-        #     hidden_states=outputs.hidden_states,
-        #     attentions=outputs.attentions,
-        # ).logits)
-        return FloatTensorT(logits)
+        full_output: BaseModelOutputWithPast = self.hug.model.forward(
+            input_ids=src_ids, attention_mask=src_mask)
+        output: FloatTensorT[
+            'B,TgtSeqLen,EmbedLen'] = FloatTensorT(
+            full_output.last_hidden_state)
+        lm_logits = self.hug.lm_head(output)
+        return lm_logits
 
     def decode(self,
                transformer_ctx: TransformerContext,
                generation_ids: LongTensorT['B,1'],
                src_mask: IntTensorT['B,SrcSeqLen'] = None) -> \
             LogitsTensorT['B,1,VocabSize']:
+        r"""
+        Should just be used for generation with torch.no_grad()
+        """
         raise NotImplementedError
+
+    def _change_output_if_configured(self, output: FloatTensorT[
+        'B,Opt[SrcSeqLen],EmbedLen']) -> FloatTensorT[
+        'B,Opt[SrcSeqLen],EmbedLen+2']:
+        if self.embedding_head.weight.shape[1] == self.embed_dim + 2:
+            if len(output.shape) == 2:
+                output = FloatTensorT(
+                    torch.cat([output, torch.zeros_like(output[:, :2])],
+                              dim=-1))
+            else:
+                output = FloatTensorT(
+                    torch.cat([output, torch.zeros_like(output[:, :, :2])],
+                              dim=-1))
+        return output
+
+    @overrides(DecoderTransformer)
+    def decode_logits(self,
+                      src_ids: LongTensorT['B,SrcSeqLen'],
+                      src_mask: IntTensorT['B,SrcSeqLen'],
+                      ret_last: bool = True) -> (
+            LogitsTensorT)['B,Opt[SrcSeqLen],VocabSize']:
+        full_output: BaseModelOutputWithPast = self.hug.model.forward(
+            input_ids=src_ids, attention_mask=src_mask)
+        output: FloatTensorT[
+            'B,TgtSeqLen,EmbedLen'] = FloatTensorT(
+            full_output.last_hidden_state)
+        if ret_last:
+            output = output[:, -1, :]
+        output = self._change_output_if_configured(output)
+        lm_logits = self.hug.lm_head(output)
+        return lm_logits
+
+    @overrides(DecoderTransformer)
+    def decoder_embedding(self,
+                          src_ids: LongTensorT['B,SrcSeqLen'],
+                          src_mask: IntTensorT['B,SrcSeqLen'],
+                          ret_last: bool = True) -> \
+            FloatTensorT['B,Opt[SrcSeqLen],EmbedLen']:
+        full_output: BaseModelOutputWithPast = self.hug.model.forward(
+            input_ids=src_ids, attention_mask=src_mask)
+        output: FloatTensorT[
+            'B,TgtSeqLen,EmbedLen'] = FloatTensorT(
+            full_output.last_hidden_state)
+        if ret_last:
+            output = output[:, -1, :]
+        output = self._change_output_if_configured(output)
+        embedding = self.embedding_head(output)
+        return embedding
+
+    @overrides(DecoderTransformer)
+    def decoder_embedding_w_logits(self,
+                                   src_ids: LongTensorT['B,SrcSeqLen'],
+                                   src_mask: IntTensorT['B,SrcSeqLen'],
+                                   ret_last: bool = True) -> \
+            Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], FloatTensorT[
+                'B,Opt[SrcSeqLen],VocabSize']]:
+        full_output: BaseModelOutputWithPast = self.hug.model.forward(
+            input_ids=src_ids, attention_mask=src_mask)
+        output: FloatTensorT[
+            'B,TgtSeqLen,EmbedLen'] = FloatTensorT(
+            full_output.last_hidden_state)
+        if ret_last:
+            output = output[:, -1, :]
+        output = self._change_output_if_configured(output)
+        lm_logits = self.hug.lm_head(output)
+        embedding = self.embedding_head(output)
+        return embedding, lm_logits
+
+    @overrides(DecoderTransformer)
+    def decode_relevance(self,
+                         src_ids: LongTensorT['B,SrcSeqLen'],
+                         src_mask: IntTensorT['B,SrcSeqLen']) -> \
+            FloatTensorT['B,2']:
+        def get_llama_no_yes_scores(logits: FloatTensorT['NQuery,NClasses']):
+            assert logits.shape[-1] == 32002
+            n_yes = 4
+            Yes_id = 5613
+            block_Yes_id = 5592
+            yes_id = 9780
+            block_yes_id = 5081
+            yes_ids = [Yes_id, block_Yes_id, yes_id, block_yes_id]
+
+            n_no = 6
+            NO_id = 4032
+            block_NO_id = 7929
+            no_id = 1510
+            block_no_id = 708
+            No_id = 2501
+            block_No_id = 1770
+            no_ids = [NO_id, block_NO_id, no_id, block_no_id, No_id,
+                      block_No_id]
+
+            yes_no_logits = logits[:, no_ids + yes_ids]
+            no_score = torch.mean(yes_no_logits[:, :n_no], dim=-1)
+            yes_score = torch.mean(yes_no_logits[:, -n_yes:], dim=-1)
+            similarity_to_classes = FloatTensorT(
+                torch.stack([no_score, yes_score], dim=-1))
+            return similarity_to_classes
+
+        full_output: BaseModelOutputWithPast = self.hug.model.forward(
+            input_ids=src_ids, attention_mask=src_mask)
+        output: FloatTensorT[
+            'B,TgtSeqLen,EmbedLen'] = FloatTensorT(
+            full_output.last_hidden_state)
+        output = output[:, -1, :]
+        lm_logits = self.hug.lm_head(output)
+        no_yes_score = get_llama_no_yes_scores(lm_logits)
+        # no_yes_score = nn.Tanh()(get_llama_no_yes_scores(lm_logits))
+
+        output = output
+        #         output = nn.Tanh()(output)
+        assert self.embedding_head.weight.shape[1] == self.embed_dim + 2
+        output = FloatTensorT(torch.cat([output, no_yes_score], dim=-1))
+        embedding = self.embedding_head(output)
+        return embedding
 
     @overrides(BaseTransformer)
     def generate(self,
@@ -264,9 +376,10 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
                  tgt_ids: LongTensorT['B,TgtSeqLen'] = None,
                  max_new_tokens: int = None,
                  ) -> LongTensorT['TgtSeqLen']:
-        return LongTensorT(
-            self.model.generate(input_ids=src_ids, attention_mask=src_mask,
-                                max_new_tokens=max_new_tokens))
+        generate_output = self.hug.generate(src_ids,
+                                            attention_mask=src_mask,
+                                            max_new_tokens=max_new_tokens)
+        return LongTensorT(generate_output)
 
 
 def main():
