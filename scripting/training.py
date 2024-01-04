@@ -139,8 +139,8 @@ def led_main_train():
         training_cfg = {}
         lr = 0.0001
         weight_decay = 0.0000
-        betas = (0.9, 0.98)
-        eps = 1e-4
+        betas = (0.9, 0.999)
+        eps = 1e-8
 
         model_node.freeze_parameters('embedding_head')
         trainable_params = [p for n, p in model_node.model.named_parameters() if

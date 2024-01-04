@@ -14,6 +14,7 @@ from torch import nn
 from transformers import BitsAndBytesConfig, MistralConfig
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutputWithPast
+from transformers.models.mistral.modeling_mistral import MistralRMSNorm
 from transformers.utils.import_utils import is_flash_attn_2_available
 
 import mgz.settings as settings
@@ -98,8 +99,8 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
 
     @staticmethod
     def get_embedding_head(n_tokens: int, hidden_size: int):
-        # return nn.Linear(hidden_size + 2, hidden_size, bias=False)
         return nn.Linear(hidden_size, hidden_size, bias=False)
+        # return nn.Linear(hidden_size, hidden_size, bias=False)
 
     @classmethod
     def modules_to_not_convert(cls):
@@ -176,14 +177,23 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
                                                     weights_location=weight_path,
                                                     bnb_quantization_config=quantization_config,
                                                     device_map="auto")
+                model.embedding_head = load_and_quantize_model(
+                    model.embedding_head,
+                    weights_location=embedding_weight_path,
+                    bnb_quantization_config=quantization_config,
+                    device_map="auto")
 
             else:
                 model.hug = load_checkpoint_and_dispatch(model.hug,
                                                          checkpoint=weight_path,
                                                          device_map={
                                                              "": settings.DEVICE})
-            model.embedding_head.load_state_dict(
-                torch.load(embedding_weight_path))
+
+                model.embedding_head = load_checkpoint_and_dispatch(
+                    model.embedding_head,
+                    checkpoint=embedding_weight_path,
+                    device_map={
+                        "": settings.DEVICE})
             assert isinstance(model, MistralForCausalLMHug)
             return model
         except FileNotFoundError:
@@ -218,19 +228,22 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
                    os.path.normpath(os.path.join(path, 'weights.bin')))
         torch.save(cls.get_embedding_head(
             model_hug.model.embed_tokens.num_embeddings,
-            config.hidden_size).state_dict(),
+            config.hidden_size).half().cpu().state_dict(),
                    os.path.normpath(os.path.join(path, 'embedding_head.bin')))
 
     def __init__(self, config: MistralConfig):
         super().__init__(config)
         torch.set_default_dtype(torch.float16)
         self.hug = hug.MistralForCausalLM(config)
-
-        self.embedding_head = nn.Linear(config.hidden_size,
-                                        config.hidden_size,
-                                        bias=False)
+        self.embedding_head = self.get_embedding_head(
+            self.hug.model.embed_tokens.num_embeddings,
+            config.hidden_size)
+        # self.post_embedding_layernorm = MistralRMSNorm(
+        #     self.embedding_head.weight.shape[1], eps=config.rms_norm_eps)
         # Initialize weights and apply final processing
         self.apply(self._init_weights)
+        torch.set_default_dtype(torch.float32)
+
 
     @overrides(DecoderTransformer)
     def forward(
@@ -362,14 +375,10 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         output = output[:, -1, :]
         lm_logits = self.hug.lm_head(output)
         no_yes_score = get_llama_no_yes_scores(lm_logits)
-        # no_yes_score = nn.Tanh()(get_llama_no_yes_scores(lm_logits))
 
         output = output
-        #         output = nn.Tanh()(output)
-        assert self.embedding_head.weight.shape[1] == self.embed_dim + 2
-        output = FloatTensorT(torch.cat([output, no_yes_score], dim=-1))
         embedding = self.embedding_head(output)
-        return embedding
+        return embedding, no_yes_score
 
     @overrides(BaseTransformer)
     def generate(self,

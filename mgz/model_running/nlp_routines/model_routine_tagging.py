@@ -5,7 +5,6 @@ from enum import Enum
 import torch.utils.data
 import transformers as hug
 
-import mgz.settings as settings
 import spaces as sp
 from mgz.ds.base_dataset import BaseDataset
 from mgz.ds.sentence_datasets.sentence_datasets import Sent2TagMetaTaskBatch, \
@@ -54,6 +53,8 @@ def get_llama_no_yes_scores(logits: FloatTensorT['NQuery,NClasses']):
     similarity_to_classes = FloatTensorT(
         torch.stack([no_score, yes_score], dim=-1))
     return similarity_to_classes
+
+
 # def predict_with_centers(support_embedding: FloatTensorT[
 #                              'NClasses,EmbedLen'],
 #                          query_embedding: FloatTensorT[
@@ -121,6 +122,8 @@ class TaggingRoutine(BaseNLPProtocol):
             similarity_to_classes = -1 * DistanceMeasuresPerClass.euclidean_distance(
                 class_embeddings=support_embedding,
                 query_embeddings=query_embedding)
+            # similarity_to_classes = torch.softmax(query_logits,
+            #                                       dim=-1) * similarity_to_classes
         elif self.distance_measure == DistanceMeasure.COSINE:
             similarity_to_classes = DistanceMeasuresPerClass.cosine_similarity(
                 class_embeddings=support_embedding,
@@ -174,9 +177,7 @@ class TaggingRoutine(BaseNLPProtocol):
                 'NClasses,TaskSize,EmbedLen'] = \
                 support_embeds.view(n_cls, tsk_sz, model.embed_dim)
             support_centers: FloatTensorT['NClasses,EmbedLen'] = \
-                support_embeds.mean(dim=1, keepdim=False)
-            del support_embeds
-            settings.empty_cache()
+                support_embeds.mean(dim=1, keepdim=False).detach()
         query_embeds: FloatTensorT[
             'TaskSize,EmbedLen'] = model.encoder_decoder_embedding(
             src_ids=batch.queries,
@@ -204,7 +205,7 @@ class TaggingRoutine(BaseNLPProtocol):
             support_mask = batch.support_masks.view(n_cls * tsk_sz, src_len)
             support_embed_list: List[FloatTensorT['TaskSize//N,EmbedLen']] = []
             for i in range(0, n_cls * tsk_sz, gpu_max_batch_size):
-                batch_embeds = model.decode_relevance(
+                batch_embeds, _ = model.decode_relevance(
                     src_ids=support[i:i + gpu_max_batch_size, :],
                     src_mask=support_mask[i:i + gpu_max_batch_size, :],
                 )
@@ -216,26 +217,14 @@ class TaggingRoutine(BaseNLPProtocol):
                 support_embeds.view(n_cls, tsk_sz,
                                     model.embed_dim)  # 32002 model.embed_dim)
             support_centers: FloatTensorT['NClasses,EmbedLen'] = \
-                support_embeds.mean(dim=1, keepdim=False)
-            del support_embeds
-            settings.empty_cache()
+                support_embeds.mean(dim=1, keepdim=False).detach()
         self.debug_log_batch_info(batch)
         query_embeds: FloatTensorT['TaskSize,EmbedLen']
-        query_logits: FloatTensorT['TaskSize,VocabSize'] = None
-        query_embeds = model.decode_relevance(
+        query_logits: FloatTensorT['TaskSize,VocabSize']
+        query_embeds, query_logits = model.decode_relevance(
             src_ids=batch.queries,
             src_mask=batch.query_masks,
         )
-        # n_query = batch.queries.shape[0]
-        # query_embed_list: List[FloatTensorT['TaskSize//N,EmbedLen']] = []
-        # for i in range(0, n_query, 1):
-        #     query_embed_list.append(model.decoder_embedding(
-        #         src_ids=batch.queries[i:i + 1, :],
-        #         src_mask=batch.query_masks[i:i + 1, :],
-        #     ))
-        # query_embeds: FloatTensorT['TaskSize,EmbedLen'] = \
-        #     FloatTensorT(torch.cat(query_embed_list, dim=0))
-
         assert isinstance(model, DecoderTransformer)
         query_lbls: LongTensorT['TaskSize'] = batch.query_lbls
         cls_logits: FloatTensorT[
@@ -266,7 +255,13 @@ class TaggingRoutine(BaseNLPProtocol):
         predictions: LongTensorT['NQuery'] = cls_logits.argmax(-1)
         accuracy = (predictions == query_lbls).float().mean().item()
         if model_edge is not None:
+            total_samples = cls_logits.shape[0] * cls_logits.shape[1]
             loss = model_edge.loss_fn(cls_logits, query_lbls)
+            loss = loss / total_samples
+            if torch.nan in loss  :
+                print('loss is nan')
+                print(total_samples)
+                print(cls_logits)
             model_edge.record_metric(Metrics.TRAIN_ACC_MEAN, accuracy)
             model_edge.record_metric(Metrics.TRAIN_LOSS_MEAN, loss.cpu().item())
             model_edge.record_metric(Metrics.TRAIN_AVG_PRED,

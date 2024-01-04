@@ -15,6 +15,23 @@ from mgz.typing import *
 
 
 class SampleType(str, Enum):
+    # Emails
+    MESSAGE_ID = 'Message-ID'
+    DATE = 'Date'
+    FROM = 'From'
+    TO = 'To'
+    SUBJECT = 'Subject'
+    MIME_VERSION = 'Mime-Version'
+    CONTENT_TYPE = 'Content-Type'
+    CONTENT_TRANSFER_ENCODING = 'Content-Transfer-Encoding'
+    X_FROM = 'X-From'
+    X_TO = 'X-To'
+    X_CC = 'X-cc'
+    X_BCC = 'X-bcc'
+    X_FOLDER = 'X-Folder'
+    X_ORIGIN = 'X-Origin'
+    X_FILENAME = 'X-FileName'
+
     # MultiLexSum keys
     ID = 'id'
     FILE_NAME = 'file_name'
@@ -51,9 +68,6 @@ def strings_to_padded_id_tensor_w_mask(txts: List[SrcStringT],
     """
     if pad_to_multiple_of is None:
         pad_to_multiple_of = max_len
-    print('txts', txts)
-    print('txts', len(txts))
-    print('max_len', txts)
     input_encodings: BatchEncoding = (
         tokenizer.__call__(txts,
                            max_length=max_len,

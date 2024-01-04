@@ -877,14 +877,22 @@ class MistralForCausalLM(MistralPreTrainedModel):
                                                     weights_location=weight_path,
                                                     bnb_quantization_config=quantization_config,
                                                     device_map="auto")
-
+                model.embedding_head = load_and_quantize_model(
+                    model.embedding_head,
+                    weights_location=embedding_weight_path,
+                    bnb_quantization_config=quantization_config,
+                    device_map="auto")
             else:
                 model.hug = load_checkpoint_and_dispatch(model.hug,
                                                          checkpoint=weight_path,
                                                          device_map={
                                                              "": settings.DEVICE})
-            model.embedding_head.load_state_dict(
-                torch.load(embedding_weight_path))
+
+                model.embedding_head = load_checkpoint_and_dispatch(
+                    model.embedding_head,
+                    checkpoint=embedding_weight_path,
+                    device_map={
+                        "": settings.DEVICE})
             assert isinstance(model, MistralForCausalLM)
             return model
         except FileNotFoundError:
@@ -918,7 +926,7 @@ class MistralForCausalLM(MistralPreTrainedModel):
                    os.path.normpath(os.path.join(path, 'weights.bin')))
         torch.save(cls.get_embedding_head(
             model_hug.model.embed_tokens.num_embeddings,
-            config.hidden_size).state_dict(),
+            config.hidden_size).half().cpu().state_dict(),
                    os.path.normpath(os.path.join(path, 'embedding_head.bin')))
 
     def __init__(self, config: MistralConfig):

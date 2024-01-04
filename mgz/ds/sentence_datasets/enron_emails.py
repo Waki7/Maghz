@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import email
+import json
 import os
 import random
 import re
@@ -136,14 +137,31 @@ class EnronEmails(SentenceDataset):
                     [CATEGORIES[c[0]][c[1]] for c in categories]
 
             # Read txt file formatted as e-mail with library email
-            emails: email.message.Message = email.message_from_file(
+            email_msg: email.message.Message = email.message_from_file(
                 open(email_path))
             data_entry: Dict[SampleType, Union[str, List[str]]] = \
-                {SampleType.KEY: emails.get('Message-ID'),
-                 SampleType.FILE_NAME: email_path,
-                 SampleType.NAME: emails.get('Subject'),
-                 SampleType.CATCHPHRASES: tags_for_email,
-                 SampleType.INPUT_TEXT: '\n'.join([emails.as_string()])}
+                {
+                    SampleType.MESSAGE_ID: email_msg.get('Message-ID'),
+                    SampleType.DATE: email_msg.get('Date'),
+                    SampleType.FROM: email_msg.get('From'),
+                    SampleType.TO: email_msg.get('To'),
+                    SampleType.SUBJECT: email_msg.get('Subject'),
+                    SampleType.MIME_VERSION: email_msg.get('Mime-Version'),
+                    SampleType.CONTENT_TYPE: email_msg.get('Content-Type'),
+                    SampleType.CONTENT_TRANSFER_ENCODING: email_msg.get(
+                        'Content-Transfer-Encoding'),
+                    SampleType.X_FROM: email_msg.get('X-From'),
+                    SampleType.X_TO: email_msg.get('X-To'),
+                    SampleType.X_CC: email_msg.get('X-cc'),
+                    SampleType.X_BCC: email_msg.get('X-bcc'),
+                    SampleType.X_FOLDER: email_msg.get('X-Folder'),
+                    SampleType.X_ORIGIN: email_msg.get('X-Origin'),
+                    SampleType.X_FILENAME: email_msg.get('X-FileName'),
+                    # email_msg.get_payload(),
+                    SampleType.FILE_NAME: email_path,
+                    SampleType.CATCHPHRASES: tags_for_email,
+                    SampleType.INPUT_TEXT: '\n'.join([email_msg.as_string()])
+                }
             self.data.append(data_entry)
         self.loaded = True
 
@@ -152,8 +170,8 @@ class EnronEmails(SentenceDataset):
         assert self.loaded, "Dataset not loaded"
         return len(self.data)
 
-    def __getitem__(self, idx) -> (SourceListT, SummaryT):
-        raise NotImplementedError
+    def __getitem__(self, idx) -> Dict:
+        return self.data[idx]
 
     def _get_source_types(self) -> Tuple[SampleType, SampleType]:
         raise NotImplementedError(
@@ -325,15 +343,6 @@ class EnronEmailsTagQA(EnronEmailsTagging, MetaLearningMixIn):
         return rand_sample_for_tag, selected_tag
 
 
-def inspect_catchphrase_diffs():
-    # please install HuggingFace ds by pip install ds
-    from transformers import BartTokenizer
-    tokenizer = BartTokenizer.from_pretrained("facebook/bart-large")
-
-    ds = EnronEmailsTagging(tokenizer=tokenizer,
-                            training_ratio=1.0).load_training_data()
-
-
 def inspect_src_test():
     from transformers import LEDTokenizer
     tokenizer = LEDTokenizer.from_pretrained(
@@ -361,8 +370,55 @@ def inspect_src_test():
     print(max_lens)
 
 
+def look_through_data():
+    from transformers import LEDTokenizer
+    tokenizer = LEDTokenizer.from_pretrained(
+        "allenai/primera-multi_lexsum-source-long")
+    ds = EnronEmailsTagging(tokenizer,
+                            max_src_len=2000,
+                            n_episodes=1000).load_training_data()
+    for i in ds:
+        print(i[0])
+        print(i[1])
+        print('-----------------')
+
+
+def dump_n_examples(n: int):
+    from transformers import LEDTokenizer
+    tokenizer = LEDTokenizer.from_pretrained(
+        "allenai/primera-multi_lexsum-source-long")
+    ds = EnronEmails(tokenizer,
+                     max_src_len=4096, max_tgt_len=-1).load_training_data()
+    keys_to_keep = [
+        SampleType.MESSAGE_ID,
+        SampleType.DATE,
+        SampleType.FROM,
+        SampleType.TO,
+        SampleType.SUBJECT,
+        SampleType.MIME_VERSION,
+        SampleType.CONTENT_TYPE,
+        SampleType.CONTENT_TRANSFER_ENCODING,
+        SampleType.X_FROM,
+        SampleType.X_TO,
+        SampleType.X_CC,
+        SampleType.X_BCC,
+        SampleType.X_FOLDER,
+        SampleType.X_ORIGIN,
+        SampleType.X_FILENAME,
+        SampleType.FILE_NAME,
+        SampleType.CATCHPHRASES,
+        SampleType.INPUT_TEXT
+    ]
+    docs = []
+    for i, doc in enumerate(ds[:10]):
+        doc_filtered = {key: doc[key] for key in keys_to_keep}
+        docs.append(doc_filtered)
+
+    print(json.dumps(docs, indent=4))
+
+
 def main():
-    inspect_src_test()
+    dump_n_examples(10)
 
 
 if __name__ == '__main__':
