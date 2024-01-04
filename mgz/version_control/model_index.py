@@ -89,24 +89,24 @@ class Indexer:
 
     @staticmethod
     def load_from_json(path=DEFAULT_INDEX_PATH):
+        idxer = Indexer(os.path.dirname(path))
         if not os.path.exists(path):
-            idxer = Indexer(os.path.dirname(path))
             try:
                 idxer.save_as_json()
                 logging.warning(
                     'Indexer json file does not exist at {}, creating new '
                     'one.'.format(os.path.abspath(path)))
+                with open(path) as file_object:
+                    # store file data in object
+                    data: Dict = json.load(file_object)
+                idxer = Indexer(data['root_path'])
+                for k, v in sorted(data.items()):
+                    idxer.__dict__[k] = v
             except PermissionError:
                 logging.warning(
                     'Indexer json file does not exist at {}, and cannot be '
                     'created, continuing like normal.'.format(
                         os.path.abspath(path)))
-        with open(path) as file_object:
-            # store file data in object
-            data: Dict = json.load(file_object)
-        idxer = Indexer(data['root_path'])
-        for k, v in sorted(data.items()):
-            idxer.__dict__[k] = v
         return idxer
 
     def find_parent_child(self, model_id: str) -> Tuple[str, str]:
