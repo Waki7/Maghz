@@ -123,6 +123,7 @@ def summarize_controller(model: DecoderTransformer, texts: List[str],
                          tokenizer: PreTrainedTokenizerBase,
                          max_src_len: int = None,
                          max_new_tokens=1000,
+                         return_just_new: bool = True,
                          ) -> List[str]:
     """
     Generates sequences using a Transformer-based model for a list of input texts.
@@ -136,7 +137,7 @@ def summarize_controller(model: DecoderTransformer, texts: List[str],
         Tensor: Generated sequences.
     """
     assert isinstance(model, DecoderTransformer)
-    
+
     if max_src_len is None:
         max_src_len = model.get_max_decoder_positions() - max_new_tokens
     max_src_len = min(max_src_len,
@@ -148,13 +149,18 @@ def summarize_controller(model: DecoderTransformer, texts: List[str],
                                                            tokenizer,
                                                            max_src_len,
                                                            settings.DEVICE)
+
     # model.config.max_length = 7
     generated_ids = model.generate(
         src_ids=src_ids,
         src_mask=src_mask,
         tgt_ids=src_ids,
         max_new_tokens=max_new_tokens)
-    return tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+
+    if return_just_new:
+        generated_ids = generated_ids[:, src_ids.shape[-1]:]
+    responses = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+    return responses
 
 
 @torch.no_grad()

@@ -10,13 +10,12 @@ from transformers import LlamaTokenizerFast
 import mgz.settings as settings
 from mgz.ds.sentence_datasets.aus_legal_case_reports import SampleType
 from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagQA
-from mgz.model_running.nlp_routines.model_routine_tagging import \
-    predict_with_centers
 from mgz.model_running.run_ops import tagging_embedding_controller, \
-    embedding_controller
+    embedding_controller, summarize_controller
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.models.nlp.led import LEDForConditionalGeneration
 from mgz.models.nlp.mistral import MistralForCausalLM
+from mgz.models.nlp.mistral_hug import MistralForCausalLMHug
 from mgz.typing import *
 from mgz.version_control import ModelNode
 
@@ -205,3 +204,69 @@ class TestBert(unittest.TestCase):
                 probs = predict_with_centers(support_embedding, query_embedding)
                 print(probs)
         self.assertEqual(probs.shape, (2, 2))
+
+
+@torch.no_grad()
+def test_summarization():
+    logging.basicConfig(level=logging.WARNING)
+    model_name = "/home/ceyer/Documents/Projects/LoA/backend/model_weights/tagging"
+    # model_name = 'openchat/openchat_3.5'
+    print('... loading model and tokenizer')
+    with torch.cuda.amp.autocast(enabled=True):
+        quantize = True
+        quantization_cfg = None
+        if quantize:
+            try:
+                from accelerate.utils import BnbQuantizationConfig
+                import bitsandbytes
+
+                quantization_cfg = BnbQuantizationConfig(
+                    load_in_8bit=quantize, )
+            except ImportError:
+                print("Module 'some_module' is not installed.")
+                quantization_cfg = None
+                quantize = False
+
+        model_node: ModelNode = \
+            ModelNode.load_from_id(MistralForCausalLMHug, model_name,
+                                   model_name,
+                                   quantization_config=quantization_cfg)
+        settings.print_gpu_usage()
+        tokenizer = model_node.tokenizer
+        model_node.model.eval()
+    with ((torch.cuda.amp.autocast(enabled=True))):
+        tag_qa_text = (
+            """
+                Message-ID: <23743848.1075863311776.JavaMail.evans@thyme>
+                Date: Wed, 11 Jul 2001 08:29:22 -0700 (PDT)
+                From: legalonline-compliance@enron.com
+                To: williams@mailman.enron.com, bwillia5@enron.com
+                Subject: Confidential Information and Securities Trading
+                Mime-Version: 1.0
+                Content-Type: text/plain; charset=us-ascii
+                Content-Transfer-Encoding: 7bit
+                X-From: Office of the Chairman - Enron Wholesale Services <legalonline-compliance@enron.com>@ENRON <IMCEANOTES-Office+20of+20the+20Chairman+20-+20Enron+20Wholesale+20Services+20+3Clegalonline-compliance+40enron+2Ecom+3E+40ENRON@ENRON.com>
+                X-To: WILLIAMS@mailman.enron.com, WILLIAM <bwillia5@enron.com>
+                X-cc: 
+                X-bcc: 
+                X-Folder: \Williams III, Bill (Non-Privileged)\Bill Williams III
+                X-Origin: Williams-B
+                X-FileName: Williams III, Bill (Non-Privileged).pst
+    
+                To:WILLIAMS, WILLIAM
+                Email:bwillia5@enron.com - 503-464-3730
+    
+                Enron Wholesale Services - Office of the Chairman
+    
+                From:  Mark Frevert, Chairman & CEO
+                Mark Haedicke, Managing Director & General Counsel
+    
+                Subject:  Confidential Information and Securities Trading
+    
+                To keep pace with the fluid and fast-changing demands of our equity trading activities, Enron Wholesale Services ("EWS") has recently revised its official Policies and Procedures Regarding Confidential Information and Securities Trading ("Policies and Procedures").  These revisions reflect two major developments: (1) our equity trading activities have been extended into the United Kingdom, and (2) in an effort to streamline the information flow process, the "Review Team" will play a more centralized role, so that the role of the "Resource Group" is no longer necessary.You are required to become familiar with, and to comply with, the Policies and Procedures.  The newly revised Policies and Procedures are available for your review on LegalOnline, the new intranet website maintained by the Enron Wholesale Services Legal Department.  Please click on the attached link to access LegalOnline:
+                http://legalonline.corp.enron.com/chinesewall.asp 
+    
+                If you have already certified compliance with the Policies and Procedures during the 2001 calendar year, you need not re-certify at this time, although you are still required to to review and become familiar with the revised Policies and Procedures.  If you have not certified compliance with the Policies and Procedures during the 2001 calendar year, then you must do so within two weeks of your receipt of this message.  The LegalOnline site will allow you to quickly and conveniently certify your compliance on-line with your SAP Personal ID number.  If you have any questions concerning the Policies or Procedures, please call Bob Bruce at extension 5-7780 or Donna Lowry at extension 3-1939. """)
+        text = [tag_qa_text, tag_qa_text + " shoot shoot"]
+        summary = summarize_controller(model_node.model, text, tokenizer, 4000)
+        print(summary)

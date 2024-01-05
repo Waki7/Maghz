@@ -411,7 +411,8 @@ def dump_n_examples(n: int):
     ]
     docs = []
     for i, doc in enumerate(ds[:10]):
-        doc_filtered = {key: doc[key] for key in keys_to_keep}
+        doc_filtered = {str(key) + ".value": doc[key] for key
+                        in keys_to_keep}
         docs.append(doc_filtered)
 
     print(json.dumps(docs, indent=4))

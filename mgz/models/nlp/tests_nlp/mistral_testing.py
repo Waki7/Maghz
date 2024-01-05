@@ -8,6 +8,7 @@ from mgz import settings
 from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagQA
 from mgz.ds.sentence_datasets.sentence_datasets import \
     strings_to_padded_id_tensor_w_mask
+from mgz.model_running.run_ops import summarize_controller
 from mgz.models.nlp.mistral import MistralForCausalLM
 from mgz.models.nlp.mistral_hug import MistralForCausalLMHug
 from mgz.typing import *
@@ -194,7 +195,6 @@ def mistral_mgz():
               tokenizer.batch_decode(generated_ids[:, -100:]))
         print(tokenizer.batch_decode(generated_ids))
 
-
 @torch.no_grad()
 def mistral_mgz_hug():
     logging.basicConfig(level=logging.WARNING)
@@ -259,7 +259,7 @@ def mistral_mgz_hug():
             If you have already certified compliance with the Policies and Procedures during the 2001 calendar year, you need not re-certify at this time, although you are still required to to review and become familiar with the revised Policies and Procedures.  If you have not certified compliance with the Policies and Procedures during the 2001 calendar year, then you must do so within two weeks of your receipt of this message.  The LegalOnline site will allow you to quickly and conveniently certify your compliance on-line with your SAP Personal ID number.  If you have any questions concerning the Policies or Procedures, please call Bob Bruce at extension 5-7780 or Donna Lowry at extension 3-1939. 
             """
             f"<|end_of_turn|>GPT4 Correct Assistant: ")
-        text = [tag_qa_text, tag_qa_text + " shoot"]
+        text = [tag_qa_text, tag_qa_text + " shoot shoot"]
 
         src_ids, src_mask = strings_to_padded_id_tensor_w_mask(text, tokenizer,
                                                                4000,

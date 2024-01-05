@@ -392,7 +392,7 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
             'TODO, find exact mechanism that triggers the stop'
         generate_output = self.hug.generate(src_ids,
                                             attention_mask=src_mask,
-                                            max_new_tokens=max_new_tokens)
+                                            max_new_tokens=max_new_tokens,)
         return LongTensorT(generate_output)
 
 
