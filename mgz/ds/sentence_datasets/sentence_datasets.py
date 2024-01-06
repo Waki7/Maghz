@@ -254,7 +254,7 @@ class TagQAMetaTaskBatch:
 
         neg_batch: List[Tuple[SrcStringT, LabelT]] = \
             [(
-                #                 ds.data[i][SampleType.FILE_NAME] +
+#                 ds.data[i][SampleType.FILE_NAME] +
                 tag_question_augment(ds.data[i][
                                          SampleType.INPUT_TEXT], pos_tag), 0)
                 for i in

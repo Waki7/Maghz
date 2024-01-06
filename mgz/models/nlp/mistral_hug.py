@@ -14,7 +14,6 @@ from torch import nn
 from transformers import BitsAndBytesConfig, MistralConfig
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutputWithPast
-from transformers.models.mistral.modeling_mistral import MistralRMSNorm
 from transformers.utils.import_utils import is_flash_attn_2_available
 
 import mgz.settings as settings
@@ -129,9 +128,6 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         weights_path: FilePath = os.path.normpath(
             os.path.join(path, 'embedding_head.bin'))
         torch.save(self.embedding_head.state_dict(), weights_path)
-        weights_path: FilePath = os.path.normpath(
-            os.path.join(path, 'weights.bin'))
-        torch.save(self.hug.state_dict(), weights_path)
 
     @classmethod
     def load_model(cls, path: DirPath,
@@ -243,7 +239,6 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         # Initialize weights and apply final processing
         self.apply(self._init_weights)
         torch.set_default_dtype(torch.float32)
-
 
     @overrides(DecoderTransformer)
     def forward(
@@ -360,9 +355,8 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
             no_ids = [NO_id, block_NO_id, no_id, block_no_id, No_id,
                       block_No_id]
 
-            yes_no_logits = logits[:, no_ids + yes_ids]
-            no_score = torch.mean(yes_no_logits[:, :n_no], dim=-1)
-            yes_score = torch.mean(yes_no_logits[:, -n_yes:], dim=-1)
+            no_score = torch.max(logits[:, no_ids], dim=-1)[0]
+            yes_score = torch.max(logits[:, yes_ids], dim=-1)[0]
             similarity_to_classes = FloatTensorT(
                 torch.stack([no_score, yes_score], dim=-1))
             return similarity_to_classes
@@ -376,7 +370,6 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         lm_logits = self.hug.lm_head(output)
         no_yes_score = get_llama_no_yes_scores(lm_logits)
 
-        output = output
         embedding = self.embedding_head(output)
         return embedding, no_yes_score
 
@@ -392,7 +385,7 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
             'TODO, find exact mechanism that triggers the stop'
         generate_output = self.hug.generate(src_ids,
                                             attention_mask=src_mask,
-                                            max_new_tokens=max_new_tokens,)
+                                            max_new_tokens=max_new_tokens, )
         return LongTensorT(generate_output)
 
 

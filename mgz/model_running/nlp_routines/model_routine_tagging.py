@@ -115,15 +115,27 @@ class TaggingRoutine(BaseNLPProtocol):
                              query_embedding: FloatTensorT[
                                  'NQuery,EmbedLen'],
                              query_logits: FloatTensorT[
-                                 'NQuery,VocabSize'] = None) -> \
+                                 'NQuery,VocabSize'] = None,
+                             n_supports: int = None) -> \
             FloatTensorT['NQuery,NClasses']:
         similarity_to_classes: FloatTensorT['NQuery,NClasses'] = None
         if self.distance_measure == DistanceMeasure.L2:
             similarity_to_classes = -1 * DistanceMeasuresPerClass.euclidean_distance(
                 class_embeddings=support_embedding,
                 query_embeddings=query_embedding)
-            # similarity_to_classes = torch.softmax(query_logits,
-            #                                       dim=-1) * similarity_to_classes
+            # assert n_supports is not None
+            # pred_probs = torch.softmax(query_logits, dim=-1)
+            # weighting: FloatTensorT['NQuery,VocabSize'] = \
+            #     (1 - pred_probs)
+            # softening = (0.5 * torch.ones(
+            #     (n_supports, weighting.shape[0], weighting.shape[1]))).to(
+            #     weighting.device)
+            # weighting = FloatTensorT(torch.mean(
+            #     torch.cat([softening, weighting.unsqueeze(0)], dim=0),
+            #     keepdim=False, dim=0
+            # ))
+            # similarity_to_classes = FloatTensorT(torch.log(
+            #     weighting * torch.softmax(similarity_to_classes, dim=-1)))
         elif self.distance_measure == DistanceMeasure.COSINE:
             similarity_to_classes = DistanceMeasuresPerClass.cosine_similarity(
                 class_embeddings=support_embedding,
@@ -133,15 +145,15 @@ class TaggingRoutine(BaseNLPProtocol):
                 class_embeddings=support_embedding,
                 query_embeddings=query_embedding)
         elif self.distance_measure == DistanceMeasure.CLASSIFICATION:
-            assert query_logits.shape[-1] == 32002
             if len(query_logits.shape) == 3:
                 last_words = torch.argmax(query_logits[:, -5:, :], dim=-1)
                 decoded = self.tokenizer.batch_decode(last_words,
                                                       skip_special_tokens=True)
                 print('decoded ', decoded)
                 query_logits = query_logits[:, -1, :]
-            similarity_to_classes = get_llama_no_yes_scores(query_logits)
-            print('similarity_to_classes ', similarity_to_classes)
+                similarity_to_classes = get_llama_no_yes_scores(query_logits)
+            else:
+                similarity_to_classes = query_logits
             self.debug_log_predictions(similarity_to_classes)
 
         return similarity_to_classes
@@ -192,45 +204,44 @@ class TaggingRoutine(BaseNLPProtocol):
         return cls_logits, query_lbls
 
     def run_prototype_decoder(self, model: DecoderTransformer,
-                              batch: TagQAMetaTaskBatch,
-                              gpu_max_batch_size=4) -> \
+                              batch: TagQAMetaTaskBatch) -> \
             Tuple[FloatTensorT['NQuery,NClasses'], LongTensorT['NQuery']]:
         is_decoder = isinstance(model, DecoderTransformer) and \
                      isinstance(batch, TagQAMetaTaskBatch)
         assert is_decoder, 'Bad combination of model and batch'
 
         with torch.no_grad():
-            n_cls, tsk_sz, src_len = batch.supports.shape
-            support = batch.supports.view(n_cls * tsk_sz, src_len)
-            support_mask = batch.support_masks.view(n_cls * tsk_sz, src_len)
-            support_embed_list: List[FloatTensorT['TaskSize//N,EmbedLen']] = []
-            for i in range(0, n_cls * tsk_sz, gpu_max_batch_size):
+            n_cls, n_sup, src_len = batch.supports.shape
+            support = batch.supports.view(n_cls * n_sup, src_len)
+            support_mask = batch.support_masks.view(n_cls * n_sup, src_len)
+            support_embed_list: List[FloatTensorT['NSupport//N,EmbedLen']] = []
+            for i in range(0, n_cls * n_sup, self.gpu_max_batch_size):
                 batch_embeds, _ = model.decode_relevance(
-                    src_ids=support[i:i + gpu_max_batch_size, :],
-                    src_mask=support_mask[i:i + gpu_max_batch_size, :],
+                    src_ids=support[i:i + self.gpu_max_batch_size, :],
+                    src_mask=support_mask[i:i + self.gpu_max_batch_size, :],
                 )
-                support_embed_list.append(batch_embeds)
-            support_embeds: FloatTensorT['TaskSize,EmbedLen'] = \
+                support_embed_list.append(batch_embeds.detach())
+            support_embeds: FloatTensorT['NSupport,EmbedLen'] = \
                 FloatTensorT(torch.cat(support_embed_list, dim=0))
             support_embeds: FloatTensorT[
-                'NClasses,TaskSize,EmbedLen'] = \
-                support_embeds.view(n_cls, tsk_sz,
+                'NClasses,NSupport,EmbedLen'] = \
+                support_embeds.view(n_cls, n_sup,
                                     model.embed_dim)  # 32002 model.embed_dim)
             support_centers: FloatTensorT['NClasses,EmbedLen'] = \
                 support_embeds.mean(dim=1, keepdim=False).detach()
         self.debug_log_batch_info(batch)
-        query_embeds: FloatTensorT['TaskSize,EmbedLen']
-        query_logits: FloatTensorT['TaskSize,VocabSize']
+        query_embeds: FloatTensorT['NQuery,EmbedLen']
+        query_logits: FloatTensorT['NQuery,VocabSize']
         query_embeds, query_logits = model.decode_relevance(
             src_ids=batch.queries,
             src_mask=batch.query_masks,
         )
         assert isinstance(model, DecoderTransformer)
-        query_lbls: LongTensorT['TaskSize'] = batch.query_lbls
+        query_lbls: LongTensorT['NQuery'] = batch.query_lbls
         cls_logits: FloatTensorT[
-            'TaskSize,NClasses'] = self.predict_with_centers(
-            support_centers, query_embeds, query_logits)
-        return cls_logits, query_lbls
+            'NQuery,NClasses'] = self.predict_with_centers(
+            support_centers, query_embeds, query_logits, n_supports=n_sup)
+        return cls_logits, query_lbls, query_logits
 
     @overrides(BaseProtocol)
     def run_batch(self,
@@ -242,30 +253,34 @@ class TaggingRoutine(BaseNLPProtocol):
         query_lbls: LongTensorT['NQuery']
 
         if isinstance(model, EncoderDecoderTransformer):
-            cls_logits, query_lbls = self.run_prototype_encoder_decoder(model,
-                                                                        batch,
-                                                                        self.gpu_max_batch_size)
+            cls_logits, query_lbls = (
+                self.run_prototype_encoder_decoder(model, batch))
         elif isinstance(model, DecoderTransformer):
-            cls_logits, query_lbls = self.run_prototype_decoder(model, batch,
-                                                                self.gpu_max_batch_size)
+            cls_logits, query_lbls, query_logits = self.run_prototype_decoder(
+                model, batch)
         else:
             raise NotImplementedError
 
         # Calculate accuracy
-        predictions: LongTensorT['NQuery'] = cls_logits.argmax(-1)
+        predictions: LongTensorT['NQuery'] = (
+            ((batch.n_support_per_cls * torch.softmax(cls_logits, dim=-1)) +
+             torch.softmax(query_logits, dim=-1))).detach().argmax(
+            -1)
+        # predictions: LongTensorT['NQuery'] = cls_logits.argmax(-1)
         accuracy = (predictions == query_lbls).float().mean().item()
         if model_edge is not None:
             total_samples = cls_logits.shape[0] * cls_logits.shape[1]
             loss = model_edge.loss_fn(cls_logits, query_lbls)
             loss = loss / total_samples
-            if torch.nan in loss  :
-                print('loss is nan')
-                print(total_samples)
-                print(cls_logits)
-            model_edge.record_metric(Metrics.TRAIN_ACC_MEAN, accuracy)
-            model_edge.record_metric(Metrics.TRAIN_LOSS_MEAN, loss.cpu().item())
-            model_edge.record_metric(Metrics.TRAIN_AVG_PRED,
-                                     predictions.float().mean().item())
+            if model.training:
+                model_edge.record_metric(Metrics.TRAIN_ACC_MEAN, accuracy)
+                model_edge.record_metric(Metrics.TRAIN_LOSS_MEAN,
+                                         loss.cpu().item())
+                model_edge.record_metric(Metrics.TRAIN_AVG_PRED,
+                                         predictions.float().mean().item())
+            else:
+                model_edge.record_metric(Metrics.VAL_AVG_PRED,
+                                         predictions.float().mean().item())
         else:
             loss = FloatTensorT([0.0])
         return loss, accuracy

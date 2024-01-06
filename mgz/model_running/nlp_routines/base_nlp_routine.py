@@ -109,7 +109,7 @@ class BaseNLPProtocol(BaseProtocol):
                   val_data_loader: torch.utils.data.DataLoader[
                       TagQAMetaTaskBatch],
                   model_node: ModelNode,
-                  training_edge: ModelTransitionEdge = None
+                  model_edge: ModelTransitionEdge = None
                   ) -> Dict[Metrics, Union[float, List[float]]]:
         model = model_node.model
         started_training = model.training
@@ -132,12 +132,12 @@ class BaseNLPProtocol(BaseProtocol):
 
             loss_w_grad: FloatTensorT['1']
             accuracy: float
-            loss_w_grad, accuracy = self.run_batch(model, batch, training_edge)
+            loss_w_grad, accuracy = self.run_batch(model, batch, model_edge)
 
             accuracies.append(accuracy)
             print(f'Val Accuracy Moving Avg: {np.mean(accuracies)}')
-        if training_edge is not None:
-            training_edge.record_validation(accuracies)
+        if model_edge is not None:
+            model_edge.record_validation(accuracies)
         if started_training:
             model.train()
         settings.empty_cache()

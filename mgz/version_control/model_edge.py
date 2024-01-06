@@ -73,6 +73,7 @@ class ModelTransitionEdge:
         # Experiment logger for tracking the training process
         self.exp_tracker = log_utils.ExperimentLogger(self.root_path)
         self.models_to_store = models_to_store
+        self.best_val_acc: float = 0.0
         self.timer = None
 
     def start_timer(self):
@@ -142,6 +143,8 @@ class ModelTransitionEdge:
         Parameters:
         - vals (List[float]): A list of validation accuracy values.
         """
+        if len(vals) == 0:
+            return
         self.record_metrics(vc.Metrics.VAL_ACC_ALL, vals)
         self.record_metric(vc.Metrics.VAL_ACC_MEAN, np.mean(vals))
 
@@ -163,14 +166,14 @@ class ModelTransitionEdge:
         elif self.models_to_store == ModelsToStore.LATEST_AND_BEST_VAL:
             latest_mean_val_acc = self.training_metrics.get(
                 vc.Metrics.VAL_ACC_MEAN, None)
-            best_val_acc = self.exp_tracker.get_max_scalar(
-                vc.Metrics.VAL_ACC_MEAN)
 
             store_model = True
-            if best_val_acc is None or latest_mean_val_acc > best_val_acc:
+            if latest_mean_val_acc > self.best_val_acc:
                 identifiers.append("BEST")
             else:
                 identifiers.append("LATEST")
+
+            self.best_val_acc = max(self.best_val_acc, latest_mean_val_acc)
         summary_dir = '_'.join(identifiers)
 
         # Create a unique identifier for the new model
@@ -179,7 +182,7 @@ class ModelTransitionEdge:
         new_model = vc.ModelNode(self.parent.model, self.parent.tokenizer,
                                  new_model_id, metrics=self.training_metrics,
                                  quantization_config=self.parent.quantization_config)
-        self.child = new_model
+        self.parent = new_model
 
         # Save the new model and its training data
         model_dir: DirPath = vc.CACHED_INDEXER.save_to_index(new_model)

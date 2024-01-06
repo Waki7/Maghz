@@ -24,7 +24,7 @@ DATASET_DIR = os.path.join(
     'datasets/enron_with_categories/').replace("\\", "/")
 CATEGORIES = {
     1: {
-        1: "Coarse genre: Company Business, Strategy, etc. (elaborate in Section 3 [Topics])",
+        1: "Coarse genre: Company Business, Strategy, etc.",
         2: "Coarse genre: Purely Personal",
         3: "Coarse genre: Personal but in professional context (e.g., it was good working with you)",
         4: "Coarse genre: Logistic Arrangements (meeting scheduling, technical support, etc)",
