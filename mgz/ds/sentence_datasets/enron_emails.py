@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import email
-import json
 import os
 import random
 import re
@@ -157,10 +156,11 @@ class EnronEmails(SentenceDataset):
                     SampleType.X_FOLDER: email_msg.get('X-Folder'),
                     SampleType.X_ORIGIN: email_msg.get('X-Origin'),
                     SampleType.X_FILENAME: email_msg.get('X-FileName'),
-                    # email_msg.get_payload(),
                     SampleType.FILE_NAME: email_path,
                     SampleType.CATCHPHRASES: tags_for_email,
-                    SampleType.INPUT_TEXT: '\n'.join([email_msg.as_string()])
+                    SampleType.BODY: email_msg.get_payload(),
+                    SampleType.FULL_AS_TEXT: email_msg.as_string(),
+                    SampleType.FULL_AS_BYTES: email_msg.as_bytes()
                 }
             self.data.append(data_entry)
         self.loaded = True
@@ -280,6 +280,29 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
     def _load(self, train: bool = False, val: bool = False, test: bool = False):
         super()._load(train, val, test)  # Only loads into self.data
         self.loaded = False
+        # keys_to_keep = [
+        #     SampleType.MESSAGE_ID,
+        #     SampleType.DATE,
+        #     SampleType.FROM,
+        #     SampleType.TO,
+        #     SampleType.SUBJECT,
+        #     SampleType.MIME_VERSION,
+        #     SampleType.CONTENT_TYPE,
+        #     SampleType.CONTENT_TRANSFER_ENCODING,
+        #     SampleType.X_FROM,
+        #     SampleType.X_TO,
+        #     SampleType.X_CC,
+        #     SampleType.X_BCC,
+        #     SampleType.X_FOLDER,
+        #     SampleType.X_ORIGIN,
+        #     SampleType.X_FILENAME,
+        #     # SampleType.FILE_NAME,
+        #     SampleType.CATCHPHRASES,
+        #     SampleType.FULL_AS_TEXT,
+        # ]
+        # for i in range(len(self.data)):
+        #     doc_filtered = {key: self.data[i][key] for key in keys_to_keep}
+        #     self.data[i] = doc_filtered
         self._tag_to_sample_idx_map: Dict[
             str, List[int]] = self.create_tag_to_sample_idx_map()
         self.loaded = True
@@ -306,7 +329,7 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
         tag_idx = idx % len(self._tag_to_sample_idx_map)
         selected_tag: TgtStringT = tags[tag_idx]
         rand_sample_for_tag: SrcStringT = self.data[random.choice(
-            self._tag_to_sample_idx_map[selected_tag])][SampleType.INPUT_TEXT]
+            self._tag_to_sample_idx_map[selected_tag])][SampleType.FULL_AS_TEXT]
         return rand_sample_for_tag, selected_tag
 
 
@@ -339,7 +362,7 @@ class EnronEmailsTagQA(EnronEmailsTagging, MetaLearningMixIn):
         tag_idx = idx % len(self._tag_to_sample_idx_map)
         selected_tag: TgtStringT = tags[tag_idx]
         rand_sample_for_tag: SrcStringT = self.data[random.choice(
-            self._tag_to_sample_idx_map[selected_tag])][SampleType.INPUT_TEXT]
+            self._tag_to_sample_idx_map[selected_tag])][SampleType.FULL_AS_TEXT]
         return rand_sample_for_tag, selected_tag
 
 
@@ -407,15 +430,32 @@ def dump_n_examples(n: int):
         SampleType.X_FILENAME,
         # SampleType.FILE_NAME,
         # SampleType.CATCHPHRASES,
-        SampleType.INPUT_TEXT
+        SampleType.BODY,
+        # SampleType.FULL_AS_TEXT,
+        SampleType.FULL_AS_BYTES
     ]
     docs = []
     for i, doc in enumerate(ds[:10]):
         doc_filtered = {str(key) + ".value": doc[key] for key
                         in keys_to_keep}
         docs.append(doc_filtered)
+        email_msg: email.message.Message = email.message_from_string(
+            doc[SampleType.FULL_AS_TEXT])
+        assert email_msg.as_string() == doc[SampleType.FULL_AS_TEXT]
 
-    print(json.dumps(docs, indent=4))
+        email_msg: email.message.Message = email.message_from_bytes(
+            doc[SampleType.FULL_AS_BYTES])
+        assert email_msg.as_bytes() == doc[SampleType.FULL_AS_BYTES]
+
+    print('[')
+    for entry in docs:
+        print('\t{')
+        for key, value in entry.items():
+            cleaned_key = key.replace('\"', '')
+            print(f"\t\t{cleaned_key}: {repr(value)},")
+        print('\t},')
+    print(']')
+    # print(json.dumps(docs, indent=4))
 
 
 def main():

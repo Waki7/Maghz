@@ -158,6 +158,25 @@ class ModelTransitionEdge:
         self.record_metrics(vc.Metrics.VAL_ACC_ALL, vals)
         self.record_metric(vc.Metrics.VAL_ACC_MEAN, np.mean(vals))
 
+    def store_with_identifier(self, identifier: str,
+                              extra_config: dict = None) -> vc.ModelNode:
+        # Create a unique identifier for the new model
+        new_model_id = os.path.join(self.parent.model_id, self.run_identifer,
+                                    identifier)
+
+        # Save the new model and its training data
+        model_dir: DirPath = vc.CACHED_INDEXER.path_from_id(new_model_id)
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+        self.parent.store_model_node(model_dir)
+
+        with open(os.path.join(model_dir, 'edge_info.json').replace("\\", "/"),
+                  'w') as f:
+            info_dict = self.to_json(as_str=False)
+            if extra_config is not None:
+                info_dict.update(extra_config)
+            f.write(info_dict)
+
     def complete_model_transition(self) -> vc.ModelNode:
         """
         Completes the model transition, creating a new model node with the

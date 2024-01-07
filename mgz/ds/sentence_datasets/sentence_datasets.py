@@ -31,6 +31,10 @@ class SampleType(str, Enum):
     X_FOLDER = 'X-Folder'
     X_ORIGIN = 'X-Origin'
     X_FILENAME = 'X-FileName'
+    BODY = 'payload'
+    # These can both be decoded back into an email object
+    FULL_AS_TEXT = 'full_as_text'
+    FULL_AS_BYTES = 'full_as_bytes'
 
     # MultiLexSum keys
     ID = 'id'
@@ -254,7 +258,7 @@ class TagQAMetaTaskBatch:
 
         neg_batch: List[Tuple[SrcStringT, LabelT]] = \
             [(
-#                 ds.data[i][SampleType.FILE_NAME] +
+                #                 ds.data[i][SampleType.FILE_NAME] +
                 tag_question_augment(ds.data[i][
                                          SampleType.INPUT_TEXT], pos_tag), 0)
                 for i in

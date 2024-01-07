@@ -31,7 +31,7 @@ def importing_sample_data(tokenizer: LlamaTokenizerFast) -> List[
         {
             "id": 1,
             "title": ds_samples[1][SampleType.NAME],
-            "source_text": ds_samples[1][SampleType.INPUT_TEXT],
+            "source_text": ds_samples[1][SampleType.FULL_AS_TEXT],
             "date": ds_samples[1][SampleType.KEY],
             "catchphrases": ds_samples[1][SampleType.CATCHPHRASES],
             "url": "http://www.seriouseats.com/documents/2011/12/chicken-vesuvio-document.html",
@@ -40,7 +40,7 @@ def importing_sample_data(tokenizer: LlamaTokenizerFast) -> List[
         {
             "id": 2,
             "title": ds_samples[2][SampleType.NAME],
-            "source_text": ds_samples[2][SampleType.INPUT_TEXT],
+            "source_text": ds_samples[2][SampleType.FULL_AS_TEXT],
             "date": ds_samples[2][SampleType.KEY],
             "catchphrases": ds_samples[2][SampleType.CATCHPHRASES],
             "url": "http://nodocuments.com/document/chicken-paprikash/",
@@ -49,7 +49,7 @@ def importing_sample_data(tokenizer: LlamaTokenizerFast) -> List[
         {
             "id": 3,
             "title": ds_samples[3][SampleType.NAME],
-            "source_text": ds_samples[3][SampleType.INPUT_TEXT],
+            "source_text": ds_samples[3][SampleType.FULL_AS_TEXT],
             "date": ds_samples[3][SampleType.KEY],
             "catchphrases": ds_samples[3][SampleType.CATCHPHRASES],
             "url": "http://www.seriouseats.com/documents/2011/02/cauliflower-and-tofu-curry-document.html",
@@ -59,7 +59,7 @@ def importing_sample_data(tokenizer: LlamaTokenizerFast) -> List[
         {
             "id": 4,
             "title": ds_samples[4][SampleType.NAME],
-            "source_text": ds_samples[4][SampleType.INPUT_TEXT],
+            "source_text": ds_samples[4][SampleType.FULL_AS_TEXT],
             "date": ds_samples[4][SampleType.KEY],
             "catchphrases": ds_samples[4][SampleType.CATCHPHRASES],
             "url": "http://www.seriouseats.com/documents/2011/02/cauliflower-and-tofu-curry-document.html",
@@ -69,7 +69,7 @@ def importing_sample_data(tokenizer: LlamaTokenizerFast) -> List[
         {
             "id": 5,
             "title": ds_samples[5][SampleType.NAME],
-            "source_text": ds_samples[5][SampleType.INPUT_TEXT],
+            "source_text": ds_samples[5][SampleType.FULL_AS_TEXT],
             "date": ds_samples[5][SampleType.KEY],
             "catchphrases": ds_samples[5][SampleType.CATCHPHRASES],
             "url": "http://www.seriouseats.com/documents/2011/02/cauliflower-and-tofu-curry-document.html",
@@ -79,7 +79,7 @@ def importing_sample_data(tokenizer: LlamaTokenizerFast) -> List[
         {
             "id": 6,
             "title": ds_samples[6][SampleType.NAME],
-            "source_text": ds_samples[6][SampleType.INPUT_TEXT],
+            "source_text": ds_samples[6][SampleType.FULL_AS_TEXT],
             "date": ds_samples[6][SampleType.KEY],
             "catchphrases": ds_samples[6][SampleType.CATCHPHRASES],
             "url": "http://www.seriouseats.com/documents/2011/02/cauliflower-and-tofu-curry-document.html",
@@ -89,7 +89,7 @@ def importing_sample_data(tokenizer: LlamaTokenizerFast) -> List[
         {
             "id": 7,
             "title": ds_samples[7][SampleType.NAME],
-            "source_text": ds_samples[7][SampleType.INPUT_TEXT],
+            "source_text": ds_samples[7][SampleType.FULL_AS_TEXT],
             "date": ds_samples[7][SampleType.KEY],
             "catchphrases": ds_samples[7][SampleType.CATCHPHRASES],
             "url": "http://www.seriouseats.com/documents/2011/02/cauliflower-and-tofu-curry-document.html",
@@ -99,7 +99,7 @@ def importing_sample_data(tokenizer: LlamaTokenizerFast) -> List[
         {
             "id": 8,
             "title": ds_samples[8][SampleType.NAME],
-            "source_text": ds_samples[8][SampleType.INPUT_TEXT],
+            "source_text": ds_samples[8][SampleType.FULL_AS_TEXT],
             "date": ds_samples[8][SampleType.KEY],
             "catchphrases": ds_samples[8][SampleType.CATCHPHRASES],
             "url": "http://www.seriouseats.com/documents/2011/02/cauliflower-and-tofu-curry-document.html",
@@ -109,7 +109,7 @@ def importing_sample_data(tokenizer: LlamaTokenizerFast) -> List[
         {
             "id": 9,
             "title": ds_samples[9][SampleType.NAME],
-            "source_text": ds_samples[9][SampleType.INPUT_TEXT],
+            "source_text": ds_samples[9][SampleType.FULL_AS_TEXT],
             "date": ds_samples[9][SampleType.KEY],
             "catchphrases": ds_samples[9][SampleType.CATCHPHRASES],
             "url": "http://www.seriouseats.com/documents/2011/02/cauliflower-and-tofu-curry-document.html",

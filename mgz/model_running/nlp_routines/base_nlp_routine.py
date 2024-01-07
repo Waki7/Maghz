@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import torch.utils.data
 import transformers as hug
+from accelerate import Accelerator
+from accelerate.utils import set_seed
 from tqdm import tqdm
 
 import mgz.settings as settings
@@ -59,6 +61,7 @@ class BaseNLPProtocol(BaseProtocol):
         """Train a single epoch"""
         model, tokenizer = model_node.model, model_node.tokenizer
         model.train()
+        set_seed(0)
 
         batch: Sent2TagMetaTaskBatch
         if not model_node.has_initial_metrics():
@@ -67,13 +70,14 @@ class BaseNLPProtocol(BaseProtocol):
         optimizer = model_edge.optimizer
         scheduler = model_edge.scheduler
         batch_num: int = 0
+        best_val_acc: float = 0.0
         model_edge.start_timer()
 
-        # accelerator = Accelerator(
-        #     gradient_accumulation_steps=gradient_accumulation_steps)
-        # model, optimizer, data_loader, scheduler = accelerator.prepare(
-        #     model, optimizer, data_loader, scheduler
-        # )
+        accelerator = Accelerator(
+            gradient_accumulation_steps=gradient_accumulation_steps)
+        model, optimizer, data_loader, scheduler = accelerator.prepare(
+            model, optimizer, data_loader, scheduler
+        )
 
         for i, batch in tqdm(enumerate(data_loader), total=len(data_loader)):
             if batch is None:
@@ -82,16 +86,16 @@ class BaseNLPProtocol(BaseProtocol):
                 continue
             batch_num += 1
 
-            # with accelerator.accumulate(model):
+            with accelerator.accumulate(model):
 
-            loss_w_grad: FloatTensorT['1']
-            accuracy: float
-            loss_w_grad, accuracy = self.run_batch(model, batch, model_edge)
+                loss_w_grad: FloatTensorT['1']
+                accuracy: float
+                loss_w_grad, accuracy = self.run_batch(model, batch, model_edge)
 
-            (loss_w_grad / gradient_accumulation_steps).backward()
-            if (batch_num) % gradient_accumulation_steps == 0 or (
-            batch_num) % val_interval == 0:
-                # accelerator.backward(loss_w_grad)
+                # (loss_w_grad / gradient_accumulation_steps).backward()
+                # if (batch_num) % gradient_accumulation_steps == 0 or (
+                # batch_num) % val_interval == 0:
+                accelerator.backward(loss_w_grad)
                 optimizer.step()
                 if scheduler is not None: scheduler.step()
                 optimizer.zero_grad()
@@ -103,7 +107,13 @@ class BaseNLPProtocol(BaseProtocol):
                 model_edge.print_train_step_info()
 
             if (batch_num) % val_interval == 0:
-                self.val_model(val_data_loader, model_node, model_edge)
+                acc_val_mean = \
+                self.val_model(val_data_loader, model_node, model_edge)[
+                    Metrics.VAL_ACC_MEAN]
+                if acc_val_mean > best_val_acc:
+                    model_edge.store_with_identifier("BEST_VAL",
+                                                     {"val_acc": acc_val_mean})
+                best_val_acc = max(best_val_acc, acc_val_mean)
             settings.empty_cache()
         return model_edge.complete_model_transition()
 
