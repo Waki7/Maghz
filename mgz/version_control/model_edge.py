@@ -136,6 +136,16 @@ class ModelTransitionEdge:
         self.training_metrics[metric] = np.mean(vals)
         self.exp_tracker.add_scalars(metric, vals, track_mean=True)
 
+    def log_metric(self, metric: Union[str, vc.Metrics], val: float):
+        """
+        Records a single metric value for the training transition.
+
+        Parameters:
+        - metric (vc.Metrics): The metric to record.
+        - val (float): The value of the metric.
+        """
+        self.exp_tracker.add_scalar(metric, val, track_mean=False, log=True)
+
     def record_validation(self, vals: List[float]):
         """
         Records validation accuracy metrics.
@@ -165,10 +175,10 @@ class ModelTransitionEdge:
             identifiers.append('steps_{}'.format(self.train_state.step))
         elif self.models_to_store == ModelsToStore.LATEST_AND_BEST_VAL:
             latest_mean_val_acc = self.training_metrics.get(
-                vc.Metrics.VAL_ACC_MEAN, None)
+                vc.Metrics.VAL_ACC_MEAN, 0)
 
             store_model = True
-            if latest_mean_val_acc > self.best_val_acc:
+            if latest_mean_val_acc >= self.best_val_acc:
                 identifiers.append("BEST")
             else:
                 identifiers.append("LATEST")
@@ -182,7 +192,7 @@ class ModelTransitionEdge:
         new_model = vc.ModelNode(self.parent.model, self.parent.tokenizer,
                                  new_model_id, metrics=self.training_metrics,
                                  quantization_config=self.parent.quantization_config)
-        self.parent = new_model
+        self.child = new_model
 
         # Save the new model and its training data
         model_dir: DirPath = vc.CACHED_INDEXER.save_to_index(new_model)

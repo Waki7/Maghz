@@ -57,13 +57,13 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
         ds = EnronEmailsTagQA(model_node.tokenizer,
                               max_src_len=4096,
                               n_episodes=100,
-                              n_query_per_cls=[2],
-                              n_support_per_cls=[2, 3, 4, 5, 6, 7])
+                              n_query_per_cls=[1],
+                              n_support_per_cls=[3, 4, 5, 6])
         val_ds = EnronEmailsTagQA(model_node.tokenizer,
                                   max_src_len=4096,
                                   n_episodes=25,
                                   n_query_per_cls=[2],
-                                  n_support_per_cls=[2, 3, 4, 5, 6, 7])
+                                  n_support_per_cls=[3, 4, 5, 6])
     if old_enron:
         ds = EnronEmailsTagging(model_node.tokenizer,
                                 max_src_len=3000,
@@ -133,14 +133,14 @@ def led_main_train():
         model_node.model.train()
         settings.print_gpu_usage()
         ds, val_ds = dataset_select(model_node, aus=False, enron=True)
-        loss_fn = torch.nn.NLLLoss()
-        # loss_fn = torch.nn.CrossEntropyLoss(label_smoothing=0.0)
+        # loss_fn = torch.nn.NLLLoss()
+        loss_fn = torch.nn.CrossEntropyLoss(label_smoothing=0.0)
 
         training_cfg = {}
-        lr = 0.0001
+        lr = 0.0000025
         weight_decay = 0.0000
         betas = (0.9, 0.999)
-        eps = 1e-8
+        eps = 1e-4
 
         model_node.freeze_parameters('embedding_head')
         trainable_params = [p for n, p in model_node.model.named_parameters() if
@@ -156,7 +156,7 @@ def led_main_train():
                                                     optimizer, ds)
         routine = TaggingRoutine(
             distance_measure=DistanceMeasure.L2,
-            tokenizer=model_node.tokenizer, debug=False)
+            tokenizer=model_node.tokenizer, debug=False, gpu_max_batch_size=3)
 
         # routine.evaluate(model_node=model_node, val_ds=val_ds)
         routine.train(

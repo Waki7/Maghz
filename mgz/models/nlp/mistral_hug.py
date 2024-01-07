@@ -338,14 +338,12 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
             FloatTensorT['B,2']:
         def get_llama_no_yes_scores(logits: FloatTensorT['NQuery,NClasses']):
             assert logits.shape[-1] == 32002
-            n_yes = 4
             Yes_id = 5613
             block_Yes_id = 5592
             yes_id = 9780
             block_yes_id = 5081
             yes_ids = [Yes_id, block_Yes_id, yes_id, block_yes_id]
 
-            n_no = 6
             NO_id = 4032
             block_NO_id = 7929
             no_id = 1510
@@ -365,9 +363,8 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
             input_ids=src_ids, attention_mask=src_mask)
         output: FloatTensorT[
             'B,TgtSeqLen,EmbedLen'] = FloatTensorT(
-            full_output.last_hidden_state)
-        output = output[:, -1, :]
-        lm_logits = self.hug.lm_head(output)
+            full_output.last_hidden_state)[:, -1, :]
+        lm_logits = self.hug.lm_head(output.detach())
         no_yes_score = get_llama_no_yes_scores(lm_logits)
 
         embedding = self.embedding_head(output)

@@ -93,7 +93,7 @@ class ModelNode:
                       p.requires_grad]
         import bitsandbytes
         optimizer = \
-            bitsandbytes.optim.PagedAdam8bit(params,
+            bitsandbytes.optim.PagedAdam(params,
                                          lr=lr, weight_decay=weight_decay,
                                          betas=betas, eps=eps)
         # else:

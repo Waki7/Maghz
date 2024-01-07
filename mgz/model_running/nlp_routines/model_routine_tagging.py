@@ -262,12 +262,22 @@ class TaggingRoutine(BaseNLPProtocol):
             raise NotImplementedError
 
         # Calculate accuracy
-        predictions: LongTensorT['NQuery'] = (
-            ((batch.n_support_per_cls * torch.softmax(cls_logits, dim=-1)) +
-             torch.softmax(query_logits, dim=-1))).detach().argmax(
-            -1)
-        # predictions: LongTensorT['NQuery'] = cls_logits.argmax(-1)
-        accuracy = (predictions == query_lbls).float().mean().item()
+        with torch.no_grad():
+            cls_logits_weighted = (batch.n_support_per_cls * torch.softmax(
+                cls_logits.detach(), dim=-1))
+            query_probs = torch.softmax(query_logits.detach(), dim=-1)
+            pred_augment_weak: LongTensorT['NQuery'] = (
+                    cls_logits_weighted + query_probs).argmax(-1)
+            accuracy_augment_weak = (
+                    pred_augment_weak == query_lbls).float().mean().item()
+
+            pred_augment_strong: LongTensorT['NQuery'] = (
+                    cls_logits_weighted + (2 * query_probs)).argmax(-1)
+            accuracy_augment_strong = (
+                    pred_augment_strong == query_lbls).float().mean().item()
+
+            predictions: LongTensorT['NQuery'] = cls_logits.argmax(-1)
+            accuracy = (predictions == query_lbls).float().mean().item()
         if model_edge is not None:
             total_samples = cls_logits.shape[0] * cls_logits.shape[1]
             loss = model_edge.loss_fn(cls_logits, query_lbls)
@@ -278,9 +288,19 @@ class TaggingRoutine(BaseNLPProtocol):
                                          loss.cpu().item())
                 model_edge.record_metric(Metrics.TRAIN_AVG_PRED,
                                          predictions.float().mean().item())
+                model_edge.log_metric("train/accuracy_augment_weak",
+                                      accuracy_augment_weak)
+                model_edge.log_metric("train/accuracy_augment_strong",
+                                      accuracy_augment_strong)
             else:
                 model_edge.record_metric(Metrics.VAL_AVG_PRED,
                                          predictions.float().mean().item())
+                model_edge.log_metric("val/accuracy_all_augment_weak",
+                                      accuracy_augment_weak)
+                model_edge.log_metric("val/accuracy_all_augment_strong",
+                                      accuracy_augment_strong)
+                model_edge.log_metric("val/accuracy_all_augment_strong",
+                                      accuracy_augment_strong)
         else:
             loss = FloatTensorT([0.0])
         return loss, accuracy

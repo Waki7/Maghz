@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import torch.utils.data
 import transformers as hug
-from accelerate import Accelerator
 from tqdm import tqdm
 
 import mgz.settings as settings
@@ -70,11 +69,11 @@ class BaseNLPProtocol(BaseProtocol):
         batch_num: int = 0
         model_edge.start_timer()
 
-        accelerator = Accelerator(
-            gradient_accumulation_steps=gradient_accumulation_steps)
-        model, optimizer, data_loader, scheduler = accelerator.prepare(
-            model, optimizer, data_loader, scheduler
-        )
+        # accelerator = Accelerator(
+        #     gradient_accumulation_steps=gradient_accumulation_steps)
+        # model, optimizer, data_loader, scheduler = accelerator.prepare(
+        #     model, optimizer, data_loader, scheduler
+        # )
 
         for i, batch in tqdm(enumerate(data_loader), total=len(data_loader)):
             if batch is None:
@@ -83,16 +82,20 @@ class BaseNLPProtocol(BaseProtocol):
                 continue
             batch_num += 1
 
-            with accelerator.accumulate(model):
-                loss_w_grad: FloatTensorT['1']
-                accuracy: float
-                loss_w_grad, accuracy = self.run_batch(model, batch, model_edge)
-                accelerator.backward(loss_w_grad)
+            # with accelerator.accumulate(model):
+
+            loss_w_grad: FloatTensorT['1']
+            accuracy: float
+            loss_w_grad, accuracy = self.run_batch(model, batch, model_edge)
+
+            (loss_w_grad / gradient_accumulation_steps).backward()
+            if (batch_num) % gradient_accumulation_steps == 0 or (
+            batch_num) % val_interval == 0:
+                # accelerator.backward(loss_w_grad)
                 optimizer.step()
                 if scheduler is not None: scheduler.step()
                 optimizer.zero_grad()
-                if (batch_num) % gradient_accumulation_steps == 0:
-                    model_edge.train_state.accum_step += 1
+                model_edge.train_state.accum_step += 1
 
             model_edge.train_state.step += 1
 
