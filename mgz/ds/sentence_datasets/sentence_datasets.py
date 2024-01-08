@@ -33,7 +33,7 @@ class SampleType(str, Enum):
     X_FILENAME = 'X-FileName'
     BODY = 'payload'
     # These can both be decoded back into an email object
-    FULL_AS_TEXT = 'full_as_text'
+    FULL_AS_STRING = 'full_as_text'
     FULL_AS_BYTES = 'full_as_bytes'
 
     # MultiLexSum keys

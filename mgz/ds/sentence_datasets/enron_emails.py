@@ -159,7 +159,7 @@ class EnronEmails(SentenceDataset):
                     SampleType.FILE_NAME: email_path,
                     SampleType.CATCHPHRASES: tags_for_email,
                     SampleType.BODY: email_msg.get_payload(),
-                    SampleType.FULL_AS_TEXT: email_msg.as_string(),
+                    SampleType.FULL_AS_STRING: email_msg.as_string(),
                     SampleType.FULL_AS_BYTES: email_msg.as_bytes()
                 }
             self.data.append(data_entry)
@@ -329,7 +329,7 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
         tag_idx = idx % len(self._tag_to_sample_idx_map)
         selected_tag: TgtStringT = tags[tag_idx]
         rand_sample_for_tag: SrcStringT = self.data[random.choice(
-            self._tag_to_sample_idx_map[selected_tag])][SampleType.FULL_AS_TEXT]
+            self._tag_to_sample_idx_map[selected_tag])][SampleType.FULL_AS_STRING]
         return rand_sample_for_tag, selected_tag
 
 
@@ -362,7 +362,7 @@ class EnronEmailsTagQA(EnronEmailsTagging, MetaLearningMixIn):
         tag_idx = idx % len(self._tag_to_sample_idx_map)
         selected_tag: TgtStringT = tags[tag_idx]
         rand_sample_for_tag: SrcStringT = self.data[random.choice(
-            self._tag_to_sample_idx_map[selected_tag])][SampleType.FULL_AS_TEXT]
+            self._tag_to_sample_idx_map[selected_tag])][SampleType.FULL_AS_STRING]
         return rand_sample_for_tag, selected_tag
 
 
@@ -431,8 +431,8 @@ def dump_n_examples(n: int):
         # SampleType.FILE_NAME,
         # SampleType.CATCHPHRASES,
         SampleType.BODY,
-        # SampleType.FULL_AS_TEXT,
-        SampleType.FULL_AS_BYTES
+        SampleType.FULL_AS_STRING,
+        # SampleType.FULL_AS_BYTES
     ]
     docs = []
     for i, doc in enumerate(ds[:10]):
@@ -440,8 +440,8 @@ def dump_n_examples(n: int):
                         in keys_to_keep}
         docs.append(doc_filtered)
         email_msg: email.message.Message = email.message_from_string(
-            doc[SampleType.FULL_AS_TEXT])
-        assert email_msg.as_string() == doc[SampleType.FULL_AS_TEXT]
+            doc[SampleType.FULL_AS_STRING])
+        assert email_msg.as_string() == doc[SampleType.FULL_AS_STRING]
 
         email_msg: email.message.Message = email.message_from_bytes(
             doc[SampleType.FULL_AS_BYTES])
