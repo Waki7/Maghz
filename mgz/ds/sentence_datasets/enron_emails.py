@@ -4,6 +4,7 @@ import email
 import os
 import random
 import re
+from email.message import MIMEPart
 from functools import partial
 from pathlib import Path
 
@@ -446,6 +447,7 @@ def dump_n_examples(n: int):
         email_msg: email.message.Message = email.message_from_bytes(
             doc[SampleType.FULL_AS_BYTES])
         assert email_msg.as_bytes() == doc[SampleType.FULL_AS_BYTES]
+        print(MIMEPart(email_msg))
 
     print('[')
     for entry in docs:

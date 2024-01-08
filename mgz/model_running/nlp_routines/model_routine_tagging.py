@@ -26,6 +26,7 @@ class DistanceMeasure(Enum):
     COSINE = 2
     MAX_INNER_PRODUCT = 3
     CLASSIFICATION = 4
+    WEIGHTED_HYBRID = 5
 
 
 def get_llama_no_yes_scores(logits: FloatTensorT['NQuery,NClasses']):
@@ -55,41 +56,62 @@ def get_llama_no_yes_scores(logits: FloatTensorT['NQuery,NClasses']):
     return similarity_to_classes
 
 
-# def predict_with_centers(support_embedding: FloatTensorT[
-#                              'NClasses,EmbedLen'],
-#                          query_embedding: FloatTensorT[
-#                              'NQuery,EmbedLen'],
-#                          distance_measure: DistanceMeasure,
-#                          query_logits: FloatTensorT[
-#                              'NQuery,VocabSize'] = None,
-#                          tokenizer = None) -> \
-#         FloatTensorT['NQuery,NClasses']:
-#     similarity_to_classes: FloatTensorT['NQuery,NClasses'] = None
-#     if distance_measure == DistanceMeasure.L2:
-#         similarity_to_classes = -1 * DistanceMeasuresPerClass.euclidean_distance(
-#             class_embeddings=support_embedding,
-#             query_embeddings=query_embedding)
-#     elif distance_measure == DistanceMeasure.COSINE:
-#         similarity_to_classes = DistanceMeasuresPerClass.cosine_similarity(
-#             class_embeddings=support_embedding,
-#             query_embeddings=query_embedding)
-#     elif distance_measure == DistanceMeasure.MAX_INNER_PRODUCT:
-#         similarity_to_classes = DistanceMeasuresPerClass.inner_dot_product(
-#             class_embeddings=support_embedding,
-#             query_embeddings=query_embedding)
-#     elif distance_measure == DistanceMeasure.CLASSIFICATION:
-#         assert query_logits.shape[-1] == 32002
-#         if len(query_logits.shape) == 3:
-#             last_words = torch.argmax(query_logits[:, -5:, :], dim=-1)
-#             decoded = self.tokenizer.batch_decode(last_words,
-#                                                   skip_special_tokens=True)
-#             print('decoded ', decoded)
-#             query_logits = query_logits[:, -1, :]
-#         similarity_to_classes = get_llama_no_yes_scores(query_logits)
-#         print('similarity_to_classes ', similarity_to_classes)
-#         self.debug_log_predictions(similarity_to_classes)
-#
-#     return similarity_to_classes
+def predict_with_prototypes(
+        query_embedding: FloatTensorT['NQuery,EmbedLen'],
+        support_embedding: FloatTensorT['NClasses,EmbedLen'],
+        no_yes_logits: FloatTensorT['NQuery,VocabSize'] = None,
+        distance_measure: DistanceMeasure = None,
+        routine: TaggingRoutine = None) -> FloatTensorT['NQuery,NClasses']:
+    similarity_to_classes: FloatTensorT['NQuery,NClasses']
+    if distance_measure == DistanceMeasure.L2:
+        similarity_to_classes = -1 * DistanceMeasuresPerClass.euclidean_distance(
+            class_embeddings=support_embedding,
+            query_embeddings=query_embedding)
+    elif distance_measure == DistanceMeasure.COSINE:
+        similarity_to_classes = DistanceMeasuresPerClass.cosine_similarity(
+            class_embeddings=support_embedding,
+            query_embeddings=query_embedding)
+    elif distance_measure == DistanceMeasure.MAX_INNER_PRODUCT:
+        similarity_to_classes = DistanceMeasuresPerClass.inner_dot_product(
+            class_embeddings=support_embedding,
+            query_embeddings=query_embedding)
+    elif distance_measure == DistanceMeasure.CLASSIFICATION:
+        if len(no_yes_logits.shape) == 3:
+            last_words = torch.argmax(no_yes_logits[:, -5:, :], dim=-1)
+            if routine is not None:
+                decoded = routine.tokenizer.batch_decode(last_words,
+                                                         skip_special_tokens=True)
+                print('decoded ', decoded)
+            no_yes_logits = no_yes_logits[:, -1, :]
+            similarity_to_classes = get_llama_no_yes_scores(no_yes_logits)
+        else:
+            similarity_to_classes = no_yes_logits
+        routine.debug_log_predictions(similarity_to_classes)
+    else:
+        raise ValueError(f'Not supported distance measure {distance_measure}')
+    return similarity_to_classes
+
+
+def predict_probs_with_optional_prototypes(
+        query_embedding: FloatTensorT['NQuery,EmbedLen'],
+        no_yes_probs: ProbTensorT['NQuery,VocabSize'],
+        support_embedding: FloatTensorT['NClasses,EmbedLen'] = None,
+        n_supports: int = None) -> ProbTensorT['NQuery,NClasses']:
+    if support_embedding is not None:
+        assert n_supports is not None
+        similarity_to_classes: FloatTensorT['NQuery,NClasses'] = (
+                -1 * DistanceMeasuresPerClass.euclidean_distance(
+            class_embeddings=support_embedding,
+            query_embeddings=query_embedding))
+        query_probs = torch.softmax(similarity_to_classes, dim=-1)
+        cls_probs_weighted = (
+                n_supports * no_yes_probs)
+        pred_augment_weak: ProbTensorT['NQuery,NClasses'] = (
+                (cls_probs_weighted + query_probs) / (n_supports + 1))
+        return pred_augment_weak
+    else:
+        return no_yes_probs
+
 
 class TaggingRoutine(BaseNLPProtocol):
     def __init__(self,
@@ -108,55 +130,6 @@ class TaggingRoutine(BaseNLPProtocol):
     def _check(self, ds: BaseDataset):
         assert isinstance(ds.input_space, sp.Sentence)
         assert isinstance(ds.target_space, sp.Tagging)
-
-    def predict_with_centers(self,
-                             support_embedding: FloatTensorT[
-                                 'NClasses,EmbedLen'],
-                             query_embedding: FloatTensorT[
-                                 'NQuery,EmbedLen'],
-                             query_logits: FloatTensorT[
-                                 'NQuery,VocabSize'] = None,
-                             n_supports: int = None) -> \
-            FloatTensorT['NQuery,NClasses']:
-        similarity_to_classes: FloatTensorT['NQuery,NClasses'] = None
-        if self.distance_measure == DistanceMeasure.L2:
-            similarity_to_classes = -1 * DistanceMeasuresPerClass.euclidean_distance(
-                class_embeddings=support_embedding,
-                query_embeddings=query_embedding)
-            # assert n_supports is not None
-            # pred_probs = torch.softmax(query_logits, dim=-1)
-            # weighting: FloatTensorT['NQuery,VocabSize'] = \
-            #     (1 - pred_probs)
-            # softening = (0.5 * torch.ones(
-            #     (n_supports, weighting.shape[0], weighting.shape[1]))).to(
-            #     weighting.device)
-            # weighting = FloatTensorT(torch.mean(
-            #     torch.cat([softening, weighting.unsqueeze(0)], dim=0),
-            #     keepdim=False, dim=0
-            # ))
-            # similarity_to_classes = FloatTensorT(torch.log(
-            #     weighting * torch.softmax(similarity_to_classes, dim=-1)))
-        elif self.distance_measure == DistanceMeasure.COSINE:
-            similarity_to_classes = DistanceMeasuresPerClass.cosine_similarity(
-                class_embeddings=support_embedding,
-                query_embeddings=query_embedding)
-        elif self.distance_measure == DistanceMeasure.MAX_INNER_PRODUCT:
-            similarity_to_classes = DistanceMeasuresPerClass.inner_dot_product(
-                class_embeddings=support_embedding,
-                query_embeddings=query_embedding)
-        elif self.distance_measure == DistanceMeasure.CLASSIFICATION:
-            if len(query_logits.shape) == 3:
-                last_words = torch.argmax(query_logits[:, -5:, :], dim=-1)
-                decoded = self.tokenizer.batch_decode(last_words,
-                                                      skip_special_tokens=True)
-                print('decoded ', decoded)
-                query_logits = query_logits[:, -1, :]
-                similarity_to_classes = get_llama_no_yes_scores(query_logits)
-            else:
-                similarity_to_classes = query_logits
-            self.debug_log_predictions(similarity_to_classes)
-
-        return similarity_to_classes
 
     def run_prototype_encoder_decoder(self, model: EncoderDecoderTransformer,
                                       batch: Sent2TagMetaTaskBatch,
@@ -199,13 +172,14 @@ class TaggingRoutine(BaseNLPProtocol):
         )
         query_lbls: LongTensorT['TaskSize'] = batch.query_lbls
         cls_logits: FloatTensorT[
-            'TaskSize,NClasses'] = self.predict_with_centers(
-            support_centers, query_embeds)
+            'TaskSize,NClasses'] = predict_with_prototypes(
+            query_embeds, support_centers, routine=self)
         return cls_logits, query_lbls
 
     def run_prototype_decoder(self, model: DecoderTransformer,
                               batch: TagQAMetaTaskBatch) -> \
-            Tuple[FloatTensorT['NQuery,NClasses'], LongTensorT['NQuery']]:
+            Tuple[FloatTensorT['NQuery,NClasses'], LongTensorT['NQuery'],
+            Optional[FloatTensorT['NQuery,NClasses']]]:
         is_decoder = isinstance(model, DecoderTransformer) and \
                      isinstance(batch, TagQAMetaTaskBatch)
         assert is_decoder, 'Bad combination of model and batch'
@@ -231,17 +205,17 @@ class TaggingRoutine(BaseNLPProtocol):
                 support_embeds.mean(dim=1, keepdim=False).detach()
         self.debug_log_batch_info(batch)
         query_embeds: FloatTensorT['NQuery,EmbedLen']
-        query_logits: FloatTensorT['NQuery,VocabSize']
-        query_embeds, query_logits = model.decode_relevance(
+        no_yes_logits: FloatTensorT['NQuery,VocabSize']
+        query_embeds, no_yes_logits = model.decode_relevance(
             src_ids=batch.queries,
             src_mask=batch.query_masks,
         )
         assert isinstance(model, DecoderTransformer)
         query_lbls: LongTensorT['NQuery'] = batch.query_lbls
         cls_logits: FloatTensorT[
-            'NQuery,NClasses'] = self.predict_with_centers(
-            support_centers, query_embeds, query_logits, n_supports=n_sup)
-        return cls_logits, query_lbls, query_logits
+            'NQuery,NClasses'] = predict_with_prototypes(
+            query_embeds, support_centers, no_yes_logits, routine=self)
+        return cls_logits, query_lbls, no_yes_logits
 
     @overrides(BaseProtocol)
     def run_batch(self,

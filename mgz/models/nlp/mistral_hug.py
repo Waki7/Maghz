@@ -335,7 +335,7 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
     def decode_relevance(self,
                          src_ids: LongTensorT['B,SrcSeqLen'],
                          src_mask: IntTensorT['B,SrcSeqLen']) -> \
-            FloatTensorT['B,2']:
+            Tuple[FloatTensorT['B,EmbedLen'], Optional[FloatTensorT['B,2']]]:
         def get_llama_no_yes_scores(logits: FloatTensorT['NQuery,NClasses']):
             assert logits.shape[-1] == 32002
             Yes_id = 5613
@@ -365,10 +365,9 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
             'B,TgtSeqLen,EmbedLen'] = FloatTensorT(
             full_output.last_hidden_state)[:, -1, :]
         lm_logits = self.hug.lm_head(output.detach())
-        no_yes_score = get_llama_no_yes_scores(lm_logits)
-
+        no_yes_logits = get_llama_no_yes_scores(lm_logits)
         embedding = self.embedding_head(output)
-        return embedding, no_yes_score
+        return embedding, no_yes_logits
 
     @overrides(BaseTransformer)
     def generate(self,

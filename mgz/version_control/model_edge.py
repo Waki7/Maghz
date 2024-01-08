@@ -175,7 +175,7 @@ class ModelTransitionEdge:
             info_dict = self.to_json(as_str=False)
             if extra_config is not None:
                 info_dict.update(extra_config)
-            f.write(info_dict)
+            f.write(json.dumps(info_dict, indent=4, separators=(',', ': ')))
 
     def complete_model_transition(self) -> vc.ModelNode:
         """

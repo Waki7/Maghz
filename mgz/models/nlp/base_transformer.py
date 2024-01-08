@@ -419,7 +419,7 @@ class DecoderTransformer(BaseTransformer):
     def decode_relevance(self,
                          src_ids: LongTensorT['B,SrcSeqLen'],
                          src_mask: IntTensorT['B,SrcSeqLen']) -> \
-            FloatTensorT['B,2']:
+            Tuple[FloatTensorT['B,EmbedLen'], Optional[FloatTensorT['B,2']]]:
         raise NotImplementedError
 
 

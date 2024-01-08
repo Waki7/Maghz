@@ -252,7 +252,8 @@ class TagQAMetaTaskBatch:
             [(
                 # ds.data[i][SampleType.FILE_NAME] +
                 tag_question_augment(ds.data[i][
-                                         SampleType.INPUT_TEXT], pos_tag), 1)
+                                         SampleType.FULL_AS_STRING], pos_tag),
+                1)
                 for i in
                 positive_examples]
 
@@ -260,7 +261,8 @@ class TagQAMetaTaskBatch:
             [(
                 #                 ds.data[i][SampleType.FILE_NAME] +
                 tag_question_augment(ds.data[i][
-                                         SampleType.INPUT_TEXT], pos_tag), 0)
+                                         SampleType.FULL_AS_STRING], pos_tag),
+                0)
                 for i in
                 negative_examples]
 
