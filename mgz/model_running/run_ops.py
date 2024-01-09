@@ -165,21 +165,22 @@ def summarize_controller(model: DecoderTransformer, texts: List[str],
 
 
 @torch.no_grad()
-def chat_tagging_embedding_controller(model: DecoderTransformer,
-                                      texts: List[str],
-                                      tag_text: List[str],
-                                      tokenizer: PreTrainedTokenizerBase,
-                                      max_src_len: int = None,
-                                      ) -> FloatTensorT['B,EmbedLen']:
+def hybrid_generation_tagging(model: DecoderTransformer,
+                              texts: List[str],
+                              tag_text: List[str],
+                              tokenizer: PreTrainedTokenizerBase,
+                              max_src_len: int = None,
+                              ) -> \
+        Tuple[FloatTensorT['B,EmbedLen'], ProbTensorT['2']]:
     """
-       Computes embeddings for a list of input texts and corresponding tag texts using a Decoder Transformer.
+    Computes embeddings for a list of input texts and corresponding tag texts
+    using a Decoder Transformer.
 
-       Args:
-           model (EncoderDecoderTransformer): The Encoder-Decoder Transformer model.
-           texts (List[str]): List of input texts to embed.
-           tag_text (List[str]): List of tag texts.
-           tokenizer (PreTrainedTokenizerBase): Tokenizer for text encoding.
-           max_src_len (int, optional): Maximum source sequence length. Defaults to None.
+       Args: model (EncoderDecoderTransformer): The Encoder-Decoder
+       Transformer model. texts (List[str]): List of input texts to embed.
+       tag_text (List[str]): List of tag texts. tokenizer (
+       PreTrainedTokenizerBase): Tokenizer for text encoding. max_src_len (
+       int, optional): Maximum source sequence length. Defaults to None.
 
        Returns:
            FloatTensorT['B,EmbedLen']: Tensor containing the embeddings.
@@ -196,44 +197,11 @@ def chat_tagging_embedding_controller(model: DecoderTransformer,
                                                            settings.DEVICE)
 
     # don't need tgt_mask because you are generating one token at a time
-    return model.decoder_embedding(src_ids=src_ids,
-                                   src_mask=src_mask)
-
-
-@torch.no_grad()
-def chat_tagging_embedding_controller(model: DecoderTransformer,
-                                      texts: List[str],
-                                      tag_text: List[str],
-                                      tokenizer: PreTrainedTokenizerBase,
-                                      max_src_len: int = None,
-                                      ) -> FloatTensorT['B,EmbedLen']:
-    """
-       Computes embeddings for a list of input texts and corresponding tag texts using a Decoder Transformer.
-
-       Args:
-           model (EncoderDecoderTransformer): The Encoder-Decoder Transformer model.
-           texts (List[str]): List of input texts to embed.
-           tag_text (List[str]): List of tag texts.
-           tokenizer (PreTrainedTokenizerBase): Tokenizer for text encoding.
-           max_src_len (int, optional): Maximum source sequence length. Defaults to None.
-
-       Returns:
-           FloatTensorT['B,EmbedLen']: Tensor containing the embeddings.
-       """
-    assert isinstance(model, DecoderTransformer)
-    assert len(texts) == len(tag_text)
-    if max_src_len is None:
-        max_src_len = model.get_max_decoder_positions()
-    src_qa_text = [tag_question_augment(text, tag) for text, tag in
-                   zip(texts, tag_text)]
-    src_ids, src_mask = strings_to_padded_id_tensor_w_mask(src_qa_text,
-                                                           tokenizer,
-                                                           max_src_len,
-                                                           settings.DEVICE)
-
-    # don't need tgt_mask because you are generating one token at a time
-    return model.decoder_embedding(src_ids=src_ids,
-                                   src_mask=src_mask)
+    embedding: FloatTensorT['B,EmbedLen']
+    no_yes_logits: FloatTensorT['2']
+    embedding, no_yes_logits = model.decode_relevance(src_ids=src_ids,
+                                                      src_mask=src_mask)
+    return embedding, ProbTensorT(torch.softmax(no_yes_logits, dim=-1))
 
 
 @torch.no_grad()

@@ -12,7 +12,7 @@ import mgz.settings as settings
 from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagQA
 from mgz.model_running.nlp_routines.model_routine_tagging import TaggingRoutine
 from mgz.model_running.run_ops import embedding_controller, \
-    chat_tagging_embedding_controller, summarize_controller
+    hybrid_generation_tagging, summarize_controller
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.models.nlp.mistral import MistralForCausalLM
 from mgz.typing import *
@@ -155,12 +155,12 @@ def get_tag_apply_embedding(doc_texts: List[SrcStringT],
             bsz = estimate_vram_usage(model, len(doc_texts[0]))
             for i in range(0, len(doc_texts), bsz):
                 batch_logits: FloatTensorT['bsz,EmbedLen'] = \
-                    chat_tagging_embedding_controller(model=model,
-                                                      texts=doc_texts[
+                    hybrid_generation_tagging(model=model,
+                                              texts=doc_texts[
                                                             i:i + bsz],
-                                                      tag_text=tag_texts[
+                                              tag_text=tag_texts[
                                                                i:i + bsz],
-                                                      tokenizer=TOKENIZERS[
+                                              tokenizer=TOKENIZERS[
                                                           TAGGING_MODEL], )
                 for j in range(batch_logits.shape[0]):
                     logits.append(NDArrayT(batch_logits[j].cpu().numpy()))
