@@ -105,9 +105,9 @@ def predict_probs_with_optional_prototypes(
             query_embeddings=query_embedding))
         query_probs = torch.softmax(similarity_to_classes, dim=-1)
         cls_probs_weighted = (
-                n_supports * no_yes_probs)
+                n_supports * query_probs)
         pred_augment_weak: ProbTensorT['NQuery,NClasses'] = (
-                (cls_probs_weighted + query_probs) / (n_supports + 1))
+                (cls_probs_weighted + no_yes_probs) / (n_supports + 1))
         return pred_augment_weak
     else:
         return no_yes_probs
@@ -173,7 +173,8 @@ class TaggingRoutine(BaseNLPProtocol):
         query_lbls: LongTensorT['TaskSize'] = batch.query_lbls
         cls_logits: FloatTensorT[
             'TaskSize,NClasses'] = predict_with_prototypes(
-            query_embeds, support_centers, routine=self)
+            query_embeds, support_centers, routine=self,
+            distance_measure=self.distance_measure)
         return cls_logits, query_lbls
 
     def run_prototype_decoder(self, model: DecoderTransformer,
@@ -214,7 +215,8 @@ class TaggingRoutine(BaseNLPProtocol):
         query_lbls: LongTensorT['NQuery'] = batch.query_lbls
         cls_logits: FloatTensorT[
             'NQuery,NClasses'] = predict_with_prototypes(
-            query_embeds, support_centers, no_yes_logits, routine=self)
+            query_embeds, support_centers, no_yes_logits, routine=self,
+            distance_measure=self.distance_measure)
         return cls_logits, query_lbls, no_yes_logits
 
     @overrides(BaseProtocol)

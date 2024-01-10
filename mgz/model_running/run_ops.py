@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import torch.utils.data
-from transformers import PreTrainedTokenizerBase
-
 import mgz.model_running.nlp_routines.model_routine_tagging as tagging
 import mgz.settings as settings
+import torch.utils.data
 from mgz.ds.sentence_datasets.gpt_input_augments import summarization_augment, \
     tag_question_augment
 from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask, \
@@ -12,6 +10,7 @@ from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask, \
 from mgz.models.nlp.base_transformer import BaseTransformer, \
     EncoderDecoderTransformer, DecoderTransformer
 from mgz.typing import *
+from transformers import PreTrainedTokenizerBase
 
 
 @torch.no_grad()
@@ -212,9 +211,12 @@ def predict_probs_from_optional_centers(
         pos_support_center: FloatTensorT['EmbedLen'] = None,
         n_supports: int = None
 ) -> ProbTensorT['NQuery,NClasses']:
+    assert len(query_embedding.shape) == 2
+    assert len(no_yes_scores.shape) == 2
     if neg_support_center is not None and pos_support_center is not None:
         support_embedding = FloatTensorT(
-            torch.stack([neg_support_center, pos_support_center], dim=0))
+            torch.stack([neg_support_center, pos_support_center], dim=0),
+            '2,EmbedLen')
     else:
         support_embedding = None
     return tagging.predict_probs_with_optional_prototypes(
