@@ -61,9 +61,9 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
                               n_support_per_cls=[2, 3, 4, 5, 6, 7, 8])
         val_ds = EnronEmailsTagQA(model_node.tokenizer,
                                   max_src_len=4096,
-                                  n_episodes=25,
+                                  n_episodes=50,
                                   n_query_per_cls=[2],
-                                  n_support_per_cls=[2, 3, 4, 5, 6, 7, 8])
+                                  n_support_per_cls=[9,10,11,12])
     if old_enron:
         ds = EnronEmailsTagging(model_node.tokenizer,
                                 max_src_len=3000,
@@ -105,7 +105,7 @@ def led_main_train():
     # Mistral Models
     # model_name = 'mistralai/Mistral-7B-v0.1'
     # model_name = 'openchat/openchat_3.5'
-    model_name = 'openchat/openchat-3.5-1210'
+    model_name = 'openchat/openchat-3.5-1210/best_so_far_in_webapp_.3smooth_.0000025lr/BEST'
     # model_name = 'openchat/openchat_3.5/data_EnronEmailsTagQA_2/BEST'
     # model_name = 'facebook/bart-large-cnn'
     # model_cls = BartForBinaryTagging
@@ -156,14 +156,14 @@ def led_main_train():
                                                     optimizer, ds)
         routine = TaggingRoutine(
             distance_measure=DistanceMeasure.L2,
-            tokenizer=model_node.tokenizer, debug=False, gpu_max_batch_size=4)
+            tokenizer=model_node.tokenizer, debug=False, gpu_max_batch_size=3)
 
-        # routine.evaluate(model_node=model_node, val_ds=val_ds)
-        routine.train(
-            model_node=model_node, ds=ds, val_ds=val_ds,
-            model_edge=train_transition_edge,
-            device=settings.DEVICE, distributed=False,
-            turn_off_shuffle=False, n_epochs=50, )
+        routine.evaluate(model_node=model_node, val_ds=val_ds)
+        # routine.train(
+        #     model_node=model_node, ds=ds, val_ds=val_ds,
+        #     model_edge=train_transition_edge,
+        #     device=settings.DEVICE, distributed=False,
+        #     turn_off_shuffle=False, n_epochs=50, )
         torch.cuda.empty_cache()
 
 

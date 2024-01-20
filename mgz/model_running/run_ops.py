@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import torch.utils.data
+from transformers import PreTrainedTokenizerBase
+
 import mgz.model_running.nlp_routines.model_routine_tagging as tagging
 import mgz.settings as settings
-import torch.utils.data
 from mgz.ds.sentence_datasets.gpt_input_augments import summarization_augment, \
     tag_question_augment
 from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask, \
@@ -10,7 +12,6 @@ from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask, \
 from mgz.models.nlp.base_transformer import BaseTransformer, \
     EncoderDecoderTransformer, DecoderTransformer
 from mgz.typing import *
-from transformers import PreTrainedTokenizerBase
 
 
 @torch.no_grad()
@@ -124,6 +125,7 @@ def summarize_controller(model: DecoderTransformer, texts: List[str],
                          max_src_len: int = None,
                          max_new_tokens=1000,
                          return_just_new: bool = True,
+                         word_limit: int = 50,
                          ) -> List[str]:
     """
     Generates sequences using a Transformer-based model for a list of input texts.
@@ -143,7 +145,8 @@ def summarize_controller(model: DecoderTransformer, texts: List[str],
     max_src_len = min(max_src_len,
                       model.get_max_decoder_positions() - max_new_tokens)
 
-    texts = [summarization_augment(text) for text in texts]
+    texts = [summarization_augment(text, word_limit=word_limit) for
+             text in texts]
 
     src_ids, src_mask = strings_to_padded_id_tensor_w_mask(texts,
                                                            tokenizer,

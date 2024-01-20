@@ -330,7 +330,8 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
         tag_idx = idx % len(self._tag_to_sample_idx_map)
         selected_tag: TgtStringT = tags[tag_idx]
         rand_sample_for_tag: SrcStringT = self.data[random.choice(
-            self._tag_to_sample_idx_map[selected_tag])][SampleType.FULL_AS_STRING]
+            self._tag_to_sample_idx_map[selected_tag])][
+            SampleType.FULL_AS_STRING]
         return rand_sample_for_tag, selected_tag
 
 
@@ -363,7 +364,8 @@ class EnronEmailsTagQA(EnronEmailsTagging, MetaLearningMixIn):
         tag_idx = idx % len(self._tag_to_sample_idx_map)
         selected_tag: TgtStringT = tags[tag_idx]
         rand_sample_for_tag: SrcStringT = self.data[random.choice(
-            self._tag_to_sample_idx_map[selected_tag])][SampleType.FULL_AS_STRING]
+            self._tag_to_sample_idx_map[selected_tag])][
+            SampleType.FULL_AS_STRING]
         return rand_sample_for_tag, selected_tag
 
 
@@ -460,7 +462,39 @@ def dump_n_examples(n: int):
     # print(json.dumps(docs, indent=4))
 
 
+class CustomTqdm(tqdm):
+    @staticmethod
+    def get_for_job(job_id: int):
+        return partial(CustomTqdm, job_id=job_id)
+
+    def __init__(self, iterable, desc=None, leave=True, file=None,
+                 job_id: int = None):
+        super().__init__(iterable, desc, leave, file, mininterval=2.0)
+        self.job_id = job_id
+
+    @overrides(tqdm)
+    def update(self, n=1):
+        super().update(n)
+        print('total', len(self.iterable))
+        print('update', n)
+        print(self.job_id)
+
+
 def main():
+    for i in CustomTqdm.get_for_job(4)(range(10000000000000)):
+        #     will wait for 1 sec, and it will
+        #     print the progress bar
+        pass
+    exit(3)
+    email_message = email.message_from_string("test")
+    # Check for essential headers
+    essential_headers = ["From", "To", "Date", "Subject"]
+    for header in essential_headers:
+        if not email_message.get(header):
+            print('not email')
+
+    exit(3)
+
     dump_n_examples(10)
 
 
