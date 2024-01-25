@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-# from mgz.models.nlp.bart_interface import BARTHubInterface
 import os
 from pathlib import Path
 
@@ -33,6 +32,26 @@ class ModelDatabase:
         return lookup_or_init_model(ModelDatabase.LEDForConditionalGeneration,
                                     ModelDatabase.led_source_to_long_id(),
                                     ModelDatabase.led_source_to_long_id())
+
+    @staticmethod
+    def mistral_openchat_quantized(
+            model_name: str = "openchat/openchat-3.5-0106") -> ModelNode:
+        from mgz.models.nlp.mistral_hug import MistralForCausalLMHug
+        quantize = True
+        quantization_cfg = None
+        if quantize:
+            try:
+                from accelerate.utils import BnbQuantizationConfig
+                import bitsandbytes
+                quantization_cfg = BnbQuantizationConfig(
+                    load_in_8bit=quantize, )
+            except ImportError:
+                print("Module 'some_module' is not installed.")
+                quantization_cfg = None
+        return ModelNode.load_from_id(MistralForCausalLMHug,
+                                      model_name,
+                                      model_name,
+                                      quantization_config=quantization_cfg)
 
 
 # DEFAULTS

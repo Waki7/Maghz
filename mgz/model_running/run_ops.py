@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from functools import partial
+
 import torch.utils.data
 from transformers import PreTrainedTokenizerBase
 
@@ -120,13 +122,15 @@ def generate_controller(model: DecoderTransformer, texts: List[str],
 
 
 @torch.no_grad()
-def summarize_controller(model: DecoderTransformer, texts: List[str],
-                         tokenizer: PreTrainedTokenizerBase,
-                         max_src_len: int = None,
-                         max_new_tokens=1000,
-                         return_just_new: bool = True,
-                         word_limit: int = 50,
-                         ) -> List[str]:
+def _qa_controller(model: DecoderTransformer, texts: List[str],
+                   tokenizer: PreTrainedTokenizerBase,
+                   augment_function: Callable[[str], str] | Callable[
+                       [str, str], str],
+                   tags: List[str] = None,
+                   max_src_len: int = None,
+                   max_new_tokens=1000,
+                   return_just_new: bool = True,
+                   ) -> List[str]:
     """
     Generates sequences using a Transformer-based model for a list of input texts.
 
@@ -145,9 +149,12 @@ def summarize_controller(model: DecoderTransformer, texts: List[str],
     max_src_len = min(max_src_len,
                       model.get_max_decoder_positions() - max_new_tokens)
 
-    texts = [summarization_augment(text, word_limit=word_limit) for
-             text in texts]
-
+    if tags:
+        texts = [augment_function(text, tag) for
+                 text, tag in zip(texts, tags)]
+    else:
+        texts = [augment_function(text) for
+                 text in texts]
     src_ids, src_mask = strings_to_padded_id_tensor_w_mask(texts,
                                                            tokenizer,
                                                            max_src_len,
@@ -164,6 +171,40 @@ def summarize_controller(model: DecoderTransformer, texts: List[str],
         generated_ids = generated_ids[:, src_ids.shape[-1]:]
     responses = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
     return responses
+
+
+@torch.no_grad()
+def summarize_controller(model: DecoderTransformer, texts: List[str],
+                         tokenizer: PreTrainedTokenizerBase,
+                         max_src_len: int = None,
+                         max_new_tokens=1000,
+                         return_just_new: bool = True,
+                         word_limit: int = 50,
+                         ) -> List[str]:
+    with torch.cuda.amp.autocast(enabled=True):
+        return _qa_controller(model, texts, tokenizer,
+                              partial(summarization_augment, word_limit=word_limit),
+                              max_src_len=max_src_len,
+                              max_new_tokens=max_new_tokens,
+                              return_just_new=return_just_new, )
+
+
+@torch.no_grad()
+def tag_questions_controller(model: DecoderTransformer, texts: List[str],
+                             tags: List[str],
+                             tokenizer: PreTrainedTokenizerBase,
+                             augment_function: Callable[[str, str], str],
+                             max_src_len: int = None,
+                             max_new_tokens=1000,
+                             return_just_new: bool = True,
+                             ) -> List[str]:
+    with torch.cuda.amp.autocast(enabled=True):
+        return _qa_controller(model, texts, tokenizer,
+                              augment_function=augment_function,
+                              tags=tags,
+                              max_src_len=max_src_len,
+                              max_new_tokens=max_new_tokens,
+                              return_just_new=return_just_new, )
 
 
 @torch.no_grad()

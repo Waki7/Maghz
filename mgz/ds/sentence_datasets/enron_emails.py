@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import email
+import json
 import os
 import random
 import re
-from email.message import MIMEPart
+import shutil
 from functools import partial
 from pathlib import Path
 
@@ -14,15 +15,18 @@ from transformers import PreTrainedTokenizer, LlamaTokenizer, LlamaTokenizerFast
 
 import spaces as sp
 from mgz.ds.base_dataset import BaseDataset, DataState
+from mgz.ds.sentence_datasets.gpt_input_augments import tag_question_augment, \
+    vague_relevance_augment, summarization_augment
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
     Sent2SentBatch, SampleType, MetaLearningMixIn, Sent2TagMetaTaskBatch, \
     TagQAMetaTaskBatch
+from mgz.model_running.run_ops import tag_questions_controller
 from mgz.typing import *
 
 DATASET_DIR = os.path.join(
     Path(__file__).resolve().parent.parent.parent.parent,
     'datasets/enron_with_categories/').replace("\\", "/")
-CATEGORIES = {
+ENRON_FALLBACK_CATEGORIES: Dict[int, Dict[int, str]] = {
     1: {
         1: "Coarse genre: Company Business, Strategy, etc.",
         2: "Coarse genre: Purely Personal",
@@ -119,6 +123,45 @@ class EnronEmails(SentenceDataset):
         self.validation_ratio = .2
         self.test_ratio = .1
 
+    @staticmethod
+    def get_category_names(category_lines: List[str], dataset_dir: DirPath) -> \
+            List[str]:
+        # If the dataset is in a generated labeled data format
+        if os.path.exists(os.path.join(dataset_dir, 'categories_map.json')):
+            with open(os.path.join(dataset_dir, 'categories_map.json')) as f:
+                category_dict: Dict[int, str] = json.load(f)
+            categories: List[Tuple[int, ...]] = [
+                tuple(map(int, re.findall(r'\d+', label))) for
+                label in category_lines]
+            tags_for_email: List[str] = \
+                [category_dict[c[0]] for c in categories]
+            return tags_for_email
+        # If the dataset is in the original enron format
+        else:
+            categories: List[Tuple[int, ...]] = [
+                tuple(map(int, re.findall(r'\d+', label))) for
+                label in category_lines]
+            tags_for_email: List[str] = \
+                [ENRON_FALLBACK_CATEGORIES[c[0]][c[1]] for c in categories]
+            return tags_for_email
+
+    @staticmethod
+    def get_max_tgt_len(dataset_dir: DirPath,
+                        tokenizer: PreTrainedTokenizer) -> int:
+        all_tags: List[str] = []
+        # If the dataset is in a generated labeled data format
+        if os.path.exists(os.path.join(dataset_dir, 'categories_map.json')):
+            with open(os.path.join(dataset_dir, 'categories_map.json')) as f:
+                category_dict: Dict[int, str] = json.load(f)
+            all_tags = list(category_dict.values())
+        # If the dataset is in the original enron format
+        else:
+            categories: Dict[int, Dict[int, str]] = ENRON_FALLBACK_CATEGORIES
+            [all_tags.extend(subcategories.values()) for subcategories in
+             categories.values()]
+        max_tgt_len = max([len(tokenizer.tokenize(tag)) for tag in all_tags])
+        return max_tgt_len
+
     @overrides(BaseDataset)
     def _load(self, train: bool = False, val: bool = False, test: bool = False):
         logging.info('Reading data from: ' + self.dataset_dir)
@@ -130,11 +173,8 @@ class EnronEmails(SentenceDataset):
             with open(label_path) as f:
                 # label shows up as 'int,int,int\n'
                 labels: List[str] = f.readlines()
-                categories: List[Tuple[int, ...]] = [
-                    tuple(map(int, re.findall(r'\d+', label))) for
-                    label in labels]
-                tags_for_email: List[str] = \
-                    [CATEGORIES[c[0]][c[1]] for c in categories]
+                tags_for_email: List[str] = self.get_category_names(labels,
+                                                                    self.dataset_dir)
 
             # Read txt file formatted as e-mail with library email
             email_msg: email.message.Message = email.message_from_file(
@@ -252,10 +292,7 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
                  dataset_dir: str = None):
         if dataset_dir is None:
             dataset_dir = DATASET_DIR
-        all_tags = []
-        [all_tags.extend(subcategories.values()) for subcategories in
-         CATEGORIES.values()]
-        max_tgt_len = max([len(tokenizer.tokenize(tag)) for tag in all_tags])
+        max_tgt_len = self.get_max_tgt_len(dataset_dir, tokenizer)
         super(EnronEmailsTagging, self).__init__(tokenizer=tokenizer,
                                                  max_src_len=max_src_len,
                                                  max_tgt_len=max_tgt_len,
@@ -410,11 +447,61 @@ def look_through_data():
 
 
 def dump_n_examples(n: int):
-    from transformers import LEDTokenizer
-    tokenizer = LEDTokenizer.from_pretrained(
-        "allenai/primera-multi_lexsum-source-long")
-    ds = EnronEmails(tokenizer,
+    from mgz.version_control import ModelDatabase, ModelNode
+
+    tag_to_sample = "all documents and communications between enron employees discussing government inquiries and investigations into enron"
+    contains_words = ["government", "inquiries", "investigation"]
+    p_contained = 0.25
+    p_random = 0.09
+    model_node: ModelNode = ModelDatabase.mistral_openchat_quantized()
+    ds = EnronEmails(model_node.tokenizer,
                      max_src_len=4096, max_tgt_len=-1).load_training_data()
+#     answers = tag_questions_controller(
+#         model=model_node.model, texts=[r'''Message-ID: <24828229.1075846177387.JavaMail.evans@thyme>
+# Date: Wed, 27 Sep 2000 10:33:00 -0700 (PDT)
+# From: steven.kean@enron.com
+# To: cynthia.sandherr@enron.com
+# Subject: Re: Congressman Edwards (D-TX)
+# Mime-Version: 1.0
+# Content-Type: text/plain; charset=us-ascii
+# Content-Transfer-Encoding: 7bit
+# X-From: Steven J Kean
+# X-To: Cynthia Sandherr
+# X-cc:
+# X-bcc:
+# X-Folder: \Steven_Kean_Dec2000_1\Notes Folders\All documents
+# X-Origin: KEAN-S
+# X-FileName: skean.nsf
+#
+# Submit a Pac request and keep Tom posted on when and where.
+#
+#
+#
+# 	Cynthia Sandherr
+# 	09/07/2000 05:05 PM
+#
+# 		 To: Steven J Kean/NA/Enron@Enron, Joe Hillings/Corp/Enron@ENRON, Elizabeth
+# Linnell/NA/Enron@Enron, Joe Hillings/Corp/Enron@ENRON, Carolyn
+# Cooney/Corp/Enron@ENRON
+# 		 cc: Rosalee Fleming/Corp/Enron@ENRON, Thomas E White/HOU/EES@EES
+# 		 Subject: Congressman Edwards (D-TX)
+#
+# Steve:  Congressman Chet Edwards is having a fundraiser in Houston, October
+# 10th, 5:30-7:30 p.m. at Reliant's Bruce Gibson's home in River Oaks (2178
+# Troon).  Drayton McLane will attend.  They are looking for $1000 to host or
+# $500 sponsor.  Congressman Edwards has been very helpful with our defense
+# procurement issues, and we have contributed to him recently.  The
+# Congressman's main request was to include Ken Lay's name on their invitation
+# which Ken Lay graciously agreed to do so the Congressman is most pleased.
+# Thus, the remaining request to attend and give additional money is up to you,
+# although if we have room in our budget and Ken Lay or Tom White were
+# available, I would recommend their attendance.
+# '''],
+#         tags=[tag_to_sample], tokenizer=model_node.tokenizer,
+#         augment_function=tag_question_augment,
+#         max_new_tokens=100)
+#     print(answers)
+#     exit(3)
     keys_to_keep = [
         SampleType.MESSAGE_ID,
         SampleType.DATE,
@@ -431,35 +518,92 @@ def dump_n_examples(n: int):
         SampleType.X_FOLDER,
         SampleType.X_ORIGIN,
         SampleType.X_FILENAME,
-        # SampleType.FILE_NAME,
+        SampleType.FILE_NAME,
         # SampleType.CATCHPHRASES,
         SampleType.BODY,
         SampleType.FULL_AS_STRING,
         # SampleType.FULL_AS_BYTES
     ]
-    docs = []
-    for i, doc in enumerate(ds[:10]):
-        doc_filtered = {str(key) + ".value": doc[key] for key
-                        in keys_to_keep}
-        docs.append(doc_filtered)
-        email_msg: email.message.Message = email.message_from_string(
-            doc[SampleType.FULL_AS_STRING])
-        assert email_msg.as_string() == doc[SampleType.FULL_AS_STRING]
+    docs_formatted = []
 
-        email_msg: email.message.Message = email.message_from_bytes(
-            doc[SampleType.FULL_AS_BYTES])
-        assert email_msg.as_bytes() == doc[SampleType.FULL_AS_BYTES]
-        print(MIMEPart(email_msg))
+    export_dir = os.path.join(
+        Path(__file__).resolve().parent.parent.parent.parent,
+        'datasets/enron_export/').replace("\\", "/")
+    if os.path.exists(export_dir):
+        shutil.rmtree(export_dir)
+    os.mkdir(export_dir)
+    os.mkdir(os.path.join(export_dir, 'yes'))
+    os.mkdir(os.path.join(export_dir, 'no'))
+    os.mkdir(os.path.join(export_dir, 'maybe'))
 
-    print('[')
-    for entry in docs:
-        print('\t{')
-        for key, value in entry.items():
-            cleaned_key = key.replace('\"', '')
-            print(f"\t\t{cleaned_key}: {repr(value)},")
-        print('\t},')
-    print(']')
-    # print(json.dumps(docs, indent=4))
+    bsz = 3
+    for i in tqdm(range(0, len(ds), bsz)):
+        batch = ds[i:i + bsz]
+        doc_batch_filtered = [{key: doc[key] for key
+                               in keys_to_keep} for doc in batch]
+        full_texts = [doc[SampleType.FULL_AS_STRING] for doc in batch]
+        tags: List[str] = [tag_to_sample] * len(full_texts)
+        answers = tag_questions_controller(
+            model=model_node.model, texts=full_texts,
+            tags=tags, tokenizer=model_node.tokenizer,
+            augment_function=tag_question_augment,
+            max_new_tokens=3)
+        for answer, doc in zip(answers, doc_batch_filtered):
+            random_p = random.random()
+            no_inclusion = "no" in answer.lower() and random_p < p_random
+            word_containment_inclusion = any(
+                [word in doc[SampleType.FULL_AS_STRING] for word in
+                 contains_words]) and random.random() < p_contained
+            maybe_inclusion = "maybe" in answer.lower()
+            yes_inclusion = "yes" in answer.lower()
+            if not (no_inclusion or word_containment_inclusion or
+                    maybe_inclusion or yes_inclusion):
+                continue
+            print('answer', answer)
+            docs_formatted.append(
+                {str(key) + ".value": doc[key] for key in keys_to_keep})
+
+            if yes_inclusion:
+                shutil.copy(doc[SampleType.FILE_NAME], os.path.join(
+                    export_dir, 'yes'))
+            elif word_containment_inclusion or maybe_inclusion:
+                shutil.copy(doc[SampleType.FILE_NAME], os.path.join(
+                    export_dir, 'maybe'))
+            elif no_inclusion:
+                shutil.copy(doc[SampleType.FILE_NAME], os.path.join(
+                    export_dir, 'no'))
+
+            email_msg: email.message.Message = email.message_from_string(
+                doc[SampleType.FULL_AS_STRING])
+            assert email_msg.as_string() == doc[SampleType.FULL_AS_STRING]
+
+            # email_msg: email.message.Message = email.message_from_bytes(
+            #     doc[SampleType.FULL_AS_BYTES])
+            # assert email_msg.as_bytes() == doc[SampleType.FULL_AS_BYTES]
+        if len(docs_formatted) > n:
+            break
+
+        print(f'collected {len(docs_formatted)} examples so far')
+
+    with open(os.path.join(export_dir, 'tags_sampled.txt'), 'w') as file:
+        file.write(tag_to_sample)
+    as_dict_file = os.path.join(export_dir, 'formatted_docs.json')
+
+    # Writing to the file
+    with open(as_dict_file, 'w') as file:
+        file.write('[\n')
+        for entry in docs_formatted:
+            file.write('\t{\n')
+            for key, value in entry.items():
+                cleaned_key = key.replace('\"', '')
+                file.write(f"\t\t{cleaned_key}: {repr(value)},\n")
+            file.write('\t},\n')
+        file.write(']\n')
+
+    # Reading from the file and printing its contents
+    with open(as_dict_file, 'r') as file:
+        content = file.read()
+        print(content)
 
 
 class CustomTqdm(tqdm):
@@ -473,7 +617,7 @@ class CustomTqdm(tqdm):
         self.job_id = job_id
 
     @overrides(tqdm)
-    def update(self, n=1):
+    def update(self, n=30):
         super().update(n)
         print('total', len(self.iterable))
         print('update', n)
@@ -481,21 +625,7 @@ class CustomTqdm(tqdm):
 
 
 def main():
-    for i in CustomTqdm.get_for_job(4)(range(10000000000000)):
-        #     will wait for 1 sec, and it will
-        #     print the progress bar
-        pass
-    exit(3)
-    email_message = email.message_from_string("test")
-    # Check for essential headers
-    essential_headers = ["From", "To", "Date", "Subject"]
-    for header in essential_headers:
-        if not email_message.get(header):
-            print('not email')
-
-    exit(3)
-
-    dump_n_examples(10)
+    dump_n_examples(30)
 
 
 if __name__ == '__main__':
