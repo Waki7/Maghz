@@ -29,9 +29,9 @@ class ModelDatabase:
 
     @staticmethod
     def led_source_to_long() -> ModelNode:
-        return lookup_or_init_model(ModelDatabase.LEDForConditionalGeneration,
-                                    ModelDatabase.led_source_to_long_id(),
-                                    ModelDatabase.led_source_to_long_id())
+        return ModelNode.load_from_id(ModelDatabase.LEDForConditionalGeneration,
+                                      ModelDatabase.led_source_to_long_id(),
+                                      ModelDatabase.led_source_to_long_id())
 
     @staticmethod
     def mistral_openchat_quantized(
@@ -59,19 +59,6 @@ DEFAULT_ROOTS = {}
 DEFAULT_INDEX_PATH = os.path.join(Path(__file__).resolve().parent.parent.parent,
                                   'index_dir/main/indexer.json').replace("\\",
                                                                          "/")
-
-
-def lookup_or_init_model(model_cls: Type[BaseTransformer], model_id: str,
-                         tokenizer_id: str = None,
-                         quantization_config: BitsAndBytesConfig = None) -> ModelNode:
-    assert tokenizer_id is not None, 'NLP Model needs tokenizer id'
-    model_node = \
-        CACHED_INDEXER.lookup_or_init(model_id,
-                                      model_cls=model_cls,
-                                      quantization_config=quantization_config)
-    model_node.model.eval()
-    model_node.model.verify_tokenizer(model_node.tokenizer)
-    return model_node
 
 
 def get_models_path() -> DirPath:
@@ -223,7 +210,8 @@ class Indexer:
                 return None, None
             else:
                 logging.info('loading model {} into cache'.format(model_id))
-                model_node = lookup_or_init_model(model_cls, model_id, model_id)
+                model_node = ModelNode.load_from_id(model_cls, model_id,
+                                                    model_id)
                 self.runtime_model_cache[model_id] = model_node.model
                 self.runtime_tokenizer_cache[model_id] = model_node.tokenizer
         return self.runtime_model_cache[model_id], \

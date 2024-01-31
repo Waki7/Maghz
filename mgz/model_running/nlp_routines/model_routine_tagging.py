@@ -13,7 +13,7 @@ from mgz.metrics.nlp.metrics import DistanceMeasuresPerClass
 from mgz.model_running.base_routine import BaseProtocol
 from mgz.model_running.nlp_routines.base_nlp_routine import BaseNLPProtocol
 from mgz.models.nlp.base_transformer import EncoderDecoderTransformer, \
-    DecoderTransformer
+    DecoderTransformer, InferenceContext
 from mgz.typing import *
 from mgz.version_control.metrics import Metrics
 
@@ -27,33 +27,6 @@ class DistanceMeasure(Enum):
     MAX_INNER_PRODUCT = 3
     CLASSIFICATION = 4
     WEIGHTED_HYBRID = 5
-
-
-def get_llama_no_yes_scores(logits: FloatTensorT['NQuery,NClasses']):
-    assert logits.shape[-1] == 32002
-    n_yes = 4
-    Yes_id = 5613
-    block_Yes_id = 5592
-    yes_id = 9780
-    block_yes_id = 5081
-    yes_ids = [Yes_id, block_Yes_id, yes_id, block_yes_id]
-
-    n_no = 6
-    NO_id = 4032
-    block_NO_id = 7929
-    no_id = 1510
-    block_no_id = 708
-    No_id = 2501
-    block_No_id = 1770
-    no_ids = [NO_id, block_NO_id, no_id, block_no_id, No_id,
-              block_No_id]
-
-    yes_no_logits = logits[:, no_ids + yes_ids]
-    no_score = torch.max(yes_no_logits[:, :n_no], dim=-1)[0]
-    yes_score = torch.max(yes_no_logits[:, -n_yes:], dim=-1)[0]
-    similarity_to_classes = FloatTensorT(
-        torch.stack([no_score, yes_score], dim=-1))
-    return similarity_to_classes
 
 
 def predict_with_prototypes(
@@ -81,9 +54,11 @@ def predict_with_prototypes(
             if routine is not None:
                 decoded = routine.tokenizer.batch_decode(last_words,
                                                          skip_special_tokens=True)
-                print('decoded ', decoded)
             no_yes_logits = no_yes_logits[:, -1, :]
-            similarity_to_classes = get_llama_no_yes_scores(no_yes_logits)
+            inference_context: InferenceContext = InferenceContext.get_llama_no_yes_scores(
+                routine.tokenizer)
+            similarity_to_classes = inference_context.get_word_scores_from_logits(
+                no_yes_logits)
         else:
             similarity_to_classes = no_yes_logits
         routine.debug_log_predictions(similarity_to_classes)
@@ -123,58 +98,14 @@ class TaggingRoutine(BaseNLPProtocol):
         self.distance_measure = distance_measure
         self.train_init = False
         self.eval_init = False
+        self.inference_context = InferenceContext.get_llama_no_yes_scores(
+            self.tokenizer)
         self.predict_init = False
 
     @overrides(BaseProtocol)
     def _check(self, ds: BaseDataset):
         assert isinstance(ds.input_space, sp.Sentence)
         assert isinstance(ds.target_space, sp.Tagging)
-
-    def run_prototype_encoder_decoder(self, model: EncoderDecoderTransformer,
-                                      batch: Sent2TagMetaTaskBatch,
-                                      gpu_max_batch_size=4) -> \
-            Tuple[FloatTensorT['NQuery,NClasses'], LongTensorT['NQuery']]:
-        is_encoder_decoder = isinstance(model, EncoderDecoderTransformer) and \
-                             isinstance(batch, Sent2TagMetaTaskBatch)
-        assert is_encoder_decoder, 'Bad combination of model and batch'
-
-        with torch.no_grad():
-            n_cls, tsk_sz, src_len = batch.supports.shape
-            support = batch.supports.view(n_cls * tsk_sz, src_len)
-            support_mask = batch.support_masks.view(n_cls * tsk_sz, src_len)
-            support_embed_list: List[FloatTensorT['TaskSize//N,EmbedLen']] = []
-            tgt_len = batch.tgt_tag_ids_supports.shape[-1]
-            tgt_support = batch.tgt_tag_ids_supports.view(n_cls * tsk_sz,
-                                                          tgt_len)
-            tgt_mask = batch.tgt_tag_masks_supports.view(n_cls * tsk_sz,
-                                                         tgt_len)
-            for i in range(0, n_cls * tsk_sz, gpu_max_batch_size):
-                support_embed_list.append(model.encoder_decoder_embedding(
-                    src_ids=support[i:i + gpu_max_batch_size, :],
-                    tgt_ids=tgt_support[i:i + gpu_max_batch_size, :],
-                    src_mask=support_mask[i:i + gpu_max_batch_size, :],
-                    tgt_mask=tgt_mask[i:i + gpu_max_batch_size, :]
-                ))
-            support_embeds: FloatTensorT['TaskSize,EmbedLen'] = \
-                FloatTensorT(torch.cat(support_embed_list, dim=0))
-            support_embeds: FloatTensorT[
-                'NClasses,TaskSize,EmbedLen'] = \
-                support_embeds.view(n_cls, tsk_sz, model.embed_dim)
-            support_centers: FloatTensorT['NClasses,EmbedLen'] = \
-                support_embeds.mean(dim=1, keepdim=False).detach()
-        query_embeds: FloatTensorT[
-            'TaskSize,EmbedLen'] = model.encoder_decoder_embedding(
-            src_ids=batch.queries,
-            tgt_ids=batch.tgt_tag_ids_queries,
-            src_mask=batch.query_masks,
-            tgt_mask=batch.tgt_tag_masks_queries
-        )
-        query_lbls: LongTensorT['TaskSize'] = batch.query_lbls
-        cls_logits: FloatTensorT[
-            'TaskSize,NClasses'] = predict_with_prototypes(
-            query_embeds, support_centers, routine=self,
-            distance_measure=self.distance_measure)
-        return cls_logits, query_lbls
 
     def run_prototype_decoder(self, model: DecoderTransformer,
                               batch: TagQAMetaTaskBatch) -> \
@@ -188,27 +119,28 @@ class TaggingRoutine(BaseNLPProtocol):
             n_cls, n_sup, src_len = batch.supports.shape
             support = batch.supports.view(n_cls * n_sup, src_len)
             support_mask = batch.support_masks.view(n_cls * n_sup, src_len)
-            support_embed_list: List[FloatTensorT['NSupport//N,EmbedLen']] = []
+            support_embed_total: FloatTensorT[
+                'n_cls,1,EmbedLen'] = FloatTensorT(
+                torch.zeros((n_cls, 1, model.embed_dim))).to(support.device)
+
             for i in range(0, n_cls * n_sup, self.gpu_max_batch_size):
                 batch_embeds, _ = model.decode_relevance(
                     src_ids=support[i:i + self.gpu_max_batch_size, :],
                     src_mask=support_mask[i:i + self.gpu_max_batch_size, :],
+                    inference_context=self.inference_context
                 )
-                support_embed_list.append(batch_embeds.detach())
-            support_embeds: FloatTensorT['NSupport,EmbedLen'] = \
-                FloatTensorT(torch.cat(support_embed_list, dim=0))
-            support_embeds: FloatTensorT[
-                'NClasses,NSupport,EmbedLen'] = \
-                support_embeds.view(n_cls, n_sup,
-                                    model.embed_dim)  # 32002 model.embed_dim)
-            support_centers: FloatTensorT['NClasses,EmbedLen'] = \
-                support_embeds.mean(dim=1, keepdim=False).detach()
+                support_embed_total += batch_embeds.detach().view(n_cls, -1,
+                                                                  model.embed_dim).sum(
+                    dim=1, keepdim=True)
+            support_centers: FloatTensorT[
+                'NClasses,EmbedLen'] = (support_embed_total / n_sup).squeeze(1)
         self.debug_log_batch_info(batch)
         query_embeds: FloatTensorT['NQuery,EmbedLen']
         no_yes_logits: FloatTensorT['NQuery,VocabSize']
         query_embeds, no_yes_logits = model.decode_relevance(
             src_ids=batch.queries,
             src_mask=batch.query_masks,
+            inference_context=self.inference_context
         )
         assert isinstance(model, DecoderTransformer)
         query_lbls: LongTensorT['NQuery'] = batch.query_lbls
@@ -226,15 +158,8 @@ class TaggingRoutine(BaseNLPProtocol):
             Tuple[FloatTensorT['1'], float]:
         cls_logits: ['NQuery,NClasses']
         query_lbls: LongTensorT['NQuery']
-
-        if isinstance(model, EncoderDecoderTransformer):
-            cls_logits, query_lbls = (
-                self.run_prototype_encoder_decoder(model, batch))
-        elif isinstance(model, DecoderTransformer):
-            cls_logits, query_lbls, query_logits = self.run_prototype_decoder(
-                model, batch)
-        else:
-            raise NotImplementedError
+        cls_logits, query_lbls, query_logits = self.run_prototype_decoder(
+            model, batch)
 
         # Calculate accuracy
         with torch.no_grad():
@@ -253,6 +178,14 @@ class TaggingRoutine(BaseNLPProtocol):
 
             predictions: LongTensorT['NQuery'] = cls_logits.argmax(-1)
             accuracy = (predictions == query_lbls).float().mean().item()
+            if accuracy < 1.0:
+                print('Accuracy is less than 1.0, predictions were')
+                for i in range(len(predictions)):
+                    if predictions[i] != query_lbls[i]:
+                        print('----------------------------------')
+                        print(
+                            f'Predicted {predictions[i]} for label {query_lbls[i]}')
+                        print(f'query: {self.tokenizer.decode(batch.queries[i])}')
         if model_edge is not None:
             total_samples = cls_logits.shape[0] * cls_logits.shape[1]
             loss = model_edge.loss_fn(cls_logits, query_lbls)

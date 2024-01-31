@@ -118,8 +118,14 @@ class ModelNode:
                 print("Module 'some_module' is not installed.")
                 quantization_config = None
 
-        node = vc.lookup_or_init_model(model_cls, model_id, tokenizer_id,
-                                       quantization_config=quantization_config)
+        assert tokenizer_id is not None, 'NLP Model needs tokenizer id'
+        node = \
+            vc.CACHED_INDEXER.lookup_or_init(model_id,
+                                          model_cls=model_cls,
+                                          quantization_config=quantization_config)
+        node.model.eval()
+        node.model.verify_tokenizer(node.tokenizer)
+
         model_dir = vc.CACHED_INDEXER.path_from_id(node.model_id)
         file_path = os.path.join(model_dir, 'metrics.json')
         if os.path.exists(file_path):

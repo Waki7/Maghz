@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import unittest
 
+import torch.testing
 import transformers as hug
+from transformers import LlamaTokenizer
 
-from mgz.models.nlp.base_transformer import BaseTransformer
+import mgz.settings as settings
+from mgz.models.nlp.base_transformer import BaseTransformer, InferenceContext
 from mgz.typing import *
-from settings import DEVICE
 
 
 class TestConfig(hug.PretrainedConfig):
@@ -51,8 +53,8 @@ class TestBert(unittest.TestCase):
         # print(t.shape)
         # indices = torch.LongTensor([[0, 0], [2, 2], [1, 1]]).to(DEVICE)
         # print(indices.shape)
-        t = torch.LongTensor([0, 1, 2]).view(-1, 1, 1).to(DEVICE)
-        indices = torch.LongTensor([0, 1, 2]).view(-1, 1, 1).to(DEVICE)
+        t = torch.LongTensor([0, 1, 2]).view(-1, 1, 1).to(settings.DEVICE)
+        indices = torch.LongTensor([0, 1, 2]).view(-1, 1, 1).to(settings.DEVICE)
         gathered = t.gather(0, indices)
         print(gathered)
 
@@ -109,3 +111,15 @@ class TestBert(unittest.TestCase):
         post_weight = int8_model[0].weight
         # note how we didn't have to do the .to(0) again, only quantized once
         self.assertTrue(torch.all(pre_weight == post_weight))
+
+    def test_inference_context(self):
+        tokenizer = LlamaTokenizer.from_pretrained('openchat/openchat-3.5-0106')
+        inference_context = InferenceContext.get_llama_no_yes_scores(tokenizer)
+        ids = torch.tensor([
+            [1, 2, 3, 4],
+            [2, 3, 4, 1],
+        ]).to(settings.DEVICE)
+        inference_context.answer_triggers = LongTensorT([2, 3]).to(settings.DEVICE)
+        answers = inference_context.match_triggers(ids)
+        print('answers', answers)
+        torch.testing.assert_close(LongTensorT([[0, 2], [1, 1]]), answers.cpu())

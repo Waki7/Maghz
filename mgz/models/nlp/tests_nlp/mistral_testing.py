@@ -45,7 +45,7 @@ def mistral_original():
         # tokenizer = model_node.tokenizer
         # model_node.model.eval()
 
-        tokenizer = hug.LlamaTokenizerFast.from_pretrained(
+        tokenizer = hug.LlamaTokenizer.from_pretrained(
             model_name)
         model_hug = hug.MistralForCausalLM.from_pretrained(model_name,
                                                            device_map={

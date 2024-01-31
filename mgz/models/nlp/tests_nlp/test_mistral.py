@@ -114,7 +114,7 @@ class TestLED(unittest.TestCase):
         bsz = 2
         assert len(test_string) == bsz
 
-        tokenizer = hug.LlamaTokenizerFast.from_pretrained(
+        tokenizer = hug.LlamaTokenizer.from_pretrained(
             "mistralai/Mistral-7B-v0.1")
         config = hug.MistralConfig.from_pretrained(
             "mistralai/Mistral-7B-v0.1")
@@ -152,12 +152,12 @@ class TestLED(unittest.TestCase):
         print(pooled_logits)
 
     # def test_hug_mistral(self):
-    #     from transformers import LlamaTokenizerFast
+    #     from transformers import LlamaTokenizer
     #     from mgz.models.nlp.mistral_orig import MistralForCausalLM
     #     model = MistralForCausalLM.from_pretrained(
     #         "mistralai/Mistral-7B-v0.1", use_flash_attention_2=True,
     #         torch_dtype=torch.float16, device_map={"": settings.DEVICE}, )
-    #     tokenizer = LlamaTokenizerFast.from_pretrained(
+    #     tokenizer = LlamaTokenizer.from_pretrained(
     #         "mistralai/Mistral-7B-v0.1")
     #
     #     prompt = "My favourite condiment is"
@@ -276,7 +276,7 @@ class TestLED(unittest.TestCase):
             # tokenizer = model_node.tokenizer
             # model_node.model.eval()
 
-            tokenizer = hug.LlamaTokenizerFast.from_pretrained(
+            tokenizer = hug.LlamaTokenizer.from_pretrained(
                 model_name)
             model_hug = hug.MistralForCausalLM.from_pretrained(model_name,
                                                                device_map={

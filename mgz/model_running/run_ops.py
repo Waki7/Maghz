@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-from functools import partial
-
 import torch.utils.data
 from transformers import PreTrainedTokenizerBase
 
 import mgz.model_running.nlp_routines.model_routine_tagging as tagging
 import mgz.settings as settings
-from mgz.ds.sentence_datasets.gpt_input_augments import summarization_augment, \
-    tag_question_augment
+from mgz.ds.sentence_datasets.gpt_input_augments import tag_question_augment, \
+    SummarizeAugment
 from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask, \
     strings_to_padded_id_tensor_w_mask
 from mgz.models.nlp.base_transformer import BaseTransformer, \
-    EncoderDecoderTransformer, DecoderTransformer
+    EncoderDecoderTransformer, DecoderTransformer, InferenceContext
 from mgz.typing import *
 
 
@@ -37,7 +35,7 @@ def embedding_controller(model: BaseTransformer, texts: List[str],
         if isinstance(model, EncoderDecoderTransformer):
             max_src_len = model.get_max_encoder_positions()
         else:
-            max_src_len = model.get_max_decoder_positions()
+            max_src_len = model.get_max_decoder_positions() - 1
 
     src_ids, src_mask = strings_to_padded_id_tensor_w_mask(texts, tokenizer,
                                                            max_src_len,
@@ -125,7 +123,7 @@ def generate_controller(model: DecoderTransformer, texts: List[str],
 def _qa_controller(model: DecoderTransformer, texts: List[str],
                    tokenizer: PreTrainedTokenizerBase,
                    augment_function: Callable[[str], str] | Callable[
-                       [str, str], str],
+                       [str, str | List[str]], str],
                    tags: List[str] = None,
                    max_src_len: int = None,
                    max_new_tokens=1000,
@@ -143,32 +141,82 @@ def _qa_controller(model: DecoderTransformer, texts: List[str],
         Tensor: Generated sequences.
     """
     assert isinstance(model, DecoderTransformer)
-
     if max_src_len is None:
         max_src_len = model.get_max_decoder_positions() - max_new_tokens
     max_src_len = min(max_src_len,
                       model.get_max_decoder_positions() - max_new_tokens)
 
     if tags:
-        texts = [augment_function(text, tag) for
-                 text, tag in zip(texts, tags)]
+        augmented_text = [augment_function(text, tag) for
+                          text, tag in zip(texts, tags)]
     else:
-        texts = [augment_function(text) for
-                 text in texts]
-    src_ids, src_mask = strings_to_padded_id_tensor_w_mask(texts,
+        augmented_text = [augment_function(text) for
+                          text in texts]
+    # print('texts', texts)
+    src_ids, src_mask = strings_to_padded_id_tensor_w_mask(augmented_text,
                                                            tokenizer,
                                                            max_src_len,
                                                            settings.DEVICE)
-
-    # model.config.max_length = 7
+    # for i in range(src_ids.shape[0]):
+    #     print('src_ids', src_ids[i, :].shape)
+    #     print('augmented_text: ', augmented_text[i])
+    #     print('unique', torch.unique(src_ids[i, :]))
     generated_ids = model.generate(
         src_ids=src_ids,
         src_mask=src_mask,
         tgt_ids=src_ids,
         max_new_tokens=max_new_tokens)
-
     if return_just_new:
         generated_ids = generated_ids[:, src_ids.shape[-1]:]
+    # if "7677625.1075844211594" in texts[0]:
+    #     if tags:
+    #         augmented_text = [augment_function(text, tag) for
+    #                           text, tag in zip(texts[:1], tags[:1])]
+    #     else:
+    #         augmented_text = [augment_function(text) for
+    #                           text in texts[:1]]
+    #     print('INSIDE texts', augmented_text)
+    #     src_ids, src_mask = strings_to_padded_id_tensor_w_mask(augmented_text,
+    #                                                            tokenizer,
+    #                                                            max_src_len,
+    #                                                            settings.DEVICE)
+    #     print('INSIDE src_ids', src_ids.shape)
+    #     print('INSIDE src_mask', src_mask.shape)
+    #     generated_ids = model.generate(
+    #         src_ids=src_ids,
+    #         src_mask=src_mask,
+    #         tgt_ids=src_ids,
+    #         max_new_tokens=max_new_tokens)
+    #     print('INSIDE embedding',
+    #           tokenizer.batch_decode(generated_ids[:, src_ids.shape[-1]:], skip_special_tokens=True))
+    #     if return_just_new:
+    #         generated_ids = generated_ids[:, src_ids.shape[-1]:]
+    #
+    #
+    #
+    #
+    #     if tags:
+    #         augmented_text = [augment_function(text, tag) for
+    #                           text, tag in zip(texts, tags)]
+    #     else:
+    #         augmented_text = [augment_function(text) for
+    #                           text in texts]
+    #     print('INSIDE texts', augmented_text)
+    #     src_ids, src_mask = strings_to_padded_id_tensor_w_mask(augmented_text,
+    #                                                            tokenizer,
+    #                                                            max_src_len,
+    #                                                            settings.DEVICE)
+    #     print('INSIDE src_ids', src_ids.shape)
+    #     print('INSIDE src_mask', src_mask.shape)
+    #     generated_ids = model.generate(
+    #         src_ids=src_ids,
+    #         src_mask=src_mask,
+    #         tgt_ids=src_ids,
+    #         max_new_tokens=max_new_tokens)
+    #     print('INSIDE embedding',
+    #           tokenizer.batch_decode(generated_ids[:, src_ids.shape[-1]:], skip_special_tokens=True))
+    #     if return_just_new:
+    #         generated_ids = generated_ids[:, src_ids.shape[-1]:]
     responses = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
     return responses
 
@@ -183,7 +231,7 @@ def summarize_controller(model: DecoderTransformer, texts: List[str],
                          ) -> List[str]:
     with torch.cuda.amp.autocast(enabled=True):
         return _qa_controller(model, texts, tokenizer,
-                              partial(summarization_augment, word_limit=word_limit),
+                              SummarizeAugment(word_limit=word_limit).__call__,
                               max_src_len=max_src_len,
                               max_new_tokens=max_new_tokens,
                               return_just_new=return_just_new, )
@@ -219,7 +267,7 @@ def hybrid_generation_tagging(model: DecoderTransformer,
     Computes embeddings for a list of input texts and corresponding tag texts
     using a Decoder Transformer.
 
-       Args: model (EncoderDecoderTransformer): The Encoder-Decoder
+       Args: model (DecoderTransformer): The Encoder-Decoder
        Transformer model. texts (List[str]): List of input texts to embed.
        tag_text (List[str]): List of tag texts. tokenizer (
        PreTrainedTokenizerBase): Tokenizer for text encoding. max_src_len (
@@ -231,7 +279,7 @@ def hybrid_generation_tagging(model: DecoderTransformer,
     assert isinstance(model, DecoderTransformer)
     assert len(texts) == len(tag_text)
     if max_src_len is None:
-        max_src_len = model.get_max_decoder_positions()
+        max_src_len = model.get_max_decoder_positions() - 1
     src_qa_text = [tag_question_augment(text, tag) for text, tag in
                    zip(texts, tag_text)]
     src_ids, src_mask = strings_to_padded_id_tensor_w_mask(src_qa_text,
@@ -245,6 +293,57 @@ def hybrid_generation_tagging(model: DecoderTransformer,
     embedding, no_yes_logits = model.decode_relevance(src_ids=src_ids,
                                                       src_mask=src_mask)
     return embedding, ProbTensorT(torch.softmax(no_yes_logits, dim=-1))
+
+
+@torch.no_grad()
+def test(model: DecoderTransformer,
+         texts: List[str],
+         tag_text: List[str],
+         tokenizer: PreTrainedTokenizerBase,
+         max_src_len: int = None,
+         ) -> \
+        Tuple[FloatTensorT['B,EmbedLen'], ProbTensorT['2']]:
+    """
+    Computes embeddings for a list of input texts and corresponding tag texts
+    using a Decoder Transformer.
+
+       Args: model (DecoderTransformer): The Encoder-Decoder
+       Transformer model. texts (List[str]): List of input texts to embed.
+       tag_text (List[str]): List of tag texts. tokenizer (
+       PreTrainedTokenizerBase): Tokenizer for text encoding. max_src_len (
+       int, optional): Maximum source sequence length. Defaults to None.
+
+       Returns:
+           FloatTensorT['B,EmbedLen']: Tensor containing the embeddings.
+       """
+    assert isinstance(model, DecoderTransformer)
+    assert len(texts) == len(tag_text)
+    if max_src_len is None:
+        max_src_len = model.get_max_decoder_positions() - 1
+        logging.info(f"max_src_len: {max_src_len}")
+    src_qa_text = [tag_question_augment(text, tag) for text, tag in
+                   zip(texts, tag_text)]
+    logging.info("src_qa_text: %s", src_qa_text[0])
+    logging.info("src_qa_text: %s", src_qa_text[1])
+    src_ids, src_mask = strings_to_padded_id_tensor_w_mask(src_qa_text,
+                                                           tokenizer,
+                                                           max_src_len,
+                                                           settings.DEVICE)
+
+    # don't need tgt_mask because you are generating one token at a time
+    embedding: FloatTensorT['B,EmbedLen']
+    no_yes_logits: FloatTensorT['2']
+    embedding, lm_logits = model.decode_relevance_at_triggers(src_ids=src_ids,
+                                                              src_mask=src_mask,
+                                                              inference_context=InferenceContext.get_llama_no_yes_scores(
+                                                                  tokenizer))
+    print('lm_logits ', lm_logits.shape)
+    last_words = torch.argmax(lm_logits[:, -10:, :], dim=-1)
+    decoded = tokenizer.batch_decode(last_words,
+                                     skip_special_tokens=True)
+    print('decoded ', decoded)
+
+    # return embedding, ProbTensorT(torch.softmax(no_yes_logits, dim=-1))
 
 
 @torch.no_grad()
@@ -296,7 +395,7 @@ def tagging_embedding_controller(model: EncoderDecoderTransformer,
     if max_src_len is None:
         max_src_len = model.get_max_encoder_positions()
     if max_tgt_len is None:
-        max_tgt_len = model.get_max_decoder_positions()
+        max_tgt_len = model.get_max_decoder_positions() - 1
 
     src_ids, src_mask = strings_to_padded_id_tensor_w_mask(texts, tokenizer,
                                                            max_src_len,

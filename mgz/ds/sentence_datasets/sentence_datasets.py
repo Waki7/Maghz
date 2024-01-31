@@ -72,13 +72,14 @@ def strings_to_padded_id_tensor_w_mask(txts: List[SrcStringT],
     """
     if pad_to_multiple_of is None:
         pad_to_multiple_of = max_len
+    tokenizer.padding_side = 'left'
     input_encodings: BatchEncoding = (
         tokenizer.__call__(txts,
                            max_length=max_len,
                            padding="max_length",
                            truncation=True,
                            pad_to_multiple_of=pad_to_multiple_of,
-                           return_tensors='pt', ))
+                           return_tensors='pt'))
     return input_encodings.input_ids.to(device).to(torch.int32), \
         input_encodings.attention_mask.to(device)
 

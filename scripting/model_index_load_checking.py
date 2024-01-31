@@ -3,6 +3,8 @@ from __future__ import annotations
 # from mgz.models.nlp.bart_interface import BARTHubInterface
 import os
 
+from mgz.version_control import ModelNode
+
 os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 import torch
 import transformers as hug
@@ -11,7 +13,6 @@ from mgz.ds.sentence_datasets.synthetic_memorization import \
     SyntheticMemorization
 from mgz.models.nlp.led import LEDForConditionalGeneration
 import logging
-from mgz.version_control.model_index import lookup_or_init_model
 
 '''
 input_ids tensor([[    0, 31414,   232,  1437,     2,     2]])
@@ -30,7 +31,7 @@ def led_main_train():
     # model_name = 'allenai/bart-large-multi_lexsum-long-short'
     model_name = 'allenai/led-base-16384-multi_lexsum-source-tiny'
     print('... loading model and tokenizer')
-    lookup_or_init_model(LEDForConditionalGeneration, model_name, model_name)
+    ModelNode.load_from_id(LEDForConditionalGeneration, model_name, model_name)
     exit(3)
 
 

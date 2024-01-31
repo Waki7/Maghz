@@ -134,6 +134,7 @@ setup(
         'pyarrow==11.0.0',
         'bitsandbytes==0.41.3.post2',
         'flash-attn==2.4.2',
+        'vllm'
         # 'torchvision',
         # 'torchaudio',
         # 'torchdata',

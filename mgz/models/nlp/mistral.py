@@ -18,7 +18,7 @@ from transformers.utils.import_utils import is_flash_attn_2_available
 
 import mgz.settings as settings
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext, \
-    DecoderTransformer
+    DecoderTransformer, InferenceContext
 from mgz.models.nlp.utils_attention import _attention
 from mgz.typing import *
 from mgz.version_control.model_index import get_models_path
@@ -650,9 +650,9 @@ class MistralPreTrainedModel(DecoderTransformer, ABC):
 
     @classmethod
     def load_tokenizer(cls, path: DirPath) -> Optional[
-        hug.LlamaTokenizerFast]:
+        hug.LlamaTokenizer]:
         try:
-            return hug.LlamaTokenizerFast.from_pretrained(path)
+            return hug.LlamaTokenizer.from_pretrained(path)
         except (FileNotFoundError, EnvironmentError) as e:
             return None
 
@@ -902,7 +902,7 @@ class MistralForCausalLM(MistralPreTrainedModel):
     def initial_save(cls, model_id: str, path: str):
         if not os.path.exists(path):
             os.makedirs(path)
-        tokenizer = hug.LlamaTokenizerFast.from_pretrained(model_id)
+        tokenizer = hug.LlamaTokenizer.from_pretrained(model_id)
         if tokenizer.pad_token_id is None:
             tokenizer.pad_token_id = tokenizer.eos_token_id
         if tokenizer.sep_token_id is None:
@@ -1025,41 +1025,17 @@ class MistralForCausalLM(MistralPreTrainedModel):
     @overrides(DecoderTransformer)
     def decode_relevance(self,
                          src_ids: LongTensorT['B,SrcSeqLen'],
-                         src_mask: IntTensorT['B,SrcSeqLen']) -> \
-            FloatTensorT['B,2']:
-
-        def get_llama_no_yes_scores(logits: FloatTensorT['NQuery,NClasses']):
-            assert logits.shape[-1] == 32002
-            n_yes = 4
-            Yes_id = 5613
-            block_Yes_id = 5592
-            yes_id = 9780
-            block_yes_id = 5081
-            yes_ids = [Yes_id, block_Yes_id, yes_id, block_yes_id]
-
-            n_no = 6
-            NO_id = 4032
-            block_NO_id = 7929
-            no_id = 1510
-            block_no_id = 708
-            No_id = 2501
-            block_No_id = 1770
-            no_ids = [NO_id, block_NO_id, no_id, block_no_id, No_id,
-                      block_No_id]
-
-            yes_no_logits = logits[:, no_ids + yes_ids]
-            no_score = torch.mean(yes_no_logits[:, :n_no], dim=-1)
-            yes_score = torch.mean(yes_no_logits[:, -n_yes:], dim=-1)
-            similarity_to_classes = FloatTensorT(
-                torch.stack([no_score, yes_score], dim=-1))
-            return similarity_to_classes
-
+                         src_mask: IntTensorT['B,SrcSeqLen'],
+                         inference_context: InferenceContext = None) -> \
+    FloatTensorT['B,2']:
         output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.hug.model.forward(
             src_ids=src_ids, src_mask=src_mask)
         output = output[:, -1, :]
         lm_logits = self.hug.lm_head(output)
-        no_yes_score = get_llama_no_yes_scores(lm_logits)
-        # no_yes_score = nn.Tanh()(get_llama_no_yes_scores(lm_logits))
+        assert inference_context is not None, 'must provide inference context'
+        no_yes_logits = inference_context.get_word_scores_from_logits(lm_logits)
+        assert no_yes_logits.shape == (src_ids.shape[0],
+                                       2)  # no_yes_score = nn.Tanh()(get_llama_no_yes_scores(lm_logits))
 
         output = output
         #         output = nn.Tanh()(output)

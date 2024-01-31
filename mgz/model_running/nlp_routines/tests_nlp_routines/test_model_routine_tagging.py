@@ -10,10 +10,10 @@ from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagQA
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.typing import *
 from mgz.version_control import ModelNode
-from transformers import LlamaTokenizerFast
+from transformers import LlamaTokenizer
 
 
-def importing_sample_data(tokenizer: LlamaTokenizerFast) -> List[
+def importing_sample_data(tokenizer: LlamaTokenizer) -> List[
     Dict[str, Union[int, str, NDArrayT]]]:
     ds = EnronEmailsTagQA(tokenizer=tokenizer,
                           max_src_len=4096).load_validation_data()

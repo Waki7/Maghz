@@ -1,20 +1,23 @@
 from __future__ import annotations
 
+import email
 import random
 
 import torch.cuda.amp
 import torch.nn
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase, \
-    LlamaTokenizerFast
+    LlamaTokenizer
 
 import mgz.settings as settings
 from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagQA
+from mgz.model_running import run_ops
 from mgz.model_running.nlp_routines.model_routine_tagging import TaggingRoutine
 from mgz.model_running.run_ops import embedding_controller, \
     hybrid_generation_tagging, summarize_controller
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.models.nlp.mistral import MistralForCausalLM
+from mgz.models.nlp.mistral_hug import MistralForCausalLMHug
 from mgz.typing import *
 from mgz.version_control import ModelNode
 
@@ -23,8 +26,9 @@ DEVICE = settings.DEVICE
 DEBUG = False
 TOKENIZERS: Dict[str, PreTrainedTokenizerBase] = {}
 MODELS: Dict[str, BaseTransformer] = {}
-TAGGING_MODEL = "/home/ceyer/Documents/Projects/LoA/backend/model_weights/tagging"
-MAX_SRC_LEN = 4096
+# TAGGING_MODEL = "/home/ceyer/Documents/Projects/LoA/backend/model_weights/tagging"
+TAGGING_MODEL = "/home/ceyer/Documents/Projects/Maghz/index_dir/main/openchat/openchat-3.5-0106"
+MAX_SRC_LEN = 8192
 
 if QUANTIZE:
     try:
@@ -63,7 +67,7 @@ def try_load_models():
 
 
 def load_tokenizers():
-    tokenizer = LlamaTokenizerFast.load_tokenizer(TAGGING_MODEL)
+    tokenizer = LlamaTokenizer.load_tokenizer(TAGGING_MODEL)
     TOKENIZERS[TAGGING_MODEL] = tokenizer
 
     tokenizer = MistralForCausalLM.load_tokenizer(TAGGING_MODEL)
@@ -94,7 +98,7 @@ def summarize(source_texts: List[SrcStringT]) -> List[SummaryT]:
     with torch.no_grad():
         model = cast(MistralForCausalLM, MODELS[TAGGING_MODEL])
         model.eval()
-        tokenizer = cast(LlamaTokenizerFast, TOKENIZERS[TAGGING_MODEL])
+        tokenizer = cast(LlamaTokenizer, TOKENIZERS[TAGGING_MODEL])
         response = summarize_controller(model=model, texts=source_texts,
                                         tokenizer=tokenizer)
         summary: List[str] = tokenizer.batch_decode(response,
@@ -757,10 +761,10 @@ def hand_select():
 
 def validation():
     routine = TaggingRoutine()
-    model_node: ModelNode = ModelNode.load_from_id(MistralForCausalLM,
+    model_node: ModelNode = ModelNode.load_from_id(MistralForCausalLMHug,
                                                    TAGGING_MODEL,
                                                    TAGGING_MODEL)
-    tokenizer = cast(LlamaTokenizerFast, model_node.tokenizer)
+    tokenizer = cast(LlamaTokenizer, model_node.tokenizer)
     model_node.model.to(DEVICE)
     val_ds = EnronEmailsTagQA(tokenizer,
                               max_src_len=MAX_SRC_LEN,
@@ -770,10 +774,62 @@ def validation():
     routine.evaluate(model_node=model_node, val_ds=val_ds, )
 
 
+def qa_test():
+    with torch.no_grad():
+        model_node: ModelNode = ModelNode.load_from_id(MistralForCausalLMHug,
+                                                       TAGGING_MODEL,
+                                                       TAGGING_MODEL, )
+        # exit(2)
+        email_files = [
+            '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/maybe/115761.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/maybe/115817.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/maybe/116270.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/maybe/120787.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/maybe/121990.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/maybe/122029.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/maybe/124367.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/maybe/124966.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/no/106588.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/no/114844.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/no/114845.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/no/115175.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/no/116661.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/no/120789.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/no/121036.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/no/124672.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/no/124836.txt',
+            '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/yes/106296.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/yes/106590.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/yes/114087.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/yes/115139.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/yes/115317.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/yes/115333.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/yes/115773.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/yes/115774.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/yes/116256.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/yes/116987.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/yes/122436.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/yes/123561.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/yes/124454.txt',
+            # '/home/ceyer/Documents/Projects/Maghz/datasets/enron_export/yes/124868.txt',
+        ]
+
+        email_msgs: List[str] = [email.message_from_file(
+            open(email_file, 'r')).as_string() for email_file in email_files]
+        run_ops.test(model=model_node.model,
+                     texts=email_msgs,
+                     tag_text=[
+                                  "all documents and communications between enron employees discussing government inquiries and investigations into enron"] * len(
+                         email_msgs),
+                     max_src_len=8191,
+                     tokenizer=model_node.tokenizer)
+
+
 def main():
     logging.basicConfig(level=logging.INFO)
     with torch.cuda.amp.autocast(enabled=True):
-        hand_select()
+        # hand_select()
+        qa_test()
 
 
 if __name__ == '__main__':

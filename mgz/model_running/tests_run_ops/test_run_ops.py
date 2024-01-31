@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import unittest
 
-from transformers import LlamaTokenizerFast
+from transformers import LlamaTokenizer
 
 import mgz.settings as settings
 from mgz.ds.sentence_datasets.aus_legal_case_reports import SampleType
@@ -20,7 +20,7 @@ from mgz.typing import *
 from mgz.version_control import ModelNode
 
 
-def importing_sample_data(tokenizer: LlamaTokenizerFast) -> List[
+def importing_sample_data(tokenizer: LlamaTokenizer) -> List[
     Dict[str, Union[int, str, NDArrayT]]]:
     ds = EnronEmailsTagQA(tokenizer=tokenizer,
                           max_src_len=4096).load_validation_data()

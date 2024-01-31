@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import torch.nn as nn
 import transformers as hug
-from transformers import BitsAndBytesConfig
+from transformers import BitsAndBytesConfig, LlamaTokenizer, \
+    PreTrainedTokenizerBase
 from transformers import PreTrainedTokenizer
 from transformers.integrations import replace_with_bnb_linear
 
@@ -68,6 +69,103 @@ def quantize_model_inference(model: BaseTransformer):
     model = prepare_model_for_kbit_training(model)
     model = dispatch_model(model, device_map={"": settings.DEVICE})
     return model
+
+
+class InferenceContext:
+    @classmethod
+    def get_llama_no_yes_scores(cls,
+                                tokenizer: LlamaTokenizer | LlamaTokenizer | PreTrainedTokenizerBase):
+        Yes_id = 5613
+        block_Yes_id = 5592
+        yes_id = 9780
+        block_yes_id = 5081
+        yes_ids = [Yes_id, block_Yes_id, yes_id, block_yes_id]
+
+        NO_id = 4032
+        block_NO_id = 7929
+        no_id = 1510
+        block_no_id = 708
+        No_id = 2501
+        block_No_id = 1770
+        no_ids = [NO_id, block_NO_id, no_id, block_no_id, No_id,
+                  block_No_id]
+        words_to_keep: Dict[str, List[int]] = {
+            "no": no_ids,
+            "yes": yes_ids,
+        }
+        return InferenceContext(tokenizer, words_to_keep_in_order=words_to_keep)
+
+    def __init__(self, tokenizer: PreTrainedTokenizer,
+                 words_to_keep_in_order: Optional[
+                     Dict[str, [List[int]]]] = None,
+                 device: Optional[torch.device] = None):
+        assert isinstance(tokenizer, LlamaTokenizer) or isinstance(tokenizer,
+                                                                   LlamaTokenizer)
+        self.tokenizer = tokenizer
+        self.device = device
+        for key, val_list in words_to_keep_in_order.items():
+            for val in val_list:
+                assert key in tokenizer.decode(val).lower(), \
+                    f"key {key} not in vocab {tokenizer.decode(val).lower()}"
+        self.words_to_keep = words_to_keep_in_order
+
+        tokens_to_match: str = "<|end_of_turn|>GPT4 Correct Assistant:"
+        self.answer_triggers: LongTensorT['N']
+        self.set_answer_triggers(tokens_to_match)
+
+    def set_answer_triggers(self, trigger: str):
+        self.answer_triggers = LongTensorT(
+            self.tokenizer.encode(trigger, add_special_tokens=False)).to(
+            settings.DEVICE if self.device is None else self.device)
+
+    def get_word_scores_from_logits(self,
+                                    logits: FloatTensorT['B,NClasses']) -> \
+            FloatTensorT['B,NClasses']:
+        assert len(logits.shape) == 2
+        score_for_word = []
+        for word, word_idxs in self.words_to_keep.items():
+            score_for_word.append(torch.max(logits[:, word_idxs], dim=-1)[0])
+        similarity_to_classes = FloatTensorT(
+            torch.stack(score_for_word, dim=-1))
+        return similarity_to_classes
+
+    def match_triggers(self, src_ids: LongTensorT['B,SrcSeqLen']) -> \
+            LongTensorT['NDim,SrcSeqLen']:
+        values_to_find: LongTensorT['N'] = self.answer_triggers
+
+        n_to_match = values_to_find.shape[0]
+        matches = torch.ones_like(src_ids)[:, n_to_match - 1:]
+        for i in range(n_to_match):
+            n_start = i
+            n_end = src_ids.shape[1] - (n_to_match - i) + 1
+            matches_for_next_word = torch.eq(
+                src_ids[:, n_start:n_end], values_to_find[i])
+            matches = torch.logical_and(matches, matches_for_next_word)
+
+        idx_matches = torch.argwhere(matches)
+        # offset the idx matches
+        offset = (n_to_match - 1)
+        offset_tensor = torch.cat([torch.zeros_like(idx_matches[:, :1]),
+                                   offset * torch.ones_like(
+                                       idx_matches[:, 1:])], dim=-1)
+        idx_matches += offset_tensor
+        return LongTensorT(idx_matches)
+
+    def get_word_scores_from_logits_at_triggers(self,
+                                                src_ids: LongTensorT[
+                                                    'B,SrcSeqLen'],
+                                                logits: FloatTensorT[
+                                                    'B,SrcSeqLen,NClasses']) -> \
+            FloatTensorT['B,TgtSeqLen,NClasses']:
+        idx_matches: LongTensorT['NDim,SrcSeqLen'] = self.match_triggers(
+            src_ids)
+        assert idx_matches.shape[0] % logits.shape[0] == 0, \
+            f"Unexpected number of matches {idx_matches.shape[0]} vs {logits.shape[0]}"
+        matches_per_batch = idx_matches.shape[0] // logits.shape[0]
+        idxs = idx_matches[:, 1].view(src_ids.shape[0], matches_per_batch, 1)
+        triggered_scores: FloatTensorT['B,N,NClasses'] = torch.take_along_dim(
+            input=logits, indices=idxs, dim=1)
+        return triggered_scores
 
 
 class TransformerContext:
@@ -202,6 +300,10 @@ class BaseTransformer(BaseModel):
     def save(self, path: DirPath):
         raise NotImplementedError
 
+    @abstractmethod
+    def get_max_decoder_positions(self):
+        raise NotImplementedError
+
     def __init__(self, config):
         super(BaseTransformer, self).__init__()
         self.config: hug.PretrainedConfig = config
@@ -251,10 +353,11 @@ class BaseTransformer(BaseModel):
                                 2))
                         # len(tokenizer.added_tokens_encoder)))
                 else:
-                    assert getattr(self.config, field_name) == field_value, \
-                        "config {} vs tokenizer {} for field {}".format(
+                    if not getattr(self.config, field_name) == field_value:
+                        logging.error("config {} vs tokenizer {} for field {}".format(
                             getattr(self.config, field_name), field_value,
-                            field_name)
+                            field_name))
+
 
         validate_field('pad_token_id')
         validate_field('bos_token_id')
@@ -284,7 +387,7 @@ class BaseTransformer(BaseModel):
     def generate(self,
                  src_ids: LongTensorT['B,SrcSeqLen'],
                  src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
-                 tgt_ids: LongTensorT['B,TgtSeqLen'],
+                 tgt_ids: LongTensorT['B,TgtSeqLen'] = None,
                  max_new_tokens: int = None,
                  ) -> LongTensorT['TgtSeqLen']:
         if max_new_tokens is None:
@@ -416,9 +519,17 @@ class DecoderTransformer(BaseTransformer):
                 'B,Opt[SrcSeqLen],VocabSize']]:
         raise NotImplementedError
 
+    def decode_relevance_at_triggers(self,
+                                     src_ids: LongTensorT['B,SrcSeqLen'],
+                                     src_mask: IntTensorT['B,SrcSeqLen'],
+                                     inference_context: InferenceContext = None) -> \
+            Tuple[FloatTensorT['B,EmbedLen'], Optional[FloatTensorT['B,2']]]:
+        raise NotImplementedError
+
     def decode_relevance(self,
                          src_ids: LongTensorT['B,SrcSeqLen'],
-                         src_mask: IntTensorT['B,SrcSeqLen']) -> \
+                         src_mask: IntTensorT['B,SrcSeqLen'],
+                         inference_context: InferenceContext = None) -> \
             Tuple[FloatTensorT['B,EmbedLen'], Optional[FloatTensorT['B,2']]]:
         raise NotImplementedError
 

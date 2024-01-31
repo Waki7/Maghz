@@ -207,7 +207,7 @@ class LongTensorT(torch.Tensor, Generic[Shape]):
 
     def __new__(cls, tensor, shape: Generic[Shape] = None):
         # todo assert shape
-        return tensor
+        return torch.as_tensor(tensor)
 
 
 class IntTensorT(torch.Tensor, Generic[Shape]):
@@ -220,7 +220,7 @@ class IntTensorT(torch.Tensor, Generic[Shape]):
 
     def __new__(cls, tensor, shape: Generic[Shape] = None):
         # todo assert shape
-        return tensor
+        return torch.as_tensor(tensor)
 
 
 GenericTensor = ShapedTensorT

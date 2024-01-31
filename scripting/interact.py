@@ -7,7 +7,7 @@ import transformers as hug
 import mgz.settings as settings
 from mgz.model_running.run_ops import generate_controller, forward_controller
 from mgz.typing import *
-from mgz.version_control import lookup_or_init_model
+from mgz.version_control import ModelNode
 
 
 class Model(Enum):
@@ -28,7 +28,7 @@ def model_selectors(model_typ: Model, use_mgz: bool = False,
                 model_name)
         if use_mgz:
             from mgz.models.nlp.led import LEDForConditionalGeneration
-            node = lookup_or_init_model(LEDForConditionalGeneration,
+            node = ModelNode.load_from_id(LEDForConditionalGeneration,
                                         model_name, model_name)
             model, tokenizer = node.model, node.tokenizer
     if model_typ == Model.BART:
@@ -39,7 +39,7 @@ def model_selectors(model_typ: Model, use_mgz: bool = False,
                 model_name)
         if use_mgz:
             from mgz.models.nlp.bart import BartForConditionalGeneration
-            node = lookup_or_init_model(BartForConditionalGeneration,
+            node = ModelNode.load_from_id(BartForConditionalGeneration,
                                         model_name, model_name)
             model, tokenizer = node.model, node.tokenizer
     return model.to(settings.DEVICE), tokenizer

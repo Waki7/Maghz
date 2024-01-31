@@ -11,12 +11,12 @@ from pathlib import Path
 
 import torch.utils.data
 from tqdm import tqdm
-from transformers import PreTrainedTokenizer, LlamaTokenizer, LlamaTokenizerFast
+from transformers import PreTrainedTokenizer, LlamaTokenizer
 
 import spaces as sp
+from mgz import settings
 from mgz.ds.base_dataset import BaseDataset, DataState
-from mgz.ds.sentence_datasets.gpt_input_augments import tag_question_augment, \
-    vague_relevance_augment, summarization_augment
+from mgz.ds.sentence_datasets.gpt_input_augments import tag_question_augment
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
     Sent2SentBatch, SampleType, MetaLearningMixIn, Sent2TagMetaTaskBatch, \
     TagQAMetaTaskBatch
@@ -129,12 +129,12 @@ class EnronEmails(SentenceDataset):
         # If the dataset is in a generated labeled data format
         if os.path.exists(os.path.join(dataset_dir, 'categories_map.json')):
             with open(os.path.join(dataset_dir, 'categories_map.json')) as f:
-                category_dict: Dict[int, str] = json.load(f)
+                category_dict: Dict[str, str] = json.load(f)
             categories: List[Tuple[int, ...]] = [
                 tuple(map(int, re.findall(r'\d+', label))) for
                 label in category_lines]
             tags_for_email: List[str] = \
-                [category_dict[c[0]] for c in categories]
+                [category_dict[str(c[0])] for c in categories]
             return tags_for_email
         # If the dataset is in the original enron format
         else:
@@ -241,35 +241,55 @@ class EnronEmails(SentenceDataset):
         List[FilePath], List[FilePath]]:
         email_file_paths: List[FilePath] = []
         label_file_paths: List[FilePath] = []
-        directories = [os.path.join(self.dataset_dir, str(i)) for i in
-                       range(1, 9)]
-        for dir in directories:
-            for file in os.listdir(dir):
-                if file.endswith('.txt'):
-                    email_file_paths.append(os.path.join(dir, file))
-                if file.endswith('.cats'):
-                    label_file_paths.append(os.path.join(dir, file))
+
+        for root, directories, files in os.walk(self.dataset_dir):
+            for directory in directories:
+                dir_path: DirPath = os.path.join(root, directory)
+                for file in os.listdir(dir_path):
+                    if file.endswith('.txt'):
+                        email_file_paths.append(os.path.join(dir_path, file))
+                    if file.endswith('.cats'):
+                        label_file_paths.append(os.path.join(dir_path, file))
         email_file_paths = sorted(email_file_paths)
         label_file_paths = sorted(label_file_paths)
+        if len(label_file_paths) == 0:
+            for email_file_path in email_file_paths:
+                parent_dir = os.path.split(os.path.dirname(email_file_path))[-1]
+                assert "no" in parent_dir or "maybe" in parent_dir or "yes" in parent_dir, \
+                    f"This code is filling in labels from the directory name, it only expects this configuration atm, not {parent_dir}"
+                label_str = ""
+                if "yes" in email_file_path:
+                    label_str = "1"
+                label_path = email_file_path.replace('.txt', '.cats')
+                label_file_paths.append(label_path)
+                with open(label_path, 'w') as f:
+                    f.write(label_str)
         assert len(email_file_paths) == len(
-            label_file_paths), 'expect lengths to be the same instead they are {} vs {}'.format(
-            len(email_file_paths), len(label_file_paths))
+            label_file_paths), f'Email files mismatch number of label files'
+        assert len(email_file_paths) > 0, f'No email files found'
+        idxs = list(range(len(email_file_paths)))
+        random.shuffle(idxs)
+        email_file_paths = [email_file_paths[i] for i in idxs]
+        label_file_paths = [label_file_paths[i] for i in idxs]
+
         n_files = len(email_file_paths)
-        n_train = (int)(n_files * self.training_ratio)
-        n_val = (int)(n_files * self.validation_ratio)
-        n_test = (int)(n_files * self.test_ratio)
-        sample_range = range(0, n_files)
+        n_train = int(n_files * self.training_ratio)
+        n_val = int(n_files * self.validation_ratio)
+        n_test = n_files - n_train - n_val
+        if not any([train, val, test]):
+            raise ValueError("No dataset split selected")
+
+        sample_range = (0, n_files)
         if train:
-            sample_range = range(0, n_train)
+            sample_range = (0, n_train)
             self.data_state = DataState.TRAIN
         elif val:
-            sample_range = range(n_train, n_train + n_val)
+            sample_range = (n_train, n_train + n_val)
             self.data_state = DataState.VAL
         elif test:
-            sample_range = range(n_files - n_test, n_files)
+            sample_range = (n_files - n_test, n_files)
             self.data_state = DataState.TEST
-        if sample_range is None:
-            raise ValueError("No dataset split selected")
+
         return email_file_paths[sample_range[0]: sample_range[-1]], \
             label_file_paths[sample_range[0]: sample_range[-1]]
 
@@ -374,13 +394,13 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
 
 class EnronEmailsTagQA(EnronEmailsTagging, MetaLearningMixIn):
 
-    def __init__(self, tokenizer: Union[LlamaTokenizerFast, LlamaTokenizer],
+    def __init__(self, tokenizer: Union[LlamaTokenizer, LlamaTokenizer],
                  max_src_len: SrcSeqLen, n_query_per_cls: List[int] = 5,
                  n_support_per_cls: List[int] = 5,
                  n_episodes: int = 100,
                  training_ratio: float = 0.75,
                  dataset_dir: str = None):
-        assert isinstance(tokenizer, LlamaTokenizerFast) or isinstance(
+        assert isinstance(tokenizer, LlamaTokenizer) or isinstance(
             tokenizer, LlamaTokenizer), \
             f'This dataset requires the LLamaTokenizer found {type(tokenizer)}'
         super(EnronEmailsTagQA, self).__init__(tokenizer=tokenizer,
@@ -435,8 +455,7 @@ def inspect_src_test():
 
 def look_through_data():
     from transformers import LEDTokenizer
-    tokenizer = LEDTokenizer.from_pretrained(
-        "allenai/primera-multi_lexsum-source-long")
+    tokenizer = LEDTokenizer.from_pretrained()
     ds = EnronEmailsTagging(tokenizer,
                             max_src_len=2000,
                             n_episodes=1000).load_training_data()
@@ -446,62 +465,93 @@ def look_through_data():
         print('-----------------')
 
 
-def dump_n_examples(n: int):
+def dump_n_examples(n: int = 100000000):
     from mgz.version_control import ModelDatabase, ModelNode
 
     tag_to_sample = "all documents and communications between enron employees discussing government inquiries and investigations into enron"
+    export_dir = os.path.join(
+        Path(__file__).resolve().parent.parent.parent.parent,
+        'datasets/enron_export_investigations/').replace("\\", "/")
+
     contains_words = ["government", "inquiries", "investigation"]
-    p_contained = 0.25
-    p_random = 0.09
+    bsz = 1
+    max_src_len = 8191
+    sample_negative = False
+    if sample_negative:
+        p_contained = 0.25
+        p_random = 0.09
+    else:
+        p_contained = 1.0
+        p_random = 1.0
     model_node: ModelNode = ModelDatabase.mistral_openchat_quantized()
+    # model_node.tokenizer = LlamaTokenizer.from_pretrained(
+    #     "openchat/openchat-3.5-0106")
+    # model_node.tokenizer.padding_side = 'left'
+    # model_node.tokenizer.add_special_tokens(
+    #     {'pad_token': model_node.tokenizer.eos_token})
+
+    model_node.model.eval()
     ds = EnronEmails(model_node.tokenizer,
-                     max_src_len=4096, max_tgt_len=-1).load_training_data()
-#     answers = tag_questions_controller(
-#         model=model_node.model, texts=[r'''Message-ID: <24828229.1075846177387.JavaMail.evans@thyme>
-# Date: Wed, 27 Sep 2000 10:33:00 -0700 (PDT)
-# From: steven.kean@enron.com
-# To: cynthia.sandherr@enron.com
-# Subject: Re: Congressman Edwards (D-TX)
-# Mime-Version: 1.0
-# Content-Type: text/plain; charset=us-ascii
-# Content-Transfer-Encoding: 7bit
-# X-From: Steven J Kean
-# X-To: Cynthia Sandherr
-# X-cc:
-# X-bcc:
-# X-Folder: \Steven_Kean_Dec2000_1\Notes Folders\All documents
-# X-Origin: KEAN-S
-# X-FileName: skean.nsf
-#
-# Submit a Pac request and keep Tom posted on when and where.
-#
-#
-#
-# 	Cynthia Sandherr
-# 	09/07/2000 05:05 PM
-#
-# 		 To: Steven J Kean/NA/Enron@Enron, Joe Hillings/Corp/Enron@ENRON, Elizabeth
-# Linnell/NA/Enron@Enron, Joe Hillings/Corp/Enron@ENRON, Carolyn
-# Cooney/Corp/Enron@ENRON
-# 		 cc: Rosalee Fleming/Corp/Enron@ENRON, Thomas E White/HOU/EES@EES
-# 		 Subject: Congressman Edwards (D-TX)
-#
-# Steve:  Congressman Chet Edwards is having a fundraiser in Houston, October
-# 10th, 5:30-7:30 p.m. at Reliant's Bruce Gibson's home in River Oaks (2178
-# Troon).  Drayton McLane will attend.  They are looking for $1000 to host or
-# $500 sponsor.  Congressman Edwards has been very helpful with our defense
-# procurement issues, and we have contributed to him recently.  The
-# Congressman's main request was to include Ken Lay's name on their invitation
-# which Ken Lay graciously agreed to do so the Congressman is most pleased.
-# Thus, the remaining request to attend and give additional money is up to you,
-# although if we have room in our budget and Ken Lay or Tom White were
-# available, I would recommend their attendance.
-# '''],
-#         tags=[tag_to_sample], tokenizer=model_node.tokenizer,
-#         augment_function=tag_question_augment,
-#         max_new_tokens=100)
-#     print(answers)
-#     exit(3)
+                     training_ratio=1.0,
+                     max_src_len=max_src_len,
+                     max_tgt_len=-1,
+                     dataset_dir='/home/ceyer/Documents/Projects/Maghz/datasets/enron_with_categories').load_training_data()
+    #     answers = tag_questions_controller(
+    #         model=model_node.model, texts=[r'''Message-ID: <7361482.1075847628266.JavaMail.evans@thyme>
+    # Date: Wed, 28 Feb 2001 06:18:00 -0800 (PST)
+    # From: steven.kean@enron.com
+    # To: jeffrey.shankman@enron.com
+    # Subject: Re:
+    # Mime-Version: 1.0
+    # Content-Type: text/plain; charset=us-ascii
+    # Content-Transfer-Encoding: 7bit
+    # X-From: Steven J Kean
+    # X-To: Jeffrey A Shankman
+    # X-cc:
+    # X-bcc:
+    # X-Folder: \Steven_Kean_June2001_1\Notes Folders\All documents
+    # X-Origin: KEAN-S
+    # X-FileName: skean.nsf
+    #
+    # help is on the way.  We are going to establish some senior executive
+    # oversight as well as an executive director (probably someone who came through
+    # the program).  Charlene is going to be moving into a commercial role (which
+    # was the original plan when she was brought into the organization).  I'd be
+    # happy to talk to you in more detail when I get back to Houston.
+    #
+    #
+    #
+    # 	Jeffrey A Shankman@ECT
+    # 	02/26/2001 10:21 AM
+    #
+    # 		 To: Jeff Skilling/Corp/Enron@ENRON, Steven J Kean/NA/Enron@Enron
+    # 		 cc:
+    # 		 Subject:
+    #
+    # Hi guys.
+    #
+    # I wanted to let you know that I am extremely concerned about the
+    # Associate/Analyst program, so much so that I feel all the work I have done,
+    # and all the time I have spent on the program has had little impact outside
+    # Wharton/Penn recruiting.  In fact we won't get more than 1 associate from
+    # Wharton this year for a variety of internal and external reasons.  This
+    # program has brought incredible talent into the organization, but we have lost
+    # a lot of momentum over the last two years.
+    #
+    # In as much as I would like to continue to support the program, I can't  in
+    # its current form, and don't have time to fix what I thought we had been
+    # addressing.  The entire program is disfunctional, and the commercial teams
+    # are not lending support to the program.  I'd be very happy to spend a few
+    # minutes of your time (rather than blather on in an email) to give you both my
+    # overview of the program, and suggest changes and improvements.
+    #
+    # You know you have my support, but the current state of affairs down there has
+    # gotten me to my rope's end with the program.'''] * 2,
+    #         tags=[tag_to_sample] * 2, tokenizer=model_node.tokenizer,
+    #         augment_function=tag_question_augment,
+    #         max_new_tokens=1, max_src_len=max_src_len)
+    #     print('starting answers', answers)
+    # exit(3)
     keys_to_keep = [
         SampleType.MESSAGE_ID,
         SampleType.DATE,
@@ -526,17 +576,12 @@ def dump_n_examples(n: int):
     ]
     docs_formatted = []
 
-    export_dir = os.path.join(
-        Path(__file__).resolve().parent.parent.parent.parent,
-        'datasets/enron_export/').replace("\\", "/")
     if os.path.exists(export_dir):
         shutil.rmtree(export_dir)
     os.mkdir(export_dir)
     os.mkdir(os.path.join(export_dir, 'yes'))
     os.mkdir(os.path.join(export_dir, 'no'))
     os.mkdir(os.path.join(export_dir, 'maybe'))
-
-    bsz = 3
     for i in tqdm(range(0, len(ds), bsz)):
         batch = ds[i:i + bsz]
         doc_batch_filtered = [{key: doc[key] for key
@@ -546,27 +591,29 @@ def dump_n_examples(n: int):
         answers = tag_questions_controller(
             model=model_node.model, texts=full_texts,
             tags=tags, tokenizer=model_node.tokenizer,
-            augment_function=tag_question_augment,
-            max_new_tokens=3)
+            augment_function=tag_question_augment, max_src_len=max_src_len,
+            max_new_tokens=1)
         for answer, doc in zip(answers, doc_batch_filtered):
+            # print('--------------------------------------------')
+            # print('answer', answer)
+            # print('doc', doc[SampleType.FILE_NAME])
             random_p = random.random()
             no_inclusion = "no" in answer.lower() and random_p < p_random
-            word_containment_inclusion = any(
+            maybe_inclusion = any(
                 [word in doc[SampleType.FULL_AS_STRING] for word in
                  contains_words]) and random.random() < p_contained
-            maybe_inclusion = "maybe" in answer.lower()
             yes_inclusion = "yes" in answer.lower()
-            if not (no_inclusion or word_containment_inclusion or
-                    maybe_inclusion or yes_inclusion):
+            if sample_negative and (
+                    not (
+                            no_inclusion or maybe_inclusion or yes_inclusion)):
                 continue
-            print('answer', answer)
             docs_formatted.append(
                 {str(key) + ".value": doc[key] for key in keys_to_keep})
 
             if yes_inclusion:
                 shutil.copy(doc[SampleType.FILE_NAME], os.path.join(
                     export_dir, 'yes'))
-            elif word_containment_inclusion or maybe_inclusion:
+            elif maybe_inclusion:
                 shutil.copy(doc[SampleType.FILE_NAME], os.path.join(
                     export_dir, 'maybe'))
             elif no_inclusion:
@@ -576,17 +623,18 @@ def dump_n_examples(n: int):
             email_msg: email.message.Message = email.message_from_string(
                 doc[SampleType.FULL_AS_STRING])
             assert email_msg.as_string() == doc[SampleType.FULL_AS_STRING]
-
+            # if "135886.txt" in doc[SampleType.FILE_NAME]:
+            #     print('email_msg', email_msg)
+            #     print('doc', doc)
+            #     exit(3)
             # email_msg: email.message.Message = email.message_from_bytes(
             #     doc[SampleType.FULL_AS_BYTES])
             # assert email_msg.as_bytes() == doc[SampleType.FULL_AS_BYTES]
         if len(docs_formatted) > n:
             break
-
         print(f'collected {len(docs_formatted)} examples so far')
-
-    with open(os.path.join(export_dir, 'tags_sampled.txt'), 'w') as file:
-        file.write(tag_to_sample)
+    with open(os.path.join(export_dir, 'categories_map.json'), 'w') as file:
+        file.write(json.dumps({1: tag_to_sample}))
     as_dict_file = os.path.join(export_dir, 'formatted_docs.json')
 
     # Writing to the file
@@ -601,9 +649,9 @@ def dump_n_examples(n: int):
         file.write(']\n')
 
     # Reading from the file and printing its contents
-    with open(as_dict_file, 'r') as file:
-        content = file.read()
-        print(content)
+    # with open(as_dict_file, 'r') as file:
+    #     content = file.read()
+    #     print(content)
 
 
 class CustomTqdm(tqdm):
@@ -625,7 +673,8 @@ class CustomTqdm(tqdm):
 
 
 def main():
-    dump_n_examples(30)
+    with torch.no_grad():
+        dump_n_examples()
 
 
 if __name__ == '__main__':

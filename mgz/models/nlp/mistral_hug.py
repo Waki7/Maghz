@@ -18,7 +18,7 @@ from transformers.utils.import_utils import is_flash_attn_2_available
 
 import mgz.settings as settings
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext, \
-    DecoderTransformer
+    DecoderTransformer, InferenceContext
 from mgz.typing import *
 from mgz.version_control.model_index import get_models_path
 
@@ -76,9 +76,9 @@ class MistralPreTrainedModel(DecoderTransformer, ABC):
 
     @classmethod
     def load_tokenizer(cls, path: DirPath) -> Optional[
-        hug.LlamaTokenizerFast]:
+        hug.LlamaTokenizer]:
         try:
-            return hug.LlamaTokenizerFast.from_pretrained(path)
+            return hug.LlamaTokenizer.from_pretrained(path)
         except (FileNotFoundError, EnvironmentError) as e:
             return None
 
@@ -103,7 +103,7 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
 
     @classmethod
     def modules_to_not_convert(cls):
-        return ['lm_head', 'embedding_head']
+        return ['hug.lm_head', 'embedding_head']
 
     def get_encoder(self):
         raise NotImplementedError
@@ -114,8 +114,9 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
     def get_decoder(self):
         raise NotImplementedError
 
+    @overrides(BaseTransformer)
     def get_max_decoder_positions(self):
-        return self.hug.model.embed_tokens.weight.shape[1]
+        return self.config.max_position_embeddings
 
     @overrides(BaseTransformer)
     def save(self, path: DirPath,
@@ -199,7 +200,7 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
     def initial_save(cls, model_id: str, path: str):
         if not os.path.exists(path):
             os.makedirs(path)
-        tokenizer = hug.LlamaTokenizerFast.from_pretrained(model_id)
+        tokenizer = hug.LlamaTokenizer.from_pretrained(model_id)
         if tokenizer.pad_token_id is None:
             tokenizer.pad_token_id = tokenizer.eos_token_id
         if tokenizer.sep_token_id is None:
@@ -332,41 +333,42 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         return embedding, lm_logits
 
     @overrides(DecoderTransformer)
+    def decode_relevance_at_triggers(self,
+                                     src_ids: LongTensorT['B,SrcSeqLen'],
+                                     src_mask: IntTensorT['B,SrcSeqLen'],
+                                     inference_context: InferenceContext = None) -> \
+            Tuple[FloatTensorT['B,EmbedLen'], Optional[FloatTensorT['B,N,2']]]:
+        full_output: BaseModelOutputWithPast = self.hug.model.forward(
+            input_ids=src_ids, attention_mask=src_mask)
+        output: FloatTensorT[
+            'B,TgtSeqLen,EmbedLen'] = FloatTensorT(
+            full_output.last_hidden_state)
+        lm_logits = self.hug.lm_head(output.detach())
+        embedding = self.embedding_head(output)
+
+        assert inference_context is not None, 'must provide inference context'
+        no_yes_logits = inference_context.get_word_scores_from_logits_at_triggers(
+            src_ids, lm_logits)
+        return embedding, no_yes_logits
+
+    @overrides(DecoderTransformer)
     def decode_relevance(self,
                          src_ids: LongTensorT['B,SrcSeqLen'],
-                         src_mask: IntTensorT['B,SrcSeqLen']) -> \
+                         src_mask: IntTensorT['B,SrcSeqLen'],
+                         inference_context: InferenceContext = None) -> \
             Tuple[FloatTensorT['B,EmbedLen'], Optional[FloatTensorT['B,2']]]:
-        def get_llama_no_yes_scores(logits: FloatTensorT['NQuery,NClasses']):
-            assert logits.shape[-1] == 32002
-            Yes_id = 5613
-            block_Yes_id = 5592
-            yes_id = 9780
-            block_yes_id = 5081
-            yes_ids = [Yes_id, block_Yes_id, yes_id, block_yes_id]
-
-            NO_id = 4032
-            block_NO_id = 7929
-            no_id = 1510
-            block_no_id = 708
-            No_id = 2501
-            block_No_id = 1770
-            no_ids = [NO_id, block_NO_id, no_id, block_no_id, No_id,
-                      block_No_id]
-
-            no_score = torch.max(logits[:, no_ids], dim=-1)[0]
-            yes_score = torch.max(logits[:, yes_ids], dim=-1)[0]
-            similarity_to_classes = FloatTensorT(
-                torch.stack([no_score, yes_score], dim=-1))
-            return similarity_to_classes
+        assert inference_context is not None, 'must provide inference context'
 
         full_output: BaseModelOutputWithPast = self.hug.model.forward(
             input_ids=src_ids, attention_mask=src_mask)
         output: FloatTensorT[
             'B,TgtSeqLen,EmbedLen'] = FloatTensorT(
-            full_output.last_hidden_state)[:, -1, :]
-        lm_logits = self.hug.lm_head(output.detach())
-        no_yes_logits = get_llama_no_yes_scores(lm_logits)
-        embedding = self.embedding_head(output)
+            full_output.last_hidden_state)
+        lm_logits = self.hug.lm_head(output[:, -1, :].detach())
+        no_yes_logits = inference_context.get_word_scores_from_logits(lm_logits)
+        assert no_yes_logits.shape == (src_ids.shape[0], 2)
+
+        embedding = self.embedding_head(output[:, -1, :])
         return embedding, no_yes_logits
 
     @overrides(BaseTransformer)
@@ -381,7 +383,8 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
             'TODO, find exact mechanism that triggers the stop'
         generate_output = self.hug.generate(src_ids,
                                             attention_mask=src_mask,
-                                            max_new_tokens=max_new_tokens, )
+                                            max_new_tokens=max_new_tokens,
+                                            do_sample=False)
         return LongTensorT(generate_output)
 
 
