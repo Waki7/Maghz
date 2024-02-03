@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch.nn as nn
 import transformers as hug
 from transformers import BitsAndBytesConfig, LlamaTokenizer, \
-    PreTrainedTokenizerBase
+    LlamaTokenizerFast, PreTrainedTokenizerBase
 from transformers import PreTrainedTokenizer
 from transformers.integrations import replace_with_bnb_linear
 
@@ -72,9 +72,33 @@ def quantize_model_inference(model: BaseTransformer):
 
 
 class InferenceContext:
-    @classmethod
-    def get_llama_no_yes_scores(cls,
-                                tokenizer: LlamaTokenizer | LlamaTokenizer | PreTrainedTokenizerBase):
+    @staticmethod
+    def get_adapt_no_yes_scores() -> \
+            Dict[str, List[int]]:
+        block_Yes = 3869
+        block_YES = 22483
+        block_yes = 4874
+        Yes_id = 8241
+        YES_id = 21143
+        yes_id = 3582
+        yes_ids = [Yes_id, yes_id, YES_id, block_YES, block_yes, block_Yes]
+
+        block_no = 694
+        block_No = 1939
+        block_NO = 11698
+        NO_id = 6632
+        no_id = 1217
+        No_id = 3782
+        no_ids = [NO_id, no_id, No_id, block_no, block_No, block_NO]
+        words_to_keep: Dict[str, List[int]] = {
+            "no": no_ids,
+            "yes": yes_ids,
+        }
+        return words_to_keep
+
+    @staticmethod
+    def get_mistral_no_yes_scores() -> \
+            Dict[str, List[int]]:
         Yes_id = 5613
         block_Yes_id = 5592
         yes_id = 9780
@@ -93,20 +117,32 @@ class InferenceContext:
             "no": no_ids,
             "yes": yes_ids,
         }
-        return InferenceContext(tokenizer, words_to_keep_in_order=words_to_keep)
+        return words_to_keep
 
-    def __init__(self, tokenizer: PreTrainedTokenizer,
+    def __init__(self, tokenizer: PreTrainedTokenizerBase,
                  words_to_keep_in_order: Optional[
                      Dict[str, [List[int]]]] = None,
                  device: Optional[torch.device] = None):
         assert isinstance(tokenizer, LlamaTokenizer) or isinstance(tokenizer,
-                                                                   LlamaTokenizer)
+                                                                   LlamaTokenizerFast), \
+            f"found {type(tokenizer)} expected LlamaTokenizer or LlamaTokenizerFast"
+
+        tokenizer_mismatch = False
+        for words_to_keep_in_order in [self.get_mistral_no_yes_scores(),
+                                       self.get_adapt_no_yes_scores()]:
+            tokenizer_mismatch = False
+            for key, val_list in words_to_keep_in_order.items():
+                for val in val_list:
+                    if not key in tokenizer.decode(val).lower():
+                        tokenizer_mismatch = True
+            if not tokenizer_mismatch:
+                break
+        if tokenizer_mismatch:
+            raise ValueError(f"key not in vocab")
+
         self.tokenizer = tokenizer
         self.device = device
-        for key, val_list in words_to_keep_in_order.items():
-            for val in val_list:
-                assert key in tokenizer.decode(val).lower(), \
-                    f"key {key} not in vocab {tokenizer.decode(val).lower()}"
+
         self.words_to_keep = words_to_keep_in_order
 
         tokens_to_match: str = "<|end_of_turn|>GPT4 Correct Assistant:"
@@ -117,6 +153,16 @@ class InferenceContext:
         self.answer_triggers = LongTensorT(
             self.tokenizer.encode(trigger, add_special_tokens=False)).to(
             settings.DEVICE if self.device is None else self.device)
+
+    def debug(self,
+              logits: FloatTensorT['B,NClasses']) -> \
+            FloatTensorT['B,NClasses']:
+        score_for_word = []
+        for word, word_idxs in self.words_to_keep.items():
+            score_for_word.append(torch.max(logits[word_idxs], dim=-1)[0])
+        similarity_to_classes = FloatTensorT(
+            torch.stack(score_for_word, dim=-1))
+        return similarity_to_classes
 
     def get_word_scores_from_logits(self,
                                     logits: FloatTensorT['B,NClasses']) -> \
@@ -354,10 +400,10 @@ class BaseTransformer(BaseModel):
                         # len(tokenizer.added_tokens_encoder)))
                 else:
                     if not getattr(self.config, field_name) == field_value:
-                        logging.error("config {} vs tokenizer {} for field {}".format(
-                            getattr(self.config, field_name), field_value,
-                            field_name))
-
+                        logging.error(
+                            "config {} vs tokenizer {} for field {}".format(
+                                getattr(self.config, field_name), field_value,
+                                field_name))
 
         validate_field('pad_token_id')
         validate_field('bos_token_id')
@@ -517,13 +563,6 @@ class DecoderTransformer(BaseTransformer):
                                    ret_last: bool = True) -> \
             Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], FloatTensorT[
                 'B,Opt[SrcSeqLen],VocabSize']]:
-        raise NotImplementedError
-
-    def decode_relevance_at_triggers(self,
-                                     src_ids: LongTensorT['B,SrcSeqLen'],
-                                     src_mask: IntTensorT['B,SrcSeqLen'],
-                                     inference_context: InferenceContext = None) -> \
-            Tuple[FloatTensorT['B,EmbedLen'], Optional[FloatTensorT['B,2']]]:
         raise NotImplementedError
 
     def decode_relevance(self,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from mgz.models.nlp.mistral_hug import MistralForCausalLMHug
+from mgz.ds.sentence_datasets.gpt_input_augments import PromptingInput
 
 os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 # from mgz.models.nlp.bart_interface import BARTHubInterface
@@ -20,7 +20,7 @@ import logging
 from mgz.ds.sentence_datasets.aus_legal_case_reports import \
     AusCaseReportsToTagGrouped
 from mgz.model_running.nlp_routines.model_routine_tagging import TaggingRoutine
-from mgz.version_control import ModelNode
+from mgz.version_control import ModelNode, ModelDatabase
 from mgz.version_control.model_edge import ModelTransitionEdge
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset
 
@@ -54,18 +54,21 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
                                             n_queries_per_cls=[2],
                                             n_supports_per_cls=[3, 4])
     if enron:
+        prompt_type = PromptingInput.infer_prompt_type(model_node.model)
         ds = EnronEmailsTagQA(model_node.tokenizer,
-                              max_src_len=4000,
+                              prompt_type=prompt_type,
+                              max_src_len=4095,
                               n_episodes=100,
-                              n_query_per_cls=[2],
+                              n_query_per_cls=[1],
                               n_support_per_cls=[2, 3, 4, 5, 6, 7, 8],
-                              dataset_dir="/home/ceyer/Documents/Projects/Maghz/datasets/enron_export_investigations")
+                              dataset_dir="/home/ceyer/Documents/Projects/Maghz/datasets/enron_export_investigations_openchat-0106")
         val_ds = EnronEmailsTagQA(model_node.tokenizer,
-                                  max_src_len=4000,
+                                  prompt_type=prompt_type,
+                                  max_src_len=4095,
                                   n_episodes=50,
-                                  n_query_per_cls=[2],
+                                  n_query_per_cls=[1],
                                   n_support_per_cls=[2, 3, 4, 5, 6, 7, 8],
-                                  dataset_dir="/home/ceyer/Documents/Projects/Maghz/datasets/enron_export_investigations")
+                                  dataset_dir="/home/ceyer/Documents/Projects/Maghz/datasets/enron_export_investigations_openchat-0106")
     if old_enron:
         ds = EnronEmailsTagging(model_node.tokenizer,
                                 max_src_len=3000,
@@ -79,8 +82,10 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
                                     n_support_per_cls=[1, 2, 3])
     return ds, val_ds
 
-135886
-175850
+
+# 174178
+
+
 def led_main_train():
     # import transformers
     # tokenizer = transformers.LlamaTokenizer.from_pretrained(
@@ -107,8 +112,10 @@ def led_main_train():
 
     # Mistral Models
     # model_name = 'mistralai/Mistral-7B-v0.1'
+    model_name = 'mistralai/Mistral-7B-Instruct-v0.1'
     # model_name = 'openchat/openchat_3.5'
-    model_name = 'openchat/openchat-3.5-0106'
+    # model_name = 'openchat/openchat-3.5-0106'
+    # model_name = 'AdaptLLM/law-chat'
     # model_name = 'openchat/openchat_3.5/data_EnronEmailsTagQA_2/BEST'
     # model_name = 'facebook/bart-large-cnn'
     # model_cls = BartForBinaryTagging
@@ -116,22 +123,8 @@ def led_main_train():
 
     with torch.cuda.amp.autocast(enabled=True):
         quantize = True
-        quantization_cfg = None
-        if quantize:
-            try:
-                from accelerate.utils import BnbQuantizationConfig
-                import bitsandbytes
-                quantization_cfg = BnbQuantizationConfig(
-                    load_in_8bit=quantize, )
-            except ImportError:
-                print("Module 'some_module' is not installed.")
-                quantization_cfg = None
-                quantize = False
+        model_node: ModelNode = ModelDatabase.mistral_openchat(model_name)
 
-        model_node: ModelNode = \
-            ModelNode.load_from_id(MistralForCausalLMHug, model_name,
-                                   model_name,
-                                   quantization_config=quantization_cfg)
         # ModelNode.load_from_id(LEDForConditionalGeneration, model_name,
         model_node.model.train()
         settings.print_gpu_usage()
@@ -159,7 +152,7 @@ def led_main_train():
                                                     optimizer, ds)
         routine = TaggingRoutine(
             distance_measure=DistanceMeasure.CLASSIFICATION,
-            tokenizer=model_node.tokenizer, debug=False, gpu_max_batch_size=4)
+            tokenizer=model_node.tokenizer, debug=False, gpu_max_batch_size=2)
 
         routine.evaluate(model_node=model_node, val_ds=val_ds)
         # routine.train(

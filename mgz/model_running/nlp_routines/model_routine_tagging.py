@@ -34,7 +34,8 @@ def predict_with_prototypes(
         support_embedding: FloatTensorT['NClasses,EmbedLen'],
         no_yes_logits: FloatTensorT['NQuery,VocabSize'] = None,
         distance_measure: DistanceMeasure = None,
-        routine: TaggingRoutine = None) -> FloatTensorT['NQuery,NClasses']:
+        routine: TaggingRoutine = None) -> FloatTensorT[
+    'NQuery,NClasses']:
     similarity_to_classes: FloatTensorT['NQuery,NClasses']
     if distance_measure == DistanceMeasure.L2:
         similarity_to_classes = -1 * DistanceMeasuresPerClass.euclidean_distance(
@@ -49,18 +50,7 @@ def predict_with_prototypes(
             class_embeddings=support_embedding,
             query_embeddings=query_embedding)
     elif distance_measure == DistanceMeasure.CLASSIFICATION:
-        if len(no_yes_logits.shape) == 3:
-            last_words = torch.argmax(no_yes_logits[:, -5:, :], dim=-1)
-            if routine is not None:
-                decoded = routine.tokenizer.batch_decode(last_words,
-                                                         skip_special_tokens=True)
-            no_yes_logits = no_yes_logits[:, -1, :]
-            inference_context: InferenceContext = InferenceContext.get_llama_no_yes_scores(
-                routine.tokenizer)
-            similarity_to_classes = inference_context.get_word_scores_from_logits(
-                no_yes_logits)
-        else:
-            similarity_to_classes = no_yes_logits
+        similarity_to_classes = no_yes_logits
         routine.debug_log_predictions(similarity_to_classes)
     else:
         raise ValueError(f'Not supported distance measure {distance_measure}')
@@ -98,8 +88,6 @@ class TaggingRoutine(BaseNLPProtocol):
         self.distance_measure = distance_measure
         self.train_init = False
         self.eval_init = False
-        self.inference_context = InferenceContext.get_llama_no_yes_scores(
-            self.tokenizer)
         self.predict_init = False
 
     @overrides(BaseProtocol)
@@ -127,7 +115,6 @@ class TaggingRoutine(BaseNLPProtocol):
                 batch_embeds, _ = model.decode_relevance(
                     src_ids=support[i:i + self.gpu_max_batch_size, :],
                     src_mask=support_mask[i:i + self.gpu_max_batch_size, :],
-                    inference_context=self.inference_context
                 )
                 support_embed_total += batch_embeds.detach().view(n_cls, -1,
                                                                   model.embed_dim).sum(
@@ -137,17 +124,41 @@ class TaggingRoutine(BaseNLPProtocol):
         self.debug_log_batch_info(batch)
         query_embeds: FloatTensorT['NQuery,EmbedLen']
         no_yes_logits: FloatTensorT['NQuery,VocabSize']
-        query_embeds, no_yes_logits = model.decode_relevance(
+        query_embeds, lm_logits = model.decode_relevance(
             src_ids=batch.queries,
             src_mask=batch.query_masks,
-            inference_context=self.inference_context
         )
+        no_yes_logits = (InferenceContext(self.tokenizer,
+                                          model=model).get_word_scores_from_logits(
+            lm_logits))
         assert isinstance(model, DecoderTransformer)
         query_lbls: LongTensorT['NQuery'] = batch.query_lbls
         cls_logits: FloatTensorT[
             'NQuery,NClasses'] = predict_with_prototypes(
             query_embeds, support_centers, no_yes_logits, routine=self,
             distance_measure=self.distance_measure)
+
+        predictions = cls_logits.argmax(-1)
+
+        for i in range(len(predictions)):
+            if predictions[i] != query_lbls[i]:
+                print('----------------------------------')
+                print('----------------------------------')
+                print('----------------------------------')
+                print('query_lbls', query_lbls.shape)
+                print('predictions', predictions.shape)
+                print('cls_logits', cls_logits.shape)
+                InferenceContext(self.tokenizer, model=model).debug(
+                    lm_logits[i])
+                print(no_yes_logits[i])
+                print(
+                    f'Predicted {predictions[i]} for label {query_lbls[i]}')
+                print('argmax', lm_logits[i].argmax(-1))
+                print(
+                    f'query output: {self.tokenizer.decode(lm_logits[i].argmax(-1))}')
+
+                print(
+                    f'query input: {self.tokenizer.decode(batch.queries[i])}')
         return cls_logits, query_lbls, no_yes_logits
 
     @overrides(BaseProtocol)
@@ -178,14 +189,7 @@ class TaggingRoutine(BaseNLPProtocol):
 
             predictions: LongTensorT['NQuery'] = cls_logits.argmax(-1)
             accuracy = (predictions == query_lbls).float().mean().item()
-            if accuracy < 1.0:
-                print('Accuracy is less than 1.0, predictions were')
-                for i in range(len(predictions)):
-                    if predictions[i] != query_lbls[i]:
-                        print('----------------------------------')
-                        print(
-                            f'Predicted {predictions[i]} for label {query_lbls[i]}')
-                        print(f'query: {self.tokenizer.decode(batch.queries[i])}')
+
         if model_edge is not None:
             total_samples = cls_logits.shape[0] * cls_logits.shape[1]
             loss = model_edge.loss_fn(cls_logits, query_lbls)

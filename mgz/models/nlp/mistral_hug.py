@@ -14,19 +14,12 @@ from torch import nn
 from transformers import BitsAndBytesConfig, MistralConfig
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutputWithPast
-from transformers.utils.import_utils import is_flash_attn_2_available
 
 import mgz.settings as settings
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext, \
-    DecoderTransformer, InferenceContext
+    DecoderTransformer
 from mgz.typing import *
 from mgz.version_control.model_index import get_models_path
-
-if is_flash_attn_2_available():
-    from flash_attn import flash_attn_func
-
-    _flash_supports_window_size = "window_size" in list(
-        inspect.signature(flash_attn_func).parameters)
 
 
 class MistralMLP(nn.Module):
@@ -79,7 +72,7 @@ class MistralPreTrainedModel(DecoderTransformer, ABC):
         hug.LlamaTokenizer]:
         try:
             return hug.LlamaTokenizer.from_pretrained(path)
-        except (FileNotFoundError, EnvironmentError) as e:
+        except (TypeError, FileNotFoundError, EnvironmentError) as e:
             return None
 
     def _init_weights(self, module):
@@ -103,7 +96,7 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
 
     @classmethod
     def modules_to_not_convert(cls):
-        return ['hug.lm_head', 'embedding_head']
+        return ['lm_head', 'embedding_head']
 
     def get_encoder(self):
         raise NotImplementedError
@@ -169,7 +162,7 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
                     embedding_weight_path):
                 return None
             if quantization_config is not None:
-                quantization_config.skip_modules = cls.modules_to_not_convert()
+                # quantization_config.skip_modules = cls.modules_to_not_convert()
                 model.hug = load_and_quantize_model(model.hug,
                                                     weights_location=weight_path,
                                                     bnb_quantization_config=quantization_config,
@@ -179,7 +172,6 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
                     weights_location=embedding_weight_path,
                     bnb_quantization_config=quantization_config,
                     device_map="auto")
-
             else:
                 model.hug = load_checkpoint_and_dispatch(model.hug,
                                                          checkpoint=weight_path,
@@ -192,6 +184,7 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
                     device_map={
                         "": settings.DEVICE})
             assert isinstance(model, MistralForCausalLMHug)
+            model.hug.gradient_checkpointing = True
             return model
         except FileNotFoundError:
             return None
@@ -206,6 +199,9 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         if tokenizer.sep_token_id is None:
             tokenizer.sep_token_id = tokenizer.eos_token_id
         tokenizer.save_pretrained(path)
+        if not os.path.exists(os.path.join(path, 'tokenizer.json')):
+            with open(os.path.join(path, 'tokenizer.json'), 'w') as f:
+                json.dump(tokenizer.get_vocab(), f, indent=4)
         model_hug = hug.MistralForCausalLM.from_pretrained(
             model_id,
             use_flash_attention_2=True,
@@ -333,43 +329,24 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         return embedding, lm_logits
 
     @overrides(DecoderTransformer)
-    def decode_relevance_at_triggers(self,
-                                     src_ids: LongTensorT['B,SrcSeqLen'],
-                                     src_mask: IntTensorT['B,SrcSeqLen'],
-                                     inference_context: InferenceContext = None) -> \
-            Tuple[FloatTensorT['B,EmbedLen'], Optional[FloatTensorT['B,N,2']]]:
-        full_output: BaseModelOutputWithPast = self.hug.model.forward(
-            input_ids=src_ids, attention_mask=src_mask)
-        output: FloatTensorT[
-            'B,TgtSeqLen,EmbedLen'] = FloatTensorT(
-            full_output.last_hidden_state)
-        lm_logits = self.hug.lm_head(output.detach())
-        embedding = self.embedding_head(output)
-
-        assert inference_context is not None, 'must provide inference context'
-        no_yes_logits = inference_context.get_word_scores_from_logits_at_triggers(
-            src_ids, lm_logits)
-        return embedding, no_yes_logits
-
-    @overrides(DecoderTransformer)
     def decode_relevance(self,
                          src_ids: LongTensorT['B,SrcSeqLen'],
-                         src_mask: IntTensorT['B,SrcSeqLen'],
-                         inference_context: InferenceContext = None) -> \
-            Tuple[FloatTensorT['B,EmbedLen'], Optional[FloatTensorT['B,2']]]:
-        assert inference_context is not None, 'must provide inference context'
-
+                         src_mask: IntTensorT['B,SrcSeqLen'], ) -> \
+            Tuple[FloatTensorT['B,EmbedLen'], Optional[
+                FloatTensorT['B,NClasses']]]:
         full_output: BaseModelOutputWithPast = self.hug.model.forward(
             input_ids=src_ids, attention_mask=src_mask)
         output: FloatTensorT[
             'B,TgtSeqLen,EmbedLen'] = FloatTensorT(
             full_output.last_hidden_state)
-        lm_logits = self.hug.lm_head(output[:, -1, :].detach())
-        no_yes_logits = inference_context.get_word_scores_from_logits(lm_logits)
-        assert no_yes_logits.shape == (src_ids.shape[0], 2)
-
-        embedding = self.embedding_head(output[:, -1, :])
-        return embedding, no_yes_logits
+        lm_logits = self.hug.lm_head(output[:, -2:, :].detach())[:, -1, :]
+        # unhinged wtf is this, these first two are not identical, the last two are
+        # print(self.hug.lm_head(output[:, -1, :]))
+        # print(self.hug.lm_head(output[:, -2:, :])[:,-1,:])
+        # print(self.embedding_head(output[:, -1, :]))
+        # print(self.embedding_head(output[:, -2:, :])[:,-1,:])
+        embedding = self.embedding_head(output[:, -2:, :])[:, -1, :]
+        return embedding, lm_logits
 
     @overrides(BaseTransformer)
     def generate(self,

@@ -8,7 +8,7 @@ from mgz import settings
 from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagQA
 from mgz.ds.sentence_datasets.sentence_datasets import \
     strings_to_padded_id_tensor_w_mask
-from mgz.model_running.run_ops import summarize_controller
+from mgz.model_running.run_ops import summarize_controller_from_texts
 from mgz.models.nlp.mistral import MistralForCausalLM
 from mgz.models.nlp.mistral_hug import MistralForCausalLMHug
 from mgz.typing import *
@@ -181,10 +181,6 @@ def mistral_mgz():
                                  pad_to_multiple_of=4096).to(
             settings.DEVICE)
         src_ids, src_mask = model_inputs.input_ids, model_inputs.attention_mask
-        # src_ids, src_mask = strings_to_padded_id_tensor_w_mask(text,
-        #                                                        tokenizer,
-        #                                                        4096,
-        #                                                        settings.DEVICE)
         generated_ids = model_node.model.generate(
             src_ids=src_ids,
             src_mask=src_mask,

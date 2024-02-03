@@ -10,7 +10,8 @@ import torch.utils.data
 from transformers import PreTrainedTokenizerBase, BatchEncoding
 
 from mgz.ds.base_dataset import BaseDataset, DataState
-from mgz.ds.sentence_datasets.gpt_input_augments import tag_question_augment
+from mgz.ds.sentence_datasets.gpt_input_augments import PromptingInput, \
+    ContextPromptingInput, PromptConfig
 from mgz.typing import *
 
 
@@ -64,51 +65,78 @@ def subsequent_mask(size: SrcSeqLen):
 def strings_to_padded_id_tensor_w_mask(txts: List[SrcStringT],
                                        tokenizer: PreTrainedTokenizerBase,
                                        max_len: int,
-                                       device=torch.device('cpu'),
-                                       pad_to_multiple_of: int = None) -> \
+                                       device=torch.device('cpu')) -> \
         Tuple[LongTensorT['B,SrcSeqLen'], IntTensorT['B,SrcSeqLen']]:
     """
     This does not truncate at all, minimum length will always be max_len.
     """
-    if pad_to_multiple_of is None:
-        pad_to_multiple_of = max_len
     tokenizer.padding_side = 'left'
     input_encodings: BatchEncoding = (
         tokenizer.__call__(txts,
                            max_length=max_len,
                            padding="max_length",
                            truncation=True,
-                           pad_to_multiple_of=pad_to_multiple_of,
+                           pad_to_multiple_of=max_len,
                            return_tensors='pt'))
     return input_encodings.input_ids.to(device).to(torch.int32), \
         input_encodings.attention_mask.to(device)
 
 
-def strings_to_padded_id_tensor(txts: List[SrcStringT],
-                                tokenizer: PreTrainedTokenizerBase,
-                                max_len,
-                                device):
-    return strings_to_padded_id_tensor_w_mask(txts, tokenizer, max_len,
-                                              device)[0]
+def prompts_to_padded_id_tensor_w_mask(prompts: List[PromptingInput],
+                                       tokenizer: PreTrainedTokenizerBase,
+                                       max_len: int,
+                                       device=torch.device('cpu')) -> \
+        Tuple[LongTensorT['B,SrcSeqLen'], IntTensorT['B,SrcSeqLen']]:
+    """
+    This does not truncate at all, minimum length will always be max_len.
+    """
+    tokenizer.padding_side = 'left'
+    tokenizer.add_tokens(
+        new_tokens=[prompts[0].truncate_token_start,
+                    prompts[0].truncate_token_end], special_tokens=True)
+    truncate_start_token = tokenizer.get_vocab()[
+        prompts[0].truncate_token_start]
+    truncate_end_token = tokenizer.get_vocab()[prompts[0].truncate_token_end]
 
-
-def question_answer_to_padded_id_tensor(context: SrcStringT,
-                                        question: TgtStringT,
-                                        tokenizer: PreTrainedTokenizerBase,
-                                        max_len, device):
+    tokenizer_input = [prompt.get_tokenizer_input() for prompt in prompts]
     input_encodings: BatchEncoding = (
-        tokenizer.__call__(
-            question,
-            context,
-            padding=True, truncation=True,
-            max_length=max_len,
-            # TODO: set return_overflowing_tokens to True
-            # stride=64,
-            return_overflowing_tokens=False,
-            pad_to_multiple_of=max_len,
-            return_tensors='pt'))
-    return input_encodings.input_ids.to(device).to(
-        torch.int32)
+        tokenizer.__call__(tokenizer_input,
+                           padding=True,
+                           return_tensors='pt', return_length=True))
+    input_ids: LongTensorT['B,SrcSeqLen'] = input_encodings.input_ids
+    attention_mask: IntTensorT['B,SrcSeqLen'] = input_encodings.attention_mask
+
+    input_ids_padded: LongTensorT['B,SrcSeqLen'] = tokenizer.pad_token_id * (
+        torch.ones((len(prompts), max_len)))
+    attention_masks_padded: IntTensorT['B,SrcSeqLen'] = IntTensorT(
+        torch.zeros((len(prompts), max_len)))
+
+    pre_pad_lengths: IntTensorT['B'] = input_encodings.length
+    start_idxs: IntTensorT['B'] = (
+            input_ids == truncate_start_token).int().argmax(-1)
+    end_idxs: IntTensorT['B'] = (
+            input_ids == truncate_end_token).int().argmax(-1)
+    for b in range(len(prompts)):
+        length: int = pre_pad_lengths[b] - 2  # for the truncation tokens
+        trim = max(length - max_len, 0)
+        strt_idx = start_idxs[b]
+        end_idx = end_idxs[b]
+        if trim > 0:
+            logging.info(f'trimming {trim} characters')
+        assert (end_idx - strt_idx + 2) > trim, \
+            f"Too much to trim need to trim {trim} but only have {end_idx - strt_idx + 2} tokens."
+        input_ids_padded[b, -(length - trim):] = torch.cat([
+            input_ids[b, -pre_pad_lengths[b]:strt_idx],
+            input_ids[b, strt_idx + 1:end_idx - trim],
+            input_ids[b, end_idx + 1:]
+        ], dim=-1)
+        attention_masks_padded[b, -(length - trim):] = torch.cat([
+            attention_mask[b, -pre_pad_lengths[b]:strt_idx],
+            attention_mask[b, strt_idx + 1:end_idx - trim],
+            attention_mask[b, end_idx + 1:]
+        ], dim=-1)
+    return input_ids_padded.to(device).to(torch.int32), \
+        attention_masks_padded.to(device)
 
 
 class TagQAMetaTaskBatch:
@@ -117,11 +145,11 @@ class TagQAMetaTaskBatch:
                  src_masks: IntTensorT['TaskSize,SrcSeqLen'],
                  labels: LongTensorT['TaskSize'],
                  n_support_per_cls: int,
-                 pad_idx):
+                 input_augment: Optional[TagQAMetaTaskBatch] = None, ):
         assert src_ids.shape[
                    0] > 2 * n_support_per_cls, "Not enough data to make a query set."
         task_size: int = src_ids.shape[0]
-
+        self.input_augment = input_augment
         self.n_query = task_size - (n_support_per_cls * 2)
         self.n_support_per_cls = n_support_per_cls
 
@@ -190,17 +218,18 @@ class TagQAMetaTaskBatch:
         print('---------')
 
     @staticmethod
-    def collate_batch(batch: List[Tuple[SrcStringT, LabelT]],
+    def collate_batch(batch: List[Tuple[PromptingInput, int]],
                       tokenizer: PreTrainedTokenizerBase,
                       device,
                       n_support_per_cls: int,
                       n_query_per_cls: int,
                       max_src_len: int,
-                      max_tgt_len: int = None) -> TagQAMetaTaskBatch:
+                      max_tgt_len: int = None
+                      ) -> TagQAMetaTaskBatch:
         assert max_tgt_len is None, "max_tgt_len must not be set for this task"
-        srcs, labels = zip(*batch)
+        prompts, labels = zip(*batch)
         src_ids, src_masks = \
-            strings_to_padded_id_tensor_w_mask(txts=srcs,
+            prompts_to_padded_id_tensor_w_mask(prompts=prompts,
                                                tokenizer=tokenizer,
                                                max_len=max_src_len,
                                                device=device)
@@ -209,7 +238,6 @@ class TagQAMetaTaskBatch:
         return TagQAMetaTaskBatch(src_ids=src_ids,
                                   src_masks=src_masks,
                                   labels=label_tensor,
-                                  pad_idx=tokenizer.pad_token_id,
                                   n_support_per_cls=n_support_per_cls)
 
     @staticmethod
@@ -234,7 +262,7 @@ class TagQAMetaTaskBatch:
         # If we're having trouble finding negative examples, we'll timeout,
         # we currently randomly check, we don't keep an index that maps from
         # negative to the sample indices.
-        timeout = 2 * task_size_per_cls
+        timeout = 5 * task_size_per_cls
         neg_sampling_tries = 0
         negative_examples: set[int] = set()
         while (len(negative_examples) < task_size_per_cls) and \
@@ -248,24 +276,21 @@ class TagQAMetaTaskBatch:
                 if pos_tag not in neg_tags:
                     negative_examples.add(neg_sample_idx)
             neg_sampling_tries += 1
-
-        pos_batch: List[Tuple[SrcStringT, LabelT]] = \
-            [(
+        pos_batch: List[Tuple[PromptingInput, LabelT]] = \
+            [(ContextPromptingInput(
+                prompt_config=ds.prompt_config,
                 # ds.data[i][SampleType.FILE_NAME] +
-                tag_question_augment(ds.data[i][
-                                         SampleType.FULL_AS_STRING], pos_tag),
-                1)
-                for i in
-                positive_examples]
+                document_text=ds.data[i][SampleType.FULL_AS_STRING],
+                document_requests=pos_tag, ),
+              1) for i in positive_examples]
 
-        neg_batch: List[Tuple[SrcStringT, LabelT]] = \
-            [(
+        neg_batch: List[Tuple[PromptingInput, LabelT]] = \
+            [(ContextPromptingInput(
+                prompt_config=ds.prompt_config,
                 #                 ds.data[i][SampleType.FILE_NAME] +
-                tag_question_augment(ds.data[i][
-                                         SampleType.FULL_AS_STRING], pos_tag),
-                0)
-                for i in
-                negative_examples]
+                document_text=ds.data[i][SampleType.FULL_AS_STRING],
+                document_requests=pos_tag, ),
+              0) for i in negative_examples]
 
         # TODO fix so we catch this earlier
         min_to_have_1_query = n_support_per_cls + 1
@@ -273,7 +298,7 @@ class TagQAMetaTaskBatch:
                 pos_batch) < min_to_have_1_query:
             return None
 
-        batch: List[Tuple[str, int]] = neg_batch + pos_batch
+        batch: List[Tuple[PromptingInput, int]] = neg_batch + pos_batch
         return TagQAMetaTaskBatch.collate_batch(
             batch=batch,
             tokenizer=ds.tokenizer_src,
@@ -480,7 +505,7 @@ class SentenceDataset(BaseDataset, ABC):
 
     def __init__(self, tokenizer: PreTrainedTokenizerBase,
                  max_src_len: SrcSeqLen,
-                 max_tgt_len: TgtSeqLen,
+                 max_tgt_len: Optional[TgtSeqLen],
                  dataset_dir: str = None):
         super(SentenceDataset, self).__init__(dataset_dir)
 
@@ -546,6 +571,11 @@ class MetaLearningMixIn(SentenceDataset, ABC):
     _n_query_per_cls: List[int] = []
     _n_support_per_cls: List[int] = []
     _tag_to_sample_idx_map: OrderedDict[str, List[int]] = None
+    _prompt_config: PromptConfig = None
+
+    @property
+    def prompt_config(self) -> PromptConfig:
+        return self._prompt_config
 
     @property
     def n_query_per_cls(self):

@@ -11,7 +11,7 @@ import mgz.settings as settings
 from mgz.ds.sentence_datasets.aus_legal_case_reports import SampleType
 from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagQA
 from mgz.model_running.run_ops import tagging_embedding_controller, \
-    embedding_controller, summarize_controller
+    embedding_controller_from_texts, summarize_controller_from_texts
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.models.nlp.led import LEDForConditionalGeneration
 from mgz.models.nlp.mistral import MistralForCausalLM
@@ -174,16 +174,16 @@ class TestBert(unittest.TestCase):
                 positive_examples = [tag_text + 'This is about cats',
                                      tag_text + 'This is about dogs']
                 pos_embedding: FloatTensorT['EmbedLen'] = \
-                    embedding_controller(model, positive_examples,
-                                         tokenizer, max_src_len=max_len).mean(0,
+                    embedding_controller_from_texts(model, positive_examples,
+                                                    tokenizer, max_src_len=max_len).mean(0,
                                                                               keepdim=False)
                 settings.print_gpu_usage()
 
                 negative_examples = [tag_text + 'This is about trains',
                                      tag_text + 'This is about cars']
                 neg_embedding: FloatTensorT['EmbedLen'] = \
-                    embedding_controller(model, negative_examples,
-                                         tokenizer, max_src_len=max_len).mean(0,
+                    embedding_controller_from_texts(model, negative_examples,
+                                                    tokenizer, max_src_len=max_len).mean(0,
                                                                               keepdim=False)
 
                 support_embedding = FloatTensorT(
@@ -198,8 +198,8 @@ class TestBert(unittest.TestCase):
                                   tag_text + 'Cars go fast']
                 query_embedding: FloatTensorT[
                     'TaskSize,EmbedLen'] = \
-                    embedding_controller(model, query_examples, tokenizer,
-                                         max_src_len=max_len)
+                    embedding_controller_from_texts(model, query_examples, tokenizer,
+                                                    max_src_len=max_len)
 
                 probs = predict_with_centers(support_embedding, query_embedding)
                 print(probs)
@@ -268,5 +268,5 @@ def test_summarization():
     
                 If you have already certified compliance with the Policies and Procedures during the 2001 calendar year, you need not re-certify at this time, although you are still required to to review and become familiar with the revised Policies and Procedures.  If you have not certified compliance with the Policies and Procedures during the 2001 calendar year, then you must do so within two weeks of your receipt of this message.  The LegalOnline site will allow you to quickly and conveniently certify your compliance on-line with your SAP Personal ID number.  If you have any questions concerning the Policies or Procedures, please call Bob Bruce at extension 5-7780 or Donna Lowry at extension 3-1939. """)
         text = [tag_qa_text, tag_qa_text + " shoot shoot"]
-        summary = summarize_controller(model_node.model, text, tokenizer, 4000)
+        summary = summarize_controller_from_texts(model_node.model, text, tokenizer, 4000)
         print(summary)

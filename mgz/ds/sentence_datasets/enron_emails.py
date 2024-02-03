@@ -14,13 +14,13 @@ from tqdm import tqdm
 from transformers import PreTrainedTokenizer, LlamaTokenizer
 
 import spaces as sp
-from mgz import settings
 from mgz.ds.base_dataset import BaseDataset, DataState
-from mgz.ds.sentence_datasets.gpt_input_augments import tag_question_augment
+from mgz.ds.sentence_datasets.gpt_input_augments import PromptConfig
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
     Sent2SentBatch, SampleType, MetaLearningMixIn, Sent2TagMetaTaskBatch, \
     TagQAMetaTaskBatch
-from mgz.model_running.run_ops import tag_questions_controller
+from mgz.model_running.run_ops import prompt_lm_logits_controller
+from mgz.models.nlp.base_transformer import InferenceContext
 from mgz.typing import *
 
 DATASET_DIR = os.path.join(
@@ -109,7 +109,7 @@ class EnronEmails(SentenceDataset):
 
     def __init__(self, tokenizer: PreTrainedTokenizer,
                  max_src_len: SrcSeqLen,
-                 max_tgt_len: TgtSeqLen,
+                 max_tgt_len: Optional[TgtSeqLen] = None,
                  training_ratio=0.7,
                  dataset_dir: str = None):  # change for testing/verification
         if dataset_dir is None:
@@ -395,7 +395,9 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
 class EnronEmailsTagQA(EnronEmailsTagging, MetaLearningMixIn):
 
     def __init__(self, tokenizer: Union[LlamaTokenizer, LlamaTokenizer],
-                 max_src_len: SrcSeqLen, n_query_per_cls: List[int] = 5,
+                 max_src_len: SrcSeqLen,
+                 prompt_config: PromptConfig,
+                 n_query_per_cls: List[int] = 5,
                  n_support_per_cls: List[int] = 5,
                  n_episodes: int = 100,
                  training_ratio: float = 0.75,
@@ -410,6 +412,7 @@ class EnronEmailsTagQA(EnronEmailsTagging, MetaLearningMixIn):
                                                n_support_per_cls=n_support_per_cls,
                                                n_episodes=n_episodes,
                                                training_ratio=training_ratio)
+        self._prompt_config = prompt_config
 
     def get_collate_fn(self, device: Union[int, torch.device]):
         assert self.loaded, "Dataset not loaded"
@@ -428,8 +431,7 @@ class EnronEmailsTagQA(EnronEmailsTagging, MetaLearningMixIn):
 
 def inspect_src_test():
     from transformers import LEDTokenizer
-    tokenizer = LEDTokenizer.from_pretrained(
-        "allenai/primera-multi_lexsum-source-long")
+    tokenizer = LEDTokenizer.from_pretrained("AdaptLLM/law-chat")
     ds = EnronEmailsTagging(tokenizer,
                             max_src_len=2000,
                             n_episodes=1000,
@@ -467,11 +469,20 @@ def look_through_data():
 
 def dump_n_examples(n: int = 100000000):
     from mgz.version_control import ModelDatabase, ModelNode
+    logging.basicConfig(level=logging.WARNING)
 
-    tag_to_sample = "all documents and communications between enron employees discussing government inquiries and investigations into enron"
+    # model_name = 'openchat/openchat-3.5-0106'
+    model_name = 'mistralai/Mistral-7B-Instruct-v0.1'
+    tag_to_sample = 'all documents or communications between enron employees discussing government inquiries and investigations into enron'
+    system_context = (
+        "Given this as the only background: The FERC's investigating enron for market manipulation. The FERC investigation primarily focused on Enron's role in the California energy crisis of 2000-2001, "
+        "along with its trading practices and their impact on electricity markets across the United States. Determine if the email should be produced as evidence based on the document request.")
     export_dir = os.path.join(
         Path(__file__).resolve().parent.parent.parent.parent,
-        'datasets/enron_export_investigations/').replace("\\", "/")
+        f"datasets/enron_export_investigations_1word_{model_name.replace('/', '_')}/").replace(
+        "\\", "/")
+    model_node: ModelNode = ModelDatabase.mistral_openchat(model_name)
+    model_node.model.eval()
 
     contains_words = ["government", "inquiries", "investigation"]
     bsz = 1
@@ -483,19 +494,19 @@ def dump_n_examples(n: int = 100000000):
     else:
         p_contained = 1.0
         p_random = 1.0
-    model_node: ModelNode = ModelDatabase.mistral_openchat_quantized()
+    # mgz.settings.print_parameters(model_node.model)
     # model_node.tokenizer = LlamaTokenizer.from_pretrained(
     #     "openchat/openchat-3.5-0106")
     # model_node.tokenizer.padding_side = 'left'
     # model_node.tokenizer.add_special_tokens(
     #     {'pad_token': model_node.tokenizer.eos_token})
 
-    model_node.model.eval()
     ds = EnronEmails(model_node.tokenizer,
                      training_ratio=1.0,
                      max_src_len=max_src_len,
                      max_tgt_len=-1,
-                     dataset_dir='/home/ceyer/Documents/Projects/Maghz/datasets/enron_with_categories').load_training_data()
+                     dataset_dir='/home/ceyer/Documents/Projects/Maghz/datasets/enron_with_categories1').load_training_data()
+
     #     answers = tag_questions_controller(
     #         model=model_node.model, texts=[r'''Message-ID: <7361482.1075847628266.JavaMail.evans@thyme>
     # Date: Wed, 28 Feb 2001 06:18:00 -0800 (PST)
@@ -548,7 +559,7 @@ def dump_n_examples(n: int = 100000000):
     # You know you have my support, but the current state of affairs down there has
     # gotten me to my rope's end with the program.'''] * 2,
     #         tags=[tag_to_sample] * 2, tokenizer=model_node.tokenizer,
-    #         augment_function=tag_question_augment,
+    #         augment_function=ContextInputAugment(),
     #         max_new_tokens=1, max_src_len=max_src_len)
     #     print('starting answers', answers)
     # exit(3)
@@ -582,27 +593,46 @@ def dump_n_examples(n: int = 100000000):
     os.mkdir(os.path.join(export_dir, 'yes'))
     os.mkdir(os.path.join(export_dir, 'no'))
     os.mkdir(os.path.join(export_dir, 'maybe'))
+    with open(os.path.join(export_dir, 'categories_map.json'), 'w') as file:
+        file.write(json.dumps({1: tag_to_sample}))
+
     for i in tqdm(range(0, len(ds), bsz)):
         batch = ds[i:i + bsz]
         doc_batch_filtered = [{key: doc[key] for key
                                in keys_to_keep} for doc in batch]
         full_texts = [doc[SampleType.FULL_AS_STRING] for doc in batch]
         tags: List[str] = [tag_to_sample] * len(full_texts)
-        answers = tag_questions_controller(
-            model=model_node.model, texts=full_texts,
-            tags=tags, tokenizer=model_node.tokenizer,
-            augment_function=tag_question_augment, max_src_len=max_src_len,
-            max_new_tokens=1)
-        for answer, doc in zip(answers, doc_batch_filtered):
-            # print('--------------------------------------------')
-            # print('answer', answer)
-            # print('doc', doc[SampleType.FILE_NAME])
+        lm_logits = prompt_lm_logits_controller(model=model_node.model,
+                                                texts=full_texts,
+                                                tags=tags,
+                                                tokenizer=model_node.tokenizer,
+                                                max_src_len=max_src_len,
+                                                prompt_config=PromptConfig(
+                                                    system_context=system_context,
+                                                    model=model_node.model))
+        no_yes_scores = InferenceContext(
+            model_node.tokenizer).get_word_scores_from_logits(
+            lm_logits)
+        answers = model_node.tokenizer.batch_decode(lm_logits.argmax(-1),
+                                                    skip_special_tokens=True)
+        assert len(answers) == len(doc_batch_filtered)
+        for i, (answer, doc) in enumerate(zip(answers, doc_batch_filtered)):
+            print('--------------------------------------------')
+            print(full_texts[i])
+            print('--------------------------------------------')
+
+            print('answer', answer)
+            print('lm_logits', lm_logits[i])
+            print('no_yes_scores', no_yes_scores[i])
+            print('doc', doc[SampleType.FILE_NAME])
             random_p = random.random()
-            no_inclusion = "no" in answer.lower() and random_p < p_random
+            no_inclusion = no_yes_scores[i].argmax(
+                0) == 0 and random_p < p_random
+            yes_inclusion = no_yes_scores[i].argmax(0) == 1
+
             maybe_inclusion = any(
                 [word in doc[SampleType.FULL_AS_STRING] for word in
                  contains_words]) and random.random() < p_contained
-            yes_inclusion = "yes" in answer.lower()
             if sample_negative and (
                     not (
                             no_inclusion or maybe_inclusion or yes_inclusion)):
@@ -633,10 +663,8 @@ def dump_n_examples(n: int = 100000000):
         if len(docs_formatted) > n:
             break
         print(f'collected {len(docs_formatted)} examples so far')
-    with open(os.path.join(export_dir, 'categories_map.json'), 'w') as file:
-        file.write(json.dumps({1: tag_to_sample}))
-    as_dict_file = os.path.join(export_dir, 'formatted_docs.json')
 
+    as_dict_file = os.path.join(export_dir, 'formatted_docs.json')
     # Writing to the file
     with open(as_dict_file, 'w') as file:
         file.write('[\n')

@@ -33,8 +33,8 @@ class NewsGroup20(SentenceDataset):
         self.max_length = max_length
         self._data: List[Dict[str, Union[SummaryT, List[SourceListT]]]] = []
 
-        self.tokenizer_src: PreTrainedTokenizer = tokenizer
-        self.tokenizer_tgt: PreTrainedTokenizer = tokenizer
+        self.tokenizer_src: PreTrainedTokenizerBase = tokenizer
+        self.tokenizer_tgt: PreTrainedTokenizerBase = tokenizer
         self.vocab_src: Dict[str, int] = self.tokenizer_src.get_vocab()
         self.vocab_tgt: Dict[str, int] = self.tokenizer_src.get_vocab()
 

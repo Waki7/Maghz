@@ -9,7 +9,7 @@ from transformers import PreTrainedTokenizer, BitsAndBytesConfig
 
 import mgz.version_control as vc
 from mgz.models.base_model import BaseModel
-from mgz.models.nlp.base_transformer import BaseTransformer
+from mgz.models.nlp.base_transformer import BaseTransformer, DecoderTransformer
 from mgz.typing import *
 from mgz.version_control.metrics import Metrics
 
@@ -32,7 +32,7 @@ class ModelNode:
     # Union thing is messy, what's a better way, probably pass a type to
     # ModelNode
     def __init__(self, model: Union[
-        BaseModel, BaseTransformer, LEDModel, LEDForConditionalGeneration],
+        BaseModel, BaseTransformer, LEDModel, LEDForConditionalGeneration, DecoderTransformer],
                  tokenizer: PreTrainedTokenizer, model_id: str,
                  metrics: Dict[Metrics, Union[List[float], float]] = None,
                  quantization_config: Optional[BnbQuantizationConfig] = None):
@@ -121,8 +121,8 @@ class ModelNode:
         assert tokenizer_id is not None, 'NLP Model needs tokenizer id'
         node = \
             vc.CACHED_INDEXER.lookup_or_init(model_id,
-                                          model_cls=model_cls,
-                                          quantization_config=quantization_config)
+                                             model_cls=model_cls,
+                                             quantization_config=quantization_config)
         node.model.eval()
         node.model.verify_tokenizer(node.tokenizer)
 

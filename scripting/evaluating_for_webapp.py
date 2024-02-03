@@ -13,8 +13,8 @@ import mgz.settings as settings
 from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagQA
 from mgz.model_running import run_ops
 from mgz.model_running.nlp_routines.model_routine_tagging import TaggingRoutine
-from mgz.model_running.run_ops import embedding_controller, \
-    hybrid_generation_tagging, summarize_controller
+from mgz.model_running.run_ops import embedding_controller_from_texts, \
+    hybrid_generation_tagging_from_texts, summarize_controller_from_texts
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.models.nlp.mistral import MistralForCausalLM
 from mgz.models.nlp.mistral_hug import MistralForCausalLMHug
@@ -99,8 +99,8 @@ def summarize(source_texts: List[SrcStringT]) -> List[SummaryT]:
         model = cast(MistralForCausalLM, MODELS[TAGGING_MODEL])
         model.eval()
         tokenizer = cast(LlamaTokenizer, TOKENIZERS[TAGGING_MODEL])
-        response = summarize_controller(model=model, texts=source_texts,
-                                        tokenizer=tokenizer)
+        response = summarize_controller_from_texts(model=model, texts=source_texts,
+                                                   tokenizer=tokenizer)
         summary: List[str] = tokenizer.batch_decode(response,
                                                     skip_special_tokens=True)
         return summary
@@ -125,8 +125,8 @@ def embed(texts: List[SrcStringT]) -> List[NDArrayT['EmbedLen']]:
     with torch.no_grad():
         torch.manual_seed(5)
         embedding: FloatTensorT['B,EmbedLen'] = \
-            embedding_controller(model=MODELS[TAGGING_MODEL], texts=texts,
-                                 tokenizer=TOKENIZERS[TAGGING_MODEL])
+            embedding_controller_from_texts(model=MODELS[TAGGING_MODEL], texts=texts,
+                                            tokenizer=TOKENIZERS[TAGGING_MODEL])
         return list(embedding.cpu().numpy())
 
 
@@ -159,12 +159,12 @@ def get_tag_apply_embedding(doc_texts: List[SrcStringT],
             bsz = estimate_vram_usage(model, len(doc_texts[0]))
             for i in range(0, len(doc_texts), bsz):
                 batch_logits: FloatTensorT['bsz,EmbedLen'] = \
-                    hybrid_generation_tagging(model=model,
-                                              texts=doc_texts[
+                    hybrid_generation_tagging_from_texts(model=model,
+                                                         texts=doc_texts[
                                                     i:i + bsz],
-                                              tag_text=tag_texts[
+                                                         tags=tag_texts[
                                                        i:i + bsz],
-                                              tokenizer=TOKENIZERS[
+                                                         tokenizer=TOKENIZERS[
                                                   TAGGING_MODEL], )
                 for j in range(batch_logits.shape[0]):
                     logits.append(NDArrayT(batch_logits[j].cpu().numpy()))

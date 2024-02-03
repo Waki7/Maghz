@@ -6,6 +6,7 @@ from pathlib import Path
 
 from transformers import PreTrainedTokenizer, BitsAndBytesConfig
 
+from mgz import settings
 from mgz.models.base_model import BaseModel
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.typing import *
@@ -34,17 +35,22 @@ class ModelDatabase:
                                       ModelDatabase.led_source_to_long_id())
 
     @staticmethod
-    def mistral_openchat_quantized(
-            model_name: str = "openchat/openchat-3.5-0106") -> ModelNode:
+    def mistral_openchat(
+            model_name: str = "openchat/openchat-3.5-0106", quantized=False) -> ModelNode:
+        # AdaptLLM/law-chat
+        # OpenHermes-2.5-Mistral-7B
         from mgz.models.nlp.mistral_hug import MistralForCausalLMHug
-        quantize = True
+        quantize = False
         quantization_cfg = None
-        if quantize:
+
+        if quantize and settings.DEVICE != torch.device('cpu'):
             try:
                 from accelerate.utils import BnbQuantizationConfig
                 import bitsandbytes
                 quantization_cfg = BnbQuantizationConfig(
-                    load_in_8bit=quantize, )
+                    load_in_4bit=quantize, llm_int8_threshold=6,
+                    torch_dtype=torch.float16)
+
             except ImportError:
                 print("Module 'some_module' is not installed.")
                 quantization_cfg = None

@@ -6,19 +6,20 @@ from transformers import PreTrainedTokenizerBase
 import mgz.model_running.nlp_routines.model_routine_tagging as tagging
 import mgz.settings as settings
 from mgz.ds.sentence_datasets.gpt_input_augments import tag_question_augment, \
-    SummarizeAugment
+    SummarizePromptInput, PromptingInput, ContextPromptingInput, \
+    PromptConfig
 from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask, \
-    strings_to_padded_id_tensor_w_mask
+    strings_to_padded_id_tensor_w_mask, prompts_to_padded_id_tensor_w_mask
 from mgz.models.nlp.base_transformer import BaseTransformer, \
     EncoderDecoderTransformer, DecoderTransformer, InferenceContext
 from mgz.typing import *
 
 
 @torch.no_grad()
-def embedding_controller(model: BaseTransformer, texts: List[str],
-                         tokenizer: PreTrainedTokenizerBase,
-                         max_src_len: int = None,
-                         ) -> FloatTensorT['B,EmbedLen']:
+def embedding_controller_from_texts(model: BaseTransformer, texts: List[str],
+                                    tokenizer: PreTrainedTokenizerBase,
+                                    max_src_len: int = None,
+                                    ) -> FloatTensorT['B,EmbedLen']:
     """
     Computes embeddings for a list of input texts using a Transformer-based model.
 
@@ -65,8 +66,8 @@ def embedding_controller(model: BaseTransformer, texts: List[str],
     return embedding
 
 
-def forward_controller(model: BaseTransformer, texts: List[str],
-                       tokenizer: PreTrainedTokenizerBase):
+def forward_controller_from_texts(model: BaseTransformer, texts: List[str],
+                                  tokenizer: PreTrainedTokenizerBase):
     """
     Forward pass through a Transformer-based model for a list of input texts.
 
@@ -94,9 +95,9 @@ def forward_controller(model: BaseTransformer, texts: List[str],
 
 
 @torch.no_grad()
-def generate_controller(model: DecoderTransformer, texts: List[str],
-                        tokenizer: PreTrainedTokenizerBase,
-                        ):
+def generate_controller_from_texts(model: DecoderTransformer, texts: List[str],
+                                   tokenizer: PreTrainedTokenizerBase,
+                                   ):
     """
     Generates sequences using a Transformer-based model for a list of input texts.
 
@@ -120,21 +121,19 @@ def generate_controller(model: DecoderTransformer, texts: List[str],
 
 
 @torch.no_grad()
-def _qa_controller(model: DecoderTransformer, texts: List[str],
-                   tokenizer: PreTrainedTokenizerBase,
-                   augment_function: Callable[[str], str] | Callable[
-                       [str, str | List[str]], str],
-                   tags: List[str] = None,
-                   max_src_len: int = None,
-                   max_new_tokens=1000,
-                   return_just_new: bool = True,
-                   ) -> List[str]:
+def _qa_controller_from_prompts(model: DecoderTransformer,
+                                prompts: List[PromptingInput],
+                                tokenizer: PreTrainedTokenizerBase,
+                                max_src_len: int = None,
+                                max_new_tokens=1000,
+                                return_just_new: bool = True,
+                                ) -> List[str]:
     """
     Generates sequences using a Transformer-based model for a list of input texts.
 
     Args:
         model (BaseTransformer): The Transformer-based model.
-        texts (List[str]): List of input texts to use as prompts.
+        prompts (List[str]): List of input texts to use as prompts.
         tokenizer (PreTrainedTokenizerBase): Tokenizer for text encoding.
 
     Returns:
@@ -146,14 +145,7 @@ def _qa_controller(model: DecoderTransformer, texts: List[str],
     max_src_len = min(max_src_len,
                       model.get_max_decoder_positions() - max_new_tokens)
 
-    if tags:
-        augmented_text = [augment_function(text, tag) for
-                          text, tag in zip(texts, tags)]
-    else:
-        augmented_text = [augment_function(text) for
-                          text in texts]
-    # print('texts', texts)
-    src_ids, src_mask = strings_to_padded_id_tensor_w_mask(augmented_text,
+    src_ids, src_mask = prompts_to_padded_id_tensor_w_mask(prompts,
                                                            tokenizer,
                                                            max_src_len,
                                                            settings.DEVICE)
@@ -222,46 +214,65 @@ def _qa_controller(model: DecoderTransformer, texts: List[str],
 
 
 @torch.no_grad()
-def summarize_controller(model: DecoderTransformer, texts: List[str],
-                         tokenizer: PreTrainedTokenizerBase,
-                         max_src_len: int = None,
-                         max_new_tokens=1000,
-                         return_just_new: bool = True,
-                         word_limit: int = 50,
-                         ) -> List[str]:
+def summarize_controller_from_texts(model: DecoderTransformer,
+                                    texts: List[str],
+                                    tokenizer: PreTrainedTokenizerBase,
+                                    system_context: str = None,
+                                    max_src_len: int = None,
+                                    max_new_tokens=1000,
+                                    return_just_new: bool = True,
+                                    word_limit: int = 50,
+                                    prompt_config: PromptConfig = None,
+                                    ) -> List[str]:
+    if prompt_config is None:
+        prompt_config = PromptConfig(system_context=system_context,
+                                     model=model)
+    prompts = SummarizePromptInput.from_list(prompt_config=prompt_config,
+                                             document_texts=texts,
+                                             word_limit=word_limit)
     with torch.cuda.amp.autocast(enabled=True):
-        return _qa_controller(model, texts, tokenizer,
-                              SummarizeAugment(word_limit=word_limit).__call__,
-                              max_src_len=max_src_len,
-                              max_new_tokens=max_new_tokens,
-                              return_just_new=return_just_new, )
+        return _qa_controller_from_prompts(model, prompts, tokenizer,
+                                           max_src_len=max_src_len,
+                                           max_new_tokens=max_new_tokens,
+                                           return_just_new=return_just_new, )
 
 
 @torch.no_grad()
-def tag_questions_controller(model: DecoderTransformer, texts: List[str],
-                             tags: List[str],
-                             tokenizer: PreTrainedTokenizerBase,
-                             augment_function: Callable[[str, str], str],
-                             max_src_len: int = None,
-                             max_new_tokens=1000,
-                             return_just_new: bool = True,
-                             ) -> List[str]:
+def tag_questions_controller_from_texts(model: DecoderTransformer,
+                                        texts: List[str],
+                                        tags: List[str],
+                                        tokenizer: PreTrainedTokenizerBase,
+                                        system_context: str = None,
+                                        max_src_len: int = None,
+                                        max_new_tokens=1000,
+                                        return_just_new: bool = True,
+                                        prompt_config: PromptConfig = None,
+                                        ) -> List[str]:
+    assert isinstance(model, DecoderTransformer)
+    assert len(texts) == len(tags)
+    if prompt_config is None:
+        prompt_config = PromptConfig(system_context=system_context,
+                                     model=model)
+    prompts = ContextPromptingInput.from_list(prompt_config=prompt_config,
+                                              document_texts=texts,
+                                              document_requests_list=tags)
     with torch.cuda.amp.autocast(enabled=True):
-        return _qa_controller(model, texts, tokenizer,
-                              augment_function=augment_function,
-                              tags=tags,
-                              max_src_len=max_src_len,
-                              max_new_tokens=max_new_tokens,
-                              return_just_new=return_just_new, )
+        return _qa_controller_from_prompts(model, prompts, tokenizer,
+                                           tags=tags,
+                                           max_src_len=max_src_len,
+                                           max_new_tokens=max_new_tokens,
+                                           return_just_new=return_just_new, )
 
 
 @torch.no_grad()
-def hybrid_generation_tagging(model: DecoderTransformer,
-                              texts: List[str],
-                              tag_text: List[str],
-                              tokenizer: PreTrainedTokenizerBase,
-                              max_src_len: int = None,
-                              ) -> \
+def hybrid_generation_tagging_from_texts(model: DecoderTransformer,
+                                         texts: List[str],
+                                         tags: List[str],
+                                         tokenizer: PreTrainedTokenizerBase,
+                                         system_context: str = None,
+                                         max_src_len: int = None,
+                                         prompt_config: PromptConfig = None,
+                                         ) -> \
         Tuple[FloatTensorT['B,EmbedLen'], ProbTensorT['2']]:
     """
     Computes embeddings for a list of input texts and corresponding tag texts
@@ -277,12 +288,17 @@ def hybrid_generation_tagging(model: DecoderTransformer,
            FloatTensorT['B,EmbedLen']: Tensor containing the embeddings.
        """
     assert isinstance(model, DecoderTransformer)
-    assert len(texts) == len(tag_text)
+    assert len(texts) == len(tags)
+    if prompt_config is None:
+        prompt_config = PromptConfig(system_context=system_context,
+                                     model=model)
+    prompts = ContextPromptingInput.from_list(prompt_config=prompt_config,
+                                              document_texts=texts,
+                                              document_requests_list=tags)
+
     if max_src_len is None:
         max_src_len = model.get_max_decoder_positions() - 1
-    src_qa_text = [tag_question_augment(text, tag) for text, tag in
-                   zip(texts, tag_text)]
-    src_ids, src_mask = strings_to_padded_id_tensor_w_mask(src_qa_text,
+    src_ids, src_mask = prompts_to_padded_id_tensor_w_mask(prompts,
                                                            tokenizer,
                                                            max_src_len,
                                                            settings.DEVICE)
@@ -325,18 +341,23 @@ def test(model: DecoderTransformer,
                    zip(texts, tag_text)]
     logging.info("src_qa_text: %s", src_qa_text[0])
     logging.info("src_qa_text: %s", src_qa_text[1])
-    src_ids, src_mask = strings_to_padded_id_tensor_w_mask(src_qa_text,
+    src_ids, src_mask = prompts_to_padded_id_tensor_w_mask(src_qa_text,
                                                            tokenizer,
                                                            max_src_len,
                                                            settings.DEVICE)
-
+    inference_context = InferenceContext(tokenizer, model=model)
     # don't need tgt_mask because you are generating one token at a time
     embedding: FloatTensorT['B,EmbedLen']
     no_yes_logits: FloatTensorT['2']
     embedding, lm_logits = model.decode_relevance_at_triggers(src_ids=src_ids,
                                                               src_mask=src_mask,
-                                                              inference_context=InferenceContext.get_llama_no_yes_scores(
-                                                                  tokenizer))
+                                                              inference_context=inference_context)
+
+    assert inference_context is not None, 'must provide inference context'
+    no_yes_logits = inference_context.get_word_scores_from_logits_at_triggers(
+        src_ids, lm_logits)
+    return embedding, no_yes_logits
+
     print('lm_logits ', lm_logits.shape)
     last_words = torch.argmax(lm_logits[:, -10:, :], dim=-1)
     decoded = tokenizer.batch_decode(last_words,
@@ -372,7 +393,7 @@ def predict_probs_from_optional_centers(
 @torch.no_grad()
 def tagging_embedding_controller(model: EncoderDecoderTransformer,
                                  texts: List[str],
-                                 tag_text: List[str],
+                                 tags: List[str],
                                  tokenizer: PreTrainedTokenizerBase,
                                  max_src_len: int = None,
                                  max_tgt_len: int = None
@@ -383,7 +404,7 @@ def tagging_embedding_controller(model: EncoderDecoderTransformer,
     Args:
         model (EncoderDecoderTransformer): The Encoder-Decoder Transformer model.
         texts (List[str]): List of input texts to embed.
-        tag_text (List[str]): List of tag texts.
+        tags (List[str]): List of tag texts.
         tokenizer (PreTrainedTokenizerBase): Tokenizer for text encoding.
         max_src_len (int, optional): Maximum source sequence length. Defaults to None.
         max_tgt_len (int, optional): Maximum target sequence length. Defaults to None.
@@ -401,12 +422,53 @@ def tagging_embedding_controller(model: EncoderDecoderTransformer,
                                                            max_src_len,
                                                            settings.DEVICE)
 
-    tgt_ids, tgt_mask = strings_to_padded_id_tensor_w_mask(tag_text, tokenizer,
+    tgt_ids, tgt_mask = strings_to_padded_id_tensor_w_mask(tags, tokenizer,
                                                            max_tgt_len,
                                                            settings.DEVICE)
     # don't need tgt_mask because you are generating one token at a time
     return model.encoder_decoder_embedding(src_ids=src_ids, tgt_ids=tgt_ids,
                                            src_mask=src_mask, tgt_mask=tgt_mask)
+
+
+@torch.no_grad()
+def prompt_lm_logits_controller(model: DecoderTransformer,
+                                texts: List[str],
+                                tags: List[str],
+                                tokenizer: PreTrainedTokenizerBase,
+                                system_context: str = None,
+                                max_src_len: int = None,
+                                prompt_config: PromptConfig = None) -> \
+        FloatTensorT['B,EmbedLen']:
+    """
+    Computes embeddings for a list of input texts and corresponding tag texts using an Encoder-Decoder Transformer.
+
+    Args:
+        prompt_config:
+        model (EncoderDecoderTransformer): The Encoder-Decoder Transformer model.
+        texts (List[str]): List of input texts to embed.
+        tags (List[str]): List of tag texts.
+        tokenizer (PreTrainedTokenizerBase): Tokenizer for text encoding.
+        max_tgt_len (int, optional): Maximum target sequence length. Defaults to None.
+
+    Returns:
+        FloatTensorT['B,EmbedLen']: Tensor containing the embeddings.
+    """
+    assert isinstance(model, DecoderTransformer)
+    assert len(texts) == len(tags)
+    if prompt_config is None:
+        prompt_config = PromptConfig(system_context=system_context,
+                                     model=model)
+    prompts = ContextPromptingInput.from_list(prompt_config=prompt_config,
+                                              document_texts=texts,
+                                              document_requests_list=tags)
+
+    if max_src_len is None:
+        max_src_len = model.get_max_decoder_positions() - 1
+    src_ids, src_mask = prompts_to_padded_id_tensor_w_mask(
+        prompts, tokenizer, max_src_len, settings.DEVICE)
+    # don't need tgt_mask because you are generating one token at a time
+    lm_logits = model.decode_relevance(src_ids=src_ids, src_mask=src_mask)[1]
+    return lm_logits
 
 
 def main():

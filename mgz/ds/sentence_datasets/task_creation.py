@@ -67,9 +67,9 @@ def tagging_with_semantic_grouping(training_phrases: List[List[SentenceT]],
                     training_phrases) - 1):
                 gpu_tag_list = list(gpu_tag_queue)
                 embeddings: FloatTensorT[
-                    'B,EmbedLen'] = run_ops.embedding_controller(model,
-                                                                 gpu_tag_list,
-                                                                 tokenizer)
+                    'B,EmbedLen'] = run_ops.embedding_controller_from_texts(model,
+                                                                            gpu_tag_list,
+                                                                            tokenizer)
                 for batch_idx, tag in enumerate(gpu_tag_list):
                     # Can't store everything on gpu
                     length_to_embedding_cache[len(tokenizer.tokenize(tag))][

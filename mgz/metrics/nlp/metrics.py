@@ -87,14 +87,14 @@ def cosine_similarity_from_raw_sentences(sentences1: List[SentenceT],
     Returns:
         List[float]: List of cosine similarity scores for each pair of sentences.
     """
-    from mgz.model_running.run_ops import embedding_controller
+    from mgz.model_running.run_ops import embedding_controller_from_texts
 
     idxer = Indexer.get_default_index()
     model, tokenizer = idxer.get_cached_runtime_nlp_model(model_id, BartModel)
     model.eval()
     model.to(settings.DEVICE)
-    embedding1 = embedding_controller(model, sentences1, tokenizer)
-    embedding2 = embedding_controller(model, sentences2, tokenizer)
+    embedding1 = embedding_controller_from_texts(model, sentences1, tokenizer)
+    embedding2 = embedding_controller_from_texts(model, sentences2, tokenizer)
     cos = nn.CosineSimilarity(dim=-1, eps=1e-4)
     return cos(embedding1, embedding2).cpu().tolist()
 

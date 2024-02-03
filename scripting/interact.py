@@ -5,7 +5,7 @@ from enum import Enum
 import transformers as hug
 
 import mgz.settings as settings
-from mgz.model_running.run_ops import generate_controller, forward_controller
+from mgz.model_running.run_ops import generate_controller_from_texts, forward_controller_from_texts
 from mgz.typing import *
 from mgz.version_control import ModelNode
 
@@ -100,16 +100,16 @@ with torch.no_grad():
         if use_mgz:
             model_mgz, tokenizer = model_selectors(use_model, use_mgz=True)
             if use_encode:
-                logits = forward_controller(model=model_mgz, texts=text,
-                                            tokenizer=tokenizer)
+                logits = forward_controller_from_texts(model=model_mgz, texts=text,
+                                                       tokenizer=tokenizer)
                 print(
                     'encoding with shape {} \n {}'.format(logits.shape, logits))
 
                 # embedding = embedding_controller(model_mgz, text, tokenizer)
             if use_generation:
                 model_mgz.eval()
-                response = generate_controller(model=model_mgz, texts=text,
-                                               tokenizer=tokenizer)
+                response = generate_controller_from_texts(model=model_mgz, texts=text,
+                                                          tokenizer=tokenizer)
                 # print('generated_ids', response)
                 summary: List[str] = tokenizer.batch_decode(response,
                                                             skip_special_tokens=True)

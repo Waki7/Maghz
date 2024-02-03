@@ -114,7 +114,7 @@ class TestBert(unittest.TestCase):
 
     def test_inference_context(self):
         tokenizer = LlamaTokenizer.from_pretrained('openchat/openchat-3.5-0106')
-        inference_context = InferenceContext.get_llama_no_yes_scores(tokenizer)
+        inference_context = InferenceContext(tokenizer)
         ids = torch.tensor([
             [1, 2, 3, 4],
             [2, 3, 4, 1],

@@ -1,16 +1,77 @@
 from __future__ import annotations
 
+from enum import Enum
 from typing import List, Optional
+from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from mgz.models.nlp.base_transformer import DecoderTransformer
 GPT_TURN = f"<|end_of_turn|>GPT4 Correct Assistant:"
 
 
-class InputAugment:
+class PromptType(Enum):
+    MISTRAL = 0
+    ADAPT = 1
+
+
+class PromptConfig:
+    @classmethod
+    def infer_prompt_type(cls, model: DecoderTransformer):
+        if hasattr(model.config, '_name_or_path'):
+            assert isinstance(model.config._name_or_path, str)
+            if "adapt" in model.config._name_or_path.lower() or "instruct" in model.config._name_or_path.lower():
+                return PromptType.ADAPT
+            elif "openchat" in model.config._name_or_path.lower() or "mistral" in model.config._name_or_path.lower():
+                return PromptType.MISTRAL
+            else:
+                raise ValueError(
+                    "Could not determine prompt type, pass it as an argument")
+        else:
+            raise ValueError(
+                "Could not determine prompt type, pass it as an argument")
+
+    def __init__(self, system_context: Optional[str] = None,
+                 model: DecoderTransformer = None,
+                 prompt_type: PromptType = None, ):
+        if prompt_type is None:
+            self.prompt_type = self.infer_prompt_type(model)
+        self.system_context = system_context
+        self.truncate_token_start = '[TRUNCABTABLE_START]'
+        self.truncate_token_end = '[TRUNCABTABLE_END]'
+
+
+class PromptingInput:
+    @classmethod
+    def from_list(cls,
+                  prompt_config: PromptConfig,
+                  document_texts: List[str],
+                  document_requests_list: Optional[
+                      List[str] | List[List[str]]] = None,
+                  document_type: str = "e-mail"):
+        return [cls(prompt_config=prompt_config,
+                    document_text=document_text,
+                    document_requests=document_requests,
+                    document_type=document_type)
+                for document_text, document_requests in
+                zip(document_texts, document_requests_list)]
+
+    @classmethod
+    def from_inferred_prompt_type(cls, model: DecoderTransformer,
+                                  document_text: str,
+                                  document_requests: Optional[
+                                      str | List[str]] = None,
+                                  document_type: str = "e-mail",
+                                  system_context: str = ""):
+        return cls(prompt_config=PromptConfig(model=model,
+                                              system_context=system_context),
+                   document_text=document_text,
+                   document_requests=document_requests,
+                   document_type=document_type)
 
     @staticmethod
-    def prompt_adapt_mistral(main_body: str,
-                             system_context: Optional[str] = "",
-                             additional_chat: List[str] = []):
+    def prompt_mistral(main_body: str,
+                       system_context: Optional[str] = None,
+                       additional_chat: List[str] = []):
         """
         <s>[INST] <<SYS>>
         {{ system_prompt }}
@@ -19,22 +80,25 @@ class InputAugment:
         {{ user_msg_1 }} [/INST] {{ model_answer_1 }} </s><s>[INST] {{ user_msg_2 }} [/INST]
 
         """
-        if len(system_context) > 0:
-            raise NotImplementedError("System context not implemented yet")
-        prompt = f"GPT4 Correct User: " \
-                 f"{main_body}\n" \
-                 f"<|end_of_turn|>\n" \
-                 f"GPT4 Correct Assistant: "
+
+        if system_context:
+            prompt = f"GTP4 Correct User: " \
+                     f"{system_context}\n"
+        else:
+            prompt = f"GTP4 Correct User: "
+        prompt += f"{main_body}\n" \
+                  f"<|end_of_turn|>" \
+                  f"GPT4 Correct Assistant:"
         for chat in additional_chat:
             prompt += f"<|end_of_turn|>" \
                       f"GPT4 Correct User: " \
                       f"{chat}\n" \
-                      f"GPT4 Correct Assistant: "
+                      f"GPT4 Correct Assistant:"
         return prompt
 
     @staticmethod
     def prompt_adapt(main_body: str,
-                     system_context: Optional[str] = "",
+                     system_context: Optional[str] = None,
                      additional_chat: List[str] = []):
         """
         <s>[INST] <<SYS>>
@@ -44,65 +108,117 @@ class InputAugment:
         {{ user_msg_1 }} [/INST] {{ model_answer_1 }} </s><s>[INST] {{ user_msg_2 }} [/INST]
 
         """
-
-        prompt = f"<s>[INST] <<SYS>>{system_context}<</SYS>>\n\n{main_body} [/INST]"
+        if system_context:
+            prompt = f"<s>[INST] <<SYS>>{system_context}<</SYS>>\n\n{main_body} [/INST]"
+        else:
+            prompt = f"<s>[INST] {main_body} [/INST]"
         for chat in additional_chat:
             prompt += f" </s><s>[INST]" \
                       f"{chat} [/INST]"
         return prompt
 
-    def __init__(self, document_type: str = "e-mail"):
+    def __init__(self,
+                 prompt_config: PromptConfig,
+                 document_text: str,
+                 document_requests: Optional[str | List[str]] = None,
+                 document_type: str = "e-mail",
+                 ):
+        self.document_text = document_text
+        self.document_requests = document_requests
         self.document_type = document_type
+        self.prompt_config = prompt_config
+        self.prompt_type = prompt_config.prompt_type
 
-    def __call__(self, *args, **kwargs):
-        pass
+        self.truncate_token_start = prompt_config.truncate_token_start
+        self.truncate_token_end = prompt_config.truncate_token_end
+        self.system_context = prompt_config.system_context
+
+    def get_tokenizer_input(self, *args, **kwargs):
+        raise NotImplementedError(
+            "This method should be implemented in the child class")
 
 
-class ContextInputAugment(InputAugment):
-    def __call__(self, document_text: str, document_requests: str | List[str]):
-        if isinstance(document_requests, str):
-            qa_prefix = f"\nGPT4 Correct User: Does the tag \"{document_requests}\" apply to the {self.document_type}?\n"
-            qa_suffix = (GPT_TURN)
-            return InputAugment.prompt_adapt(
-                qa_prefix + document_text + '\n' + qa_suffix)
+class ContextPromptingInput(PromptingInput):
+
+    def get_tokenizer_input(self, add_trunc: bool = True):
+        trunc_start = self.truncate_token_start if add_trunc else ""
+        trunc_end = self.truncate_token_end if add_trunc else ""
+
+        def _make_tag_prompt(tag: str) -> str:
+            # return f"We are looking for {tag}. Is this {self.document_type} what we are looking for. Yes or no.\n"
+            # return f"Is it apparent that the {self.document_type} is part of \"{tag}\"? Yes or no.\n"
+            return f"Is the {self.document_type} part of \"{tag}\"? Yes or no.\n"
+
+        if isinstance(self.document_requests, str):
+            prompt_body = f"{trunc_start}{self.document_text}{trunc_end}\n{_make_tag_prompt(self.document_requests)}"
+            if self.prompt_type == PromptType.MISTRAL:
+                return self.prompt_mistral(prompt_body,
+                                           system_context=self.system_context)
+            else:
+                return self.prompt_adapt(prompt_body,
+                                         system_context=self.system_context)
         else:
-            full_prompt_text: str = ""
-            full_prompt_text += f"GPT4 Correct User: Based on this {self.document_type}: \n {document_text} \n"
-            for i, document_request in enumerate(document_requests):
-                if i != 0:
-                    full_prompt_text += f"GPT4 Correct User: "
-                qa_next = f"Does the tag \"{document_request}\" apply to the {self.document_type}? Please answer in one word, and if you are not sure, say no.\n"
-                qa_suffix = (GPT_TURN)
-                if i != len(document_requests) - 1:
-                    qa_suffix += "<|end_of_turn|>"
-                full_prompt_text += qa_next + qa_suffix
-            return full_prompt_text
+            prompt_body = f"{trunc_start}{self.document_text}{trunc_end}\n{_make_tag_prompt(self.document_requests[0])}"
+            additional_tag_prompts: List[str] = [
+                _make_tag_prompt(document_request)
+                for document_request in
+                self.document_requests[1:]]
+            if self.prompt_type == PromptType.MISTRAL:
+                return self.prompt_mistral(main_body=prompt_body,
+                                           additional_chat=additional_tag_prompts,
+                                           system_context=self.system_context)
+            else:
+                # TODO 20 and 2 * are both random estimates
+                return self.prompt_adapt(main_body=prompt_body,
+                                         additional_chat=additional_tag_prompts,
+                                         system_context=self.system_context)
+
+
+class SummarizePromptInput(PromptingInput):
+    @classmethod
+    def from_list(cls,
+                  prompt_config: PromptConfig,
+                  document_texts: List[str],
+                  word_limit: int = 50,
+                  document_type: str = "e-mail"):
+        return [cls(prompt_config=prompt_config,
+                    document_text=document_text,
+                    word_limit=word_limit,
+                    document_type=document_type)
+                for document_text in document_texts]
+
+    def __init__(self, prompt_config: PromptConfig,
+                 document_text: str,
+                 document_type: str = "e-mail",
+                 word_limit: int = 50,
+                 ):
+        super().__init__(
+            prompt_config=prompt_config,
+            document_text=document_text,
+            document_type=document_type,
+        )
+        self.word_limit = word_limit
+
+    def get_tokenizer_input(self):
+        qa_prefix = f"Could you summarize this {self.document_type} in less than {self.word_limit} words?\n{self.document_text}"
+        if self.prompt_type == PromptType.MISTRAL:
+            return self.prompt_mistral(qa_prefix)
+        else:
+            return self.prompt_adapt(qa_prefix)
 
 
 def tag_question_augment(document_text: str, pos_tag: str,
                          document_type: str = "e-mail"):
-    return ContextInputAugment(document_type)(document_text, pos_tag)
+    return ContextPromptingInput(document_type)(document_text, pos_tag)
 
 
 def document_requests_augment(document_text: str, document_requests: List[str],
                               document_type: str = "e-mail"):
-    return ContextInputAugment(document_type)(document_text, document_requests)
-
-
-class SummarizeAugment(InputAugment):
-    def __init__(self, document_type: str = "e-mail", word_limit: int = 50):
-        super().__init__(document_type)
-        self.word_limit = word_limit
-
-    def __call__(self, document_text: str,
-                 document_type: str = "e-mail"):
-        qa_prefix = f"GPT4 Correct User: Could you summarize this {document_type} in less than {self.word_limit} words? "
-        qa_suffix = (GPT_TURN)
-        # qa_suffix = (f"<|end_of_turn|>GPT4 Correct Assistant: "
-        #              f"Could you summarize this {document_type} in less than {word_limit} words? ")  # last line is prompting because it seems to always start with this line (mistral openchat 3.5 does)
-        return qa_prefix + document_text + qa_suffix
+    return ContextPromptingInput(document_type)(document_text,
+                                                document_requests)
 
 
 def summarization_augment(document_text: str,
                           document_type: str = "e-mail", word_limit: int = 50):
-    return SummarizeAugment(word_limit=word_limit)(document_text, document_type)
+    return SummarizePromptInput(word_limit=word_limit)(document_text,
+                                                       document_type)
