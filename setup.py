@@ -35,20 +35,16 @@ torch_deps = []
 tf_deps = []
 if is_windows:
     torch_deps = \
-        [
-            "torch@https://download.pytorch.org/whl/cu116/torch-1.13.1%2Bcu116-cp38-cp38-win_amd64.whl"
-            "torchvision@https://download.pytorch.org/whl/cu116/torchvision-0.14.1%2Bcu116-cp38-cp38-win_amd64.whl"]
+        []
 elif is_linux:
     torch_deps = \
-        [
-            "torch@https://download.pytorch.org/whl/cu116/torch-1.13.1%2Bcu116-cp38-cp38-linux_x86_64.whl"
-            "torchvision@https://download.pytorch.org/whl/cu116/torchvision-0.14.1%2Bcu116-cp38-cp38-linux_x86_64.whl"]
+        []
 elif is_mac:
     tf_deps = ['tensorflow-macos']
 
 cuda_deps = []
 if is_cuda_available():
-    cuda_deps = ['flash-attn', 'auto-gptq>=0.4.2']
+    cuda_deps = ['flash-attn', 'vllm']
     tf_deps = ['tensorflow-gpu==2.12.0']
 
 try:
@@ -101,49 +97,46 @@ setup(
 
     # List of packages to install with this one
     install_requires=[
-        'tensorboard',
-        'tensorboardX',
-        'spacy==3.5.3',
-        'scipy==1.9.1',
-        'numpy',
-        'tensorflow>=2.11.0',
-        'opencv-python',
-        'array2gif',
-        'Pillow',
-        'pyyaml',
-        'scikit-image',
-        'pytest',
-        'torchdata',
-        'datasets',
-        'GPUtil',
-        'altair',
-        'evaluate',
-        'chardet',
-        'pytorchvideo',
-        'scikit-learn',
-        'accelerate',
-        'bs4',
-        'typing_extensions==4.8.0',
-        'peft',
-        'optimum',
-        'torch==2.1.2',
-        'flash-attn',
-        'transformers',
-        'torchaudio',
-        'torchmetrics',
-        'torchvision',
-        'torchtext',
-        'pyarrow==11.0.0',
-        'bitsandbytes==0.41.3.post2',
-        'vllm',
-        'protobuf',
+                         'tensorboard',
+                         'tensorboardX',
+                         'spacy==3.5.3',
+                         'scipy==1.9.1',
+                         'tensorflow>=2.11.0',
+                         'opencv-python',
+                         'array2gif',
+                         'Pillow',
+                         'pyyaml',
+                         'scikit-image',
+                         'pytest',
+                         'torchdata',
+                         'datasets',
+                         'GPUtil',
+                         'altair',
+                         'evaluate',
+                         'chardet',
+                         'pytorchvideo',
+                         'scikit-learn',
+                         'accelerate',
+                         'bs4',
+                         'typing_extensions==4.8.0',
+                         'peft',
+                         'optimum',
+                         'torch==2.1.2',
+                         'bitsandbytes==0.41.3.post2',
+                         'transformers',
+                         'torchaudio',
+                         'torchmetrics',
+                         'torchvision',
+                         'torchtext',
+                         'pyarrow==11.0.0',
+                         'protobuf',
+                         'numpy',
 
-        # 'torchvision',
-        # 'torchaudio',
-        # 'torchdata',
-        # 'torchtext',
-        # 'protobuf>=3.20',
-        # 'inspect-it',
-    ],  # + cuda_deps + tf_deps,
-    classifiers=[]
-)
+                         # 'torchvision',
+                         # 'torchaudio',
+                         # 'torchdata',
+                         # 'torchtext',
+                         # 'protobuf>=3.20',
+                         # 'inspect-it',
+                     ] + cuda_deps,
+    classifiers=[])
