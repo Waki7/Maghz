@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from mgz.metrics.nlp.metrics import *
+from mgz.math_utils.nlp.metrics import *
 
 
 class TestBert(unittest.TestCase):

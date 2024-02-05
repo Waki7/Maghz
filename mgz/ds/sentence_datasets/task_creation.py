@@ -7,7 +7,7 @@ import torch.nn as nn
 from tqdm import tqdm
 
 import mgz.model_running.run_ops as run_ops
-import mgz.metrics.nlp.metrics as metrics
+import mgz.math_utils.nlp.metrics as metrics
 import mgz.version_control.model_index as model_index
 import mgz.settings as settings
 from mgz.models.nlp.bart import BartModel

@@ -9,7 +9,7 @@ import spaces as sp
 from mgz.ds.base_dataset import BaseDataset
 from mgz.ds.sentence_datasets.sentence_datasets import Sent2TagMetaTaskBatch, \
     TagQAMetaTaskBatch
-from mgz.metrics.nlp.metrics import DistanceMeasuresPerClass
+from mgz.math_utils.nlp.metrics import DistanceMeasuresPerClass
 from mgz.model_running.base_routine import BaseProtocol
 from mgz.model_running.nlp_routines.base_nlp_routine import BaseNLPProtocol
 from mgz.models.nlp.base_transformer import EncoderDecoderTransformer, \
