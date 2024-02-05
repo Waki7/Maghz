@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.WARNING)
 model_node: ModelNode = ModelDatabase.mistral_openchat(
     # "AdaptLLM/law-chat")
     "mistralai/Mistral-7B-Instruct-v0.1")
-    # "openchat/openchat-3.5-0106")
+# "openchat/openchat-3.5-0106")
 # "teknium/OpenHermes-2.5-Mistral-7B")
 # AdaptLLM/law-chat
 model_node.model.eval()
@@ -22,13 +22,13 @@ print(model_node.tokenizer.special_tokens_map)
 email = """Message-ID: <21112352.1075851644449.JavaMail.evans@thyme>
 Date: Thu, 20 Sep 2001 06:30:51 -0700 (PDT)
 From: robert.frank@enron.com
-To: ray.alvarez@enron.com, alan.comnes@enron.com, steve.walton@enron.com, 
-	susan.mara@enron.com, leslie.lawner@enron.com, w..cantrell@enron.com, 
-	donna.fulton@enron.com, jeff.dasovich@enron.com, 
-	l..nicolay@enron.com, d..steffes@enron.com, j..noske@enron.com, 
-	dave.perrino@enron.com, don.black@enron.com, 
-	stephanie.miller@enron.com, barry.tycholiz@enron.com, 
-	sarah.novosel@enron.com, jennifer.thome@enron.com, 
+To: ray.alvarez@enron.com, alan.comnes@enron.com, steve.walton@enron.com,
+	susan.mara@enron.com, leslie.lawner@enron.com, w..cantrell@enron.com,
+	donna.fulton@enron.com, jeff.dasovich@enron.com,
+	l..nicolay@enron.com, d..steffes@enron.com, j..noske@enron.com,
+	dave.perrino@enron.com, don.black@enron.com,
+	stephanie.miller@enron.com, barry.tycholiz@enron.com,
+	sarah.novosel@enron.com, jennifer.thome@enron.com,
 	legal <.hall@enron.com>, susan.lindberg@enron.com
 Subject: RE: Western Wholesale Activities - Gas & Power Conf. Call
  Privileged & Confidential Communication Attorney-Client Communication and
@@ -74,14 +74,14 @@ Please feel free to communicate any additional agenda items to the group ."""
 # tag = 'document or communication between enron employees discussing government inquiries and investigations into enron'
 tag = 'all documents or communications between enron employees discussing government inquiries and investigations into enron'
 system_context = (
-    "Given this as the only background: The FERC's investigating enron for market manipulation. The FERC investigation primarily focused on Enron's role in the California energy crisis of 2000-2001, "
-    "along with its trading practices and their impact on electricity markets across the United States. Determine if the email should be produced as evidence based on the document request.")
+    "Given this as some of the background: The FERC's investigating enron for market manipulation. The FERC investigation primarily focused on Enron's role in the California energy crisis of 2000-2001, "
+    "along with its trading practices and their impact on electricity markets across the United States. Determine if the email is related to the document request.")
 
 # 12818
 print('--------------------------------------------')
 # print(email)
 # print('--------------------------------------------')
-max_src_len = 8191
+max_src_len = 4000
 
 lm_logits = prompt_lm_logits_controller(model=model_node.model,
                                         texts=[email],
@@ -95,8 +95,9 @@ no_yes_scores = InferenceContext(
     lm_logits)
 print('lm_logits', lm_logits)
 print('no_yes_scores', no_yes_scores)
-print('decoded lm_logits ', model_node.tokenizer.batch_decode(lm_logits.argmax(-1),
-                                                              skip_special_tokens=True))
+print('decoded lm_logits ',
+      model_node.tokenizer.batch_decode(lm_logits.argmax(-1),
+                                        skip_special_tokens=True))
 src_ids, src_mask = prompts_to_padded_id_tensor_w_mask(
     ContextPromptingInput.from_list(
         PromptConfig(model=model_node.model, system_context=system_context),

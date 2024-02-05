@@ -11,7 +11,7 @@ from pathlib import Path
 
 import torch.utils.data
 from tqdm import tqdm
-from transformers import PreTrainedTokenizer, LlamaTokenizer
+from transformers import PreTrainedTokenizerBase, LlamaTokenizer
 
 import spaces as sp
 from mgz.ds.base_dataset import BaseDataset, DataState
@@ -107,7 +107,7 @@ class EnronEmails(SentenceDataset):
     There are children that are also meta learning datasets.
     '''
 
-    def __init__(self, tokenizer: PreTrainedTokenizer,
+    def __init__(self, tokenizer: PreTrainedTokenizerBase,
                  max_src_len: SrcSeqLen,
                  max_tgt_len: Optional[TgtSeqLen] = None,
                  training_ratio=0.7,
@@ -147,7 +147,7 @@ class EnronEmails(SentenceDataset):
 
     @staticmethod
     def get_max_tgt_len(dataset_dir: DirPath,
-                        tokenizer: PreTrainedTokenizer) -> int:
+                        tokenizer: PreTrainedTokenizerBase) -> int:
         all_tags: List[str] = []
         # If the dataset is in a generated labeled data format
         if os.path.exists(os.path.join(dataset_dir, 'categories_map.json')):
@@ -304,7 +304,7 @@ class EnronEmails(SentenceDataset):
 
 
 class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
-    def __init__(self, tokenizer: PreTrainedTokenizer,
+    def __init__(self, tokenizer: PreTrainedTokenizerBase,
                  max_src_len: SrcSeqLen, n_query_per_cls: List[int] = 5,
                  n_support_per_cls: List[int] = 5,
                  n_episodes: int = 100,
@@ -394,7 +394,7 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
 
 class EnronEmailsTagQA(EnronEmailsTagging, MetaLearningMixIn):
 
-    def __init__(self, tokenizer: Union[LlamaTokenizer, LlamaTokenizer],
+    def __init__(self, tokenizer: Union[LlamaTokenizer, LlamaTokenizer, PreTrainedTokenizerBase],
                  max_src_len: SrcSeqLen,
                  prompt_config: PromptConfig,
                  n_query_per_cls: List[int] = 5,
@@ -479,13 +479,13 @@ def dump_n_examples(n: int = 100000000):
         "along with its trading practices and their impact on electricity markets across the United States. Determine if the email should be produced as evidence based on the document request.")
     export_dir = os.path.join(
         Path(__file__).resolve().parent.parent.parent.parent,
-        f"datasets/enron_export_investigations_1word_{model_name.replace('/', '_')}/").replace(
+        f"datasets/enron_export_investigations_diff_{model_name.replace('/', '_')}/").replace(
         "\\", "/")
     model_node: ModelNode = ModelDatabase.mistral_openchat(model_name)
     model_node.model.eval()
 
     contains_words = ["government", "inquiries", "investigation"]
-    bsz = 1
+    bsz = 2
     max_src_len = 8191
     sample_negative = False
     if sample_negative:
@@ -505,7 +505,7 @@ def dump_n_examples(n: int = 100000000):
                      training_ratio=1.0,
                      max_src_len=max_src_len,
                      max_tgt_len=-1,
-                     dataset_dir='/home/ceyer/Documents/Projects/Maghz/datasets/enron_with_categories1').load_training_data()
+                     dataset_dir='/home/ceyer/Documents/Projects/Maghz/datasets/enron_with_categories').load_training_data()
 
     #     answers = tag_questions_controller(
     #         model=model_node.model, texts=[r'''Message-ID: <7361482.1075847628266.JavaMail.evans@thyme>
@@ -618,8 +618,8 @@ def dump_n_examples(n: int = 100000000):
         assert len(answers) == len(doc_batch_filtered)
         for i, (answer, doc) in enumerate(zip(answers, doc_batch_filtered)):
             print('--------------------------------------------')
-            print(full_texts[i])
-            print('--------------------------------------------')
+            # print(full_texts[i])
+            # print('--------------------------------------------')
 
             print('answer', answer)
             print('lm_logits', lm_logits[i])

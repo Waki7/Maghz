@@ -1,7 +1,6 @@
 """ PyTorch LED model."""
 from __future__ import annotations
 
-import inspect
 import json
 import os
 from abc import ABC
@@ -87,12 +86,30 @@ class MistralPreTrainedModel(DecoderTransformer, ABC):
                 module.weight.data[module.padding_idx].zero_()
 
 
-class MistralForCausalLMHug(MistralPreTrainedModel):
+class PrototypeEmbedding(nn.Module):
+    def __init__(self, n_tokens: int, hidden_size: int):
+        super().__init__()
+        self.conv1 = nn.Conv1d(hidden_size, hidden_size, kernel_size=7,
+                               padding=3, stride=5)
+        self.embedder = nn.Linear(3 * hidden_size, 3 * hidden_size, bias=False)
 
-    @staticmethod
-    def get_embedding_head(n_tokens: int, hidden_size: int):
-        return nn.Linear(hidden_size, hidden_size, bias=False)
-        # return nn.Linear(hidden_size, hidden_size, bias=False)
+    def forward(self, x: FloatTensorT['B,SrcSeqLen,EmbedLen']):
+        # treat embed len as the channels
+        x: FloatTensorT['B,EmbedLen,SrcSeqLen'] = x.permute(0, 2, 1)
+        # print('pre-conv', x.shape)
+        x = self.conv1(x)
+        x: FloatTensorT['B,SrcSeqLen/Stride,EmbedLen'] = x.permute(0, 2, 1)
+        max_pool = torch.max(x, dim=1)
+        avg_pool = torch.mean(x, dim=1)
+        last = x[:, -1, :]
+        combined_pool = torch.cat([max_pool.values, avg_pool, last], dim=-1)
+        # print('post-conv', x.shape)
+        # exit(3)
+        x = self.embedder(combined_pool)
+        return x
+
+
+class MistralForCausalLMHug(MistralPreTrainedModel):
 
     @classmethod
     def modules_to_not_convert(cls):
@@ -196,15 +213,13 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         tokenizer = hug.LlamaTokenizer.from_pretrained(model_id)
         if tokenizer.pad_token_id is None:
             tokenizer.pad_token_id = tokenizer.eos_token_id
-        if tokenizer.sep_token_id is None:
-            tokenizer.sep_token_id = tokenizer.eos_token_id
         tokenizer.save_pretrained(path)
         if not os.path.exists(os.path.join(path, 'tokenizer.json')):
             with open(os.path.join(path, 'tokenizer.json'), 'w') as f:
                 json.dump(tokenizer.get_vocab(), f, indent=4)
         model_hug = hug.MistralForCausalLM.from_pretrained(
             model_id,
-            use_flash_attention_2=True,
+            attn_implementation="flash_attention_2",
             torch_dtype=torch.float16, device_map={"": torch.device('cpu')}, )
         config = model_hug.config
         if config.pad_token_id is None:
@@ -219,7 +234,7 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
             json.dump(config.to_dict(), f)
         torch.save(model_hug.state_dict(),
                    os.path.normpath(os.path.join(path, 'weights.bin')))
-        torch.save(cls.get_embedding_head(
+        torch.save(PrototypeEmbedding(
             model_hug.model.embed_tokens.num_embeddings,
             config.hidden_size).half().cpu().state_dict(),
                    os.path.normpath(os.path.join(path, 'embedding_head.bin')))
@@ -228,14 +243,14 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         super().__init__(config)
         torch.set_default_dtype(torch.float16)
         self.hug = hug.MistralForCausalLM(config)
-        self.embedding_head = self.get_embedding_head(
+        self.embedding_head = PrototypeEmbedding(
             self.hug.model.embed_tokens.num_embeddings,
             config.hidden_size)
         # self.post_embedding_layernorm = MistralRMSNorm(
         #     self.embedding_head.weight.shape[1], eps=config.rms_norm_eps)
         # Initialize weights and apply final processing
         self.apply(self._init_weights)
-        torch.set_default_dtype(torch.float32)
+        # torch.set_default_dtype(torch.float32)
 
     @overrides(DecoderTransformer)
     def forward(
@@ -260,20 +275,6 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         Should just be used for generation with torch.no_grad()
         """
         raise NotImplementedError
-
-    def _change_output_if_configured(self, output: FloatTensorT[
-        'B,Opt[SrcSeqLen],EmbedLen']) -> FloatTensorT[
-        'B,Opt[SrcSeqLen],EmbedLen+2']:
-        if self.embedding_head.weight.shape[1] == self.embed_dim + 2:
-            if len(output.shape) == 2:
-                output = FloatTensorT(
-                    torch.cat([output, torch.zeros_like(output[:, :2])],
-                              dim=-1))
-            else:
-                output = FloatTensorT(
-                    torch.cat([output, torch.zeros_like(output[:, :, :2])],
-                              dim=-1))
-        return output
 
     @overrides(DecoderTransformer)
     def decode_logits(self,
@@ -322,11 +323,17 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
             'B,TgtSeqLen,EmbedLen'] = FloatTensorT(
             full_output.last_hidden_state)
         if ret_last:
-            output = output[:, -1, :]
-        output = self._change_output_if_configured(output)
-        lm_logits = self.hug.lm_head(output)
-        embedding = self.embedding_head(output)
-        return embedding, lm_logits
+            lm_logits = self.hug.lm_head(output[:, -1, :])
+        else:
+            lm_logits = self.hug.lm_head(output)
+        # embedding = self.embedding_head(output)
+
+        max_pool = torch.max(output, dim=1)
+        avg_pool = torch.mean(output, dim=1)
+        last = output[:, -1, :]
+        combined_pool = torch.cat([max_pool.values, avg_pool, last], dim=-1)
+
+        return combined_pool, lm_logits
 
     @overrides(DecoderTransformer)
     def decode_relevance(self,
@@ -345,7 +352,11 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         # print(self.hug.lm_head(output[:, -2:, :])[:,-1,:])
         # print(self.embedding_head(output[:, -1, :]))
         # print(self.embedding_head(output[:, -2:, :])[:,-1,:])
-        embedding = self.embedding_head(output[:, -2:, :])[:, -1, :]
+        embedding = self.embedding_head(output)
+        # avg_embedding = output[:, -1, :]
+        # print(avg_embedding.shape)
+        # print(embedding.shape)
+        # exit(3)
         return embedding, lm_logits
 
     @overrides(BaseTransformer)
@@ -363,6 +374,129 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
                                             max_new_tokens=max_new_tokens,
                                             do_sample=False)
         return LongTensorT(generate_output)
+
+
+class MistralForCausalLMHugMock(MistralForCausalLMHug):
+
+    @overrides(BaseTransformer)
+    def save(self, path: DirPath,
+             quantization_config: Optional[BnbQuantizationConfig] = None):
+        pass
+
+    @classmethod
+    def load_model(cls, path: DirPath,
+                   quantization_config: BitsAndBytesConfig = None) -> Optional[
+        MistralForCausalLMHug]:
+        from accelerate import init_empty_weights
+        try:
+            with open(os.path.normpath(os.path.join(path, 'config.json')),
+                      'r') as f:
+                config = json.load(f)
+                if hasattr(config, 'quantization_config'):
+                    if (quantization_config != config.quantization_config):
+                        logging.warning(
+                            'quantization configs do not match, {} vs {}'.format(
+                                quantization_config,
+                                config.quantization_config))
+                    quantization_config = config.quantization_config
+            config = MistralConfig.from_dict(config)
+            config._attn_implementation = "flash_attention_2"
+            if torch.cuda.is_available():
+                with init_empty_weights():
+                    model = cls(config).half()
+            else:
+                model = cls(config).half()
+            return model
+        except FileNotFoundError:
+            return None
+
+    @classmethod
+    def initial_save(cls, model_id: str, path: str):
+        if not os.path.exists(path):
+            os.makedirs(path)
+        tokenizer = hug.LlamaTokenizer.from_pretrained(model_id)
+        if tokenizer.pad_token_id is None:
+            tokenizer.pad_token_id = tokenizer.eos_token_id
+        tokenizer.save_pretrained(path)
+        if not os.path.exists(os.path.join(path, 'tokenizer.json')):
+            with open(os.path.join(path, 'tokenizer.json'), 'w') as f:
+                json.dump(tokenizer.get_vocab(), f, indent=4)
+        config = hug.MistralConfig.from_pretrained(
+            model_id,
+            attn_implementation="flash_attention_2",
+            torch_dtype=torch.float16, device_map={"": torch.device('cpu')}, )
+        if config.pad_token_id is None:
+            config.pad_token_id = tokenizer.pad_token_id
+        if config.sep_token_id is None:
+            config.sep_token_id = tokenizer.sep_token_id
+        config._flash_attn_2_enabled = True
+        config._attn_implementation = "flash_attention_2"
+
+        with open(os.path.normpath(os.path.join(path, 'config.json')),
+                  'w') as f:
+            json.dump(config.to_dict(), f)
+
+    @overrides(DecoderTransformer)
+    def forward(
+            self,
+            src_ids: LongTensorT['B,SrcSeqLen'],
+            src_mask: IntTensorT['B,1|SrcSeqLen,SrcSeqLen'],
+    ) -> LogitsTensorT['B,TgtSeqLen,OutNClasses']:
+        b, src_len = src_ids.shape
+        return LogitsTensorT(torch.rand(b, self.embed_dim))
+
+    @overrides(DecoderTransformer)
+    def decode_logits(self,
+                      src_ids: LongTensorT['B,SrcSeqLen'],
+                      src_mask: IntTensorT['B,SrcSeqLen'],
+                      ret_last: bool = True) -> (
+            LogitsTensorT)['B,Opt[SrcSeqLen],VocabSize']:
+        b, src_len = src_ids.shape
+        return LogitsTensorT(torch.rand(b, self.embed_dim))
+
+    @overrides(DecoderTransformer)
+    def decoder_embedding(self,
+                          src_ids: LongTensorT['B,SrcSeqLen'],
+                          src_mask: IntTensorT['B,SrcSeqLen'],
+                          ret_last: bool = True) -> \
+            FloatTensorT['B,Opt[SrcSeqLen],EmbedLen']:
+        b, src_len = src_ids.shape
+        return FloatTensorT(torch.rand(b, self.embed_dim))
+
+    @overrides(DecoderTransformer)
+    def decoder_embedding_w_logits(self,
+                                   src_ids: LongTensorT['B,SrcSeqLen'],
+                                   src_mask: IntTensorT['B,SrcSeqLen'],
+                                   ret_last: bool = True) -> \
+            Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], FloatTensorT[
+                'B,Opt[SrcSeqLen],VocabSize']]:
+        b, src_len = src_ids.shape
+        return FloatTensorT(torch.rand(b, self.embed_dim)), FloatTensorT(
+            torch.rand(b, 2))
+
+    @overrides(DecoderTransformer)
+    def decode_relevance(self,
+                         src_ids: LongTensorT['B,SrcSeqLen'],
+                         src_mask: IntTensorT['B,SrcSeqLen'], ) -> \
+            Tuple[FloatTensorT['B,EmbedLen'], Optional[
+                FloatTensorT['B,NClasses']]]:
+        b, src_len = src_ids.shape
+        return FloatTensorT(torch.rand(b, self.embed_dim)), FloatTensorT(
+            torch.rand(b, 2))
+
+    @overrides(BaseTransformer)
+    def generate(self,
+                 src_ids: LongTensorT['B,SrcSeqLen'],
+                 src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
+                 tgt_ids: LongTensorT['B,TgtSeqLen'] = None,
+                 max_new_tokens: int = None,
+                 ) -> LongTensorT['TgtSeqLen']:
+        b, src_len = src_ids.shape
+        return LongTensorT(torch.randint(b, src_ids + 1))
+
+    def __init__(self, config: MistralConfig):
+        self.config = config
+        self.embed_dim = config.hidden_size
 
 
 def main():

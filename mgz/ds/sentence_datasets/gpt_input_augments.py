@@ -35,6 +35,8 @@ class PromptConfig:
                  prompt_type: PromptType = None, ):
         if prompt_type is None:
             self.prompt_type = self.infer_prompt_type(model)
+        else:
+            self.prompt_type = prompt_type
         self.system_context = system_context
         self.truncate_token_start = '[TRUNCABTABLE_START]'
         self.truncate_token_end = '[TRUNCABTABLE_END]'
@@ -111,7 +113,7 @@ class PromptingInput:
         if system_context:
             prompt = f"<s>[INST] <<SYS>>{system_context}<</SYS>>\n\n{main_body} [/INST]"
         else:
-            prompt = f"<s>[INST] {main_body} [/INST]"
+            prompt = f"<s>[INST] \n\n{main_body} [/INST]"
         for chat in additional_chat:
             prompt += f" </s><s>[INST]" \
                       f"{chat} [/INST]"
@@ -141,16 +143,17 @@ class PromptingInput:
 class ContextPromptingInput(PromptingInput):
 
     def get_tokenizer_input(self, add_trunc: bool = True):
-        trunc_start = self.truncate_token_start if add_trunc else ""
-        trunc_end = self.truncate_token_end if add_trunc else ""
 
         def _make_tag_prompt(tag: str) -> str:
             # return f"We are looking for {tag}. Is this {self.document_type} what we are looking for. Yes or no.\n"
             # return f"Is it apparent that the {self.document_type} is part of \"{tag}\"? Yes or no.\n"
-            return f"Is the {self.document_type} part of \"{tag}\"? Yes or no.\n"
+            return f"Is the {self.document_type} part of \"{tag}\"? Answer yes or no"
 
         if isinstance(self.document_requests, str):
-            prompt_body = f"{trunc_start}{self.document_text}{trunc_end}\n{_make_tag_prompt(self.document_requests)}"
+            if add_trunc:
+                prompt_body = f"{self.truncate_token_start}{self.document_text}{self.truncate_token_end}\n{_make_tag_prompt(self.document_requests)}"
+            else:
+                prompt_body = f" {self.document_text} \n{_make_tag_prompt(self.document_requests)}"
             if self.prompt_type == PromptType.MISTRAL:
                 return self.prompt_mistral(prompt_body,
                                            system_context=self.system_context)
@@ -158,7 +161,10 @@ class ContextPromptingInput(PromptingInput):
                 return self.prompt_adapt(prompt_body,
                                          system_context=self.system_context)
         else:
-            prompt_body = f"{trunc_start}{self.document_text}{trunc_end}\n{_make_tag_prompt(self.document_requests[0])}"
+            if add_trunc:
+                prompt_body = f"{self.truncate_token_start} {self.document_text} {self.truncate_token_end}\n{_make_tag_prompt(self.document_requests[0])}"
+            else:
+                prompt_body = f" {self.document_text} \n{_make_tag_prompt(self.document_requests[0])}"
             additional_tag_prompts: List[str] = [
                 _make_tag_prompt(document_request)
                 for document_request in

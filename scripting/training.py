@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from mgz.ds.sentence_datasets.gpt_input_augments import PromptingInput
+from mgz.ds.sentence_datasets.gpt_input_augments import PromptConfig
 
 os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 # from mgz.models.nlp.bart_interface import BARTHubInterface
@@ -54,21 +54,25 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
                                             n_queries_per_cls=[2],
                                             n_supports_per_cls=[3, 4])
     if enron:
-        prompt_type = PromptingInput.infer_prompt_type(model_node.model)
+        system_context = (
+            "Given this as the only background: The FERC's investigating enron for market manipulation. The FERC investigation primarily focused on Enron's role in the California energy crisis of 2000-2001, "
+            "along with its trading practices and their impact on electricity markets across the United States. Determine if the email should be produced as evidence based on the document request.")
+        prompt_config = PromptConfig(model=model_node.model,
+                                     system_context=system_context)
         ds = EnronEmailsTagQA(model_node.tokenizer,
-                              prompt_type=prompt_type,
-                              max_src_len=4095,
+                              prompt_config=prompt_config,
+                              max_src_len=7000,
                               n_episodes=100,
                               n_query_per_cls=[1],
-                              n_support_per_cls=[2, 3, 4, 5, 6, 7, 8],
-                              dataset_dir="/home/ceyer/Documents/Projects/Maghz/datasets/enron_export_investigations_openchat-0106")
+                              n_support_per_cls=[1, 2, 3, 4, 5, 6, 7, 8],
+                              dataset_dir="/home/ceyer/Documents/Projects/Maghz/datasets/enron_export_investigations_diff_mistralai_Mistral-7B-Instruct-v0.1")
         val_ds = EnronEmailsTagQA(model_node.tokenizer,
-                                  prompt_type=prompt_type,
-                                  max_src_len=4095,
-                                  n_episodes=50,
+                                  prompt_config=prompt_config,
+                                  max_src_len=7000,
+                                  n_episodes=25,
                                   n_query_per_cls=[1],
-                                  n_support_per_cls=[2, 3, 4, 5, 6, 7, 8],
-                                  dataset_dir="/home/ceyer/Documents/Projects/Maghz/datasets/enron_export_investigations_openchat-0106")
+                                  n_support_per_cls=[1, 2, 3, 4, 5, 6, 7, 8],
+                                  dataset_dir="/home/ceyer/Documents/Projects/Maghz/datasets/enron_export_investigations_diff_mistralai_Mistral-7B-Instruct-v0.1")
     if old_enron:
         ds = EnronEmailsTagging(model_node.tokenizer,
                                 max_src_len=3000,
@@ -122,7 +126,6 @@ def led_main_train():
     print('... loading model and tokenizer')
 
     with torch.cuda.amp.autocast(enabled=True):
-        quantize = True
         model_node: ModelNode = ModelDatabase.mistral_openchat(model_name)
 
         # ModelNode.load_from_id(LEDForConditionalGeneration, model_name,
@@ -130,19 +133,20 @@ def led_main_train():
         settings.print_gpu_usage()
         ds, val_ds = dataset_select(model_node, aus=False, enron=True)
         # loss_fn = torch.nn.NLLLoss()
-        loss_fn = torch.nn.CrossEntropyLoss(label_smoothing=0.3)
+        loss_fn = torch.nn.CrossEntropyLoss(label_smoothing=0.0)
 
         training_cfg = {}
-        lr = 0.0000025
-        weight_decay = 0.0001
+        lr = 0.0001
+        weight_decay = 0.0000
         betas = (0.9, 0.999)
-        eps = 1e-8
+        eps = 1e-6
 
-        model_node.freeze_parameters('embedding_head')
+        model_node.freeze_parameters(['embedding_head'])
+        settings.print_trainable_parameters(model_node.model)
         trainable_params = [p for n, p in model_node.model.named_parameters() if
                             p.requires_grad]
 
-        optimizer = model_node.get_optimizer(quantize=quantize, lr=lr,
+        optimizer = model_node.get_optimizer(quantize=True, lr=lr,
                                              params=trainable_params,
                                              weight_decay=weight_decay,
                                              eps=eps, betas=betas)
@@ -151,15 +155,15 @@ def led_main_train():
         train_transition_edge = ModelTransitionEdge(model_node, loss_fn,
                                                     optimizer, ds)
         routine = TaggingRoutine(
-            distance_measure=DistanceMeasure.CLASSIFICATION,
+            distance_measure=DistanceMeasure.COSINE,
             tokenizer=model_node.tokenizer, debug=False, gpu_max_batch_size=2)
 
-        routine.evaluate(model_node=model_node, val_ds=val_ds)
-        # routine.train(
-        #     model_node=model_node, ds=ds, val_ds=val_ds,
-        #     model_edge=train_transition_edge,
-        #     device=settings.DEVICE, distributed=False,
-        #     turn_off_shuffle=True, n_epochs=50, )
+        # routine.evaluate(model_node=model_node, val_ds=val_ds)
+        routine.train(
+            model_node=model_node, ds=ds, val_ds=val_ds,
+            model_edge=train_transition_edge,
+            device=settings.DEVICE, distributed=False,
+            turn_off_shuffle=True, n_epochs=50, )
         torch.cuda.empty_cache()
 
 

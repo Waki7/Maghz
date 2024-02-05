@@ -59,13 +59,14 @@ class ModelNode:
                     'edges': [edge.to_json() for edge in self.edges_out]}
         return json.dumps(obj_dict, indent=4, separators=(',', ': '))
 
-    def freeze_parameters(self, exempt_search_string: str = None):
+    def freeze_parameters(self,
+                          exempt_search_string: Optional[List[str]] = None):
         if exempt_search_string is None:
             for param in self.model.parameters():
                 param.requires_grad = False
         else:
             for name, param in self.model.named_parameters():
-                if exempt_search_string in name:
+                if any([s in name for s in exempt_search_string]):
                     param.requires_grad = True
                 else:
                     param.requires_grad = False

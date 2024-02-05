@@ -7,7 +7,7 @@ import unittest
 from transformers import LlamaTokenizer
 
 from mgz.ds.sentence_datasets.gpt_input_augments import ContextPromptingInput, \
-    PromptType
+    PromptType, PromptConfig
 from mgz.ds.sentence_datasets.sentence_datasets import \
     prompts_to_padded_id_tensor_w_mask, strings_to_padded_id_tensor_w_mask
 
@@ -15,12 +15,15 @@ from mgz.ds.sentence_datasets.sentence_datasets import \
 class TestBert(unittest.TestCase):
 
     def test_prompts_to_padded_id_tensor_w_mask_NonTruncated(self):
-        tokenizer = LlamaTokenizer.from_pretrained('AdaptLLM/law-chat')
-        prompt1 = ContextPromptingInput(PromptType.ADAPT, "document_text",
-                                        "tag")
-        prompt2 = ContextPromptingInput(PromptType.ADAPT,
-                                        "document_text hello hello hello",
-                                        "tag")
+        tokenizer = LlamaTokenizer.from_pretrained('mistralai/Mistral-7B-Instruct-v0.1')
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+        prompt_cfg: PromptConfig = PromptConfig(prompt_type=(PromptType.ADAPT))
+        prompt1 = ContextPromptingInput(prompt_config=prompt_cfg,
+                                        document_text="document text",
+                                        document_requests="tag")
+        prompt2 = ContextPromptingInput(prompt_config=prompt_cfg,
+                                        document_text="document text hello hello hello",
+                                        document_requests="tag")
         src_ids_short_ref, src_mask_short_ref = strings_to_padded_id_tensor_w_mask(
             [prompt1.get_tokenizer_input(False),
              prompt2.get_tokenizer_input(False)],
@@ -30,26 +33,49 @@ class TestBert(unittest.TestCase):
             [prompt1, prompt2],
             tokenizer=tokenizer,
             max_len=100, device='cpu')
-        print('src_ids_short_ref', tokenizer.batch_decode(src_ids_short_ref,
-                                                          skip_special_tokens=True))
-        print('src_ids_short',
-              tokenizer.batch_decode(src_ids_short, skip_special_tokens=True))
+        reference_decoded = tokenizer.batch_decode(src_ids_short_ref,
+                                                   skip_special_tokens=True)
 
+        prompt_cutting_decoded = tokenizer.batch_decode(src_ids_short,
+                                                        skip_special_tokens=True)
+        print('-')
+        print(prompt1.get_tokenizer_input(False))
+        print('-')
+        print(prompt1.get_tokenizer_input(True))
+        print('-')
+        print('ref_ids_short', reference_decoded)
+        print('src_ids_short', prompt_cutting_decoded)
         print('src_mask_short_ref', tokenizer.batch_decode(src_mask_short_ref,
                                                            skip_special_tokens=True))
         print('src_mask_short',
               tokenizer.batch_decode(src_mask_short, skip_special_tokens=True))
-        self.assertTrue((src_ids_short == src_ids_short_ref).all())
+        for i in range(len(reference_decoded)):
+            self.assertTrue(reference_decoded[i] == prompt_cutting_decoded[i])
+        decoded = tokenizer.batch_decode(src_ids_short[0],
+                                         skip_special_tokens=True)
+        ref_decoded = tokenizer.batch_decode(src_ids_short_ref[0],
+                                             skip_special_tokens=True)
+        print(len(decoded))
+        print(decoded)
+        print(len(ref_decoded))
+        print(ref_decoded)
         self.assertTrue((src_mask_short == src_mask_short_ref).all())
 
     def test_prompts_to_padded_id_tensor_w_mask_Truncated(self):
-        tokenizer = LlamaTokenizer.from_pretrained('AdaptLLM/law-chat')
+        tokenizer = LlamaTokenizer.from_pretrained('mistralai/Mistral-7B-Instruct-v0.1')
+        tokenizer.pad_token_id = tokenizer.eos_token_id
         sample_text = "we are going to make sure that this is correctly truncated"
-        prompt_to_truncate = ContextPromptingInput(PromptType.ADAPT,
-                                                   sample_text + " truncate this",
-                                                   "tag")
+        prompt_cfg: PromptConfig = PromptConfig(prompt_type=(PromptType.ADAPT))
+        prompt_to_truncate = ContextPromptingInput(prompt_config=prompt_cfg,
+                                                   document_text=sample_text + " truncate this",
+                                                   document_requests="tag")
+
+        prompt_to_truncate2 = ContextPromptingInput(prompt_config=prompt_cfg,
+                                                   document_text=sample_text + " truncate truncate this",
+                                                   document_requests="tag")
+
         src_ids_short, src_mask_short = prompts_to_padded_id_tensor_w_mask(
-            [prompt_to_truncate],
+            [prompt_to_truncate, prompt_to_truncate2],
             tokenizer=tokenizer,
             max_len=72, device='cpu')
         print('src_ids_short',

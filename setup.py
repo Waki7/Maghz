@@ -130,6 +130,7 @@ setup(
         'flash-attn',
         'transformers',
         'torchaudio',
+        'torchmetrics',
         'torchvision',
         'torchtext',
         'pyarrow==11.0.0',

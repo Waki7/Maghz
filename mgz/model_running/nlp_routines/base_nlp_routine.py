@@ -24,11 +24,12 @@ class BaseNLPProtocol(BaseProtocol):
                  tokenizer: hug.PreTrainedTokenizerBase = None,
                  gpu_max_batch_size: int = 4,
                  debug: bool = False,
+                 gradient_accumulation_steps: int = 4,
                  ):
         self.tokenizer = tokenizer
         self.debug = debug
         self.gpu_max_batch_size = gpu_max_batch_size
-
+        self.gradient_accumulation_steps = gradient_accumulation_steps
     def debug_log_batch_info(self, batch: TagQAMetaTaskBatch):
         if self.debug:
             print(
@@ -55,7 +56,6 @@ class BaseNLPProtocol(BaseProtocol):
                     model_edge: ModelTransitionEdge,
                     log_interval=5,
                     val_interval=50,
-                    gradient_accumulation_steps=4,
                     debug=False,
                     ) -> ModelNode:
         """Train a single epoch"""
@@ -74,7 +74,7 @@ class BaseNLPProtocol(BaseProtocol):
         model_edge.start_timer()
 
         accelerator = Accelerator(
-            gradient_accumulation_steps=gradient_accumulation_steps)
+            gradient_accumulation_steps=self.gradient_accumulation_steps)
         model, optimizer, data_loader, scheduler = accelerator.prepare(
             model, optimizer, data_loader, scheduler
         )

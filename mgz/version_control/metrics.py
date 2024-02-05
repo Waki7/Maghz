@@ -8,7 +8,7 @@ class Metrics(str, Enum):
 
     VAL_ACC_ALL = 'val/accuracy_all'
     VAL_ACC_MEAN = 'val/accuracy_mean'
-    VAL_AVG_PRED = 'train/avg_pred'
+    VAL_AVG_PRED = 'val/avg_pred'
 
     def __str__(self):
         return self.value

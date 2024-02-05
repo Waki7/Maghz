@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import mgz.settings as settings
 import torch.nn as nn
+from torchtext.data.metrics import bleu_score
+from torchmetrics.functional import pairwise_cosine_similarity
+import mgz.settings as settings
 from mgz.models.nlp.bart import BartModel
 from mgz.typing import *
 from mgz.version_control.model_index import Indexer
-from torchtext.data.metrics import bleu_score
 
 
 class DistanceMeasuresPerClass:
@@ -27,23 +28,14 @@ class DistanceMeasuresPerClass:
     def cosine_similarity(class_embeddings: FloatTensorT['NClasses,EmbedLen'],
                           query_embeddings: FloatTensorT['NQuery,EmbedLen']) -> \
             FloatTensorT['NQuery,NClasses']:
-        query_n, class_n = query_embeddings.norm(dim=-1)[:,
-                           None], class_embeddings.norm(dim=-1)[:, None]
-        query_norm = query_embeddings / torch.max(query_n,
-                                                  1.0e-4 * torch.ones_like(
-                                                      query_n))
-        class_norm = class_embeddings / torch.max(class_n,
-                                                  1.0e-4 * torch.ones_like(
-                                                      class_n))
-        distance_to_classes: FloatTensorT['NQuery,NClasses'] = \
-            torch.mm(query_norm, class_norm.transpose(0, 1))
-        return distance_to_classes
+        return pairwise_cosine_similarity(query_embeddings, class_embeddings)
 
     @staticmethod
     def inner_dot_product(class_embeddings: FloatTensorT['NClasses,EmbedLen'],
                           query_embeddings: FloatTensorT['NQuery,EmbedLen']) -> \
             FloatTensorT['NQuery,NClasses']:
-        return torch.mm(query_embeddings, class_embeddings.transpose(0, 1))
+        raise NotImplementedError('TODO')
+        return torch.mm(class_embeddings, query_embeddings)
 
 
 def bleu_from_tokenized_sentences(candidate_corpus: List[TokenT],

@@ -103,14 +103,14 @@ def prompts_to_padded_id_tensor_w_mask(prompts: List[PromptingInput],
         tokenizer.__call__(tokenizer_input,
                            padding=True,
                            return_tensors='pt', return_length=True))
+
     input_ids: LongTensorT['B,SrcSeqLen'] = input_encodings.input_ids
     attention_mask: IntTensorT['B,SrcSeqLen'] = input_encodings.attention_mask
 
     input_ids_padded: LongTensorT['B,SrcSeqLen'] = tokenizer.pad_token_id * (
-        torch.ones((len(prompts), max_len)))
+        torch.ones((len(prompts), max_len)).to(torch.int32))
     attention_masks_padded: IntTensorT['B,SrcSeqLen'] = IntTensorT(
         torch.zeros((len(prompts), max_len)))
-
     pre_pad_lengths: IntTensorT['B'] = input_encodings.length
     start_idxs: IntTensorT['B'] = (
             input_ids == truncate_start_token).int().argmax(-1)
@@ -129,7 +129,7 @@ def prompts_to_padded_id_tensor_w_mask(prompts: List[PromptingInput],
             input_ids[b, -pre_pad_lengths[b]:strt_idx],
             input_ids[b, strt_idx + 1:end_idx - trim],
             input_ids[b, end_idx + 1:]
-        ], dim=-1)
+        ], dim=-1).to(torch.int32)
         attention_masks_padded[b, -(length - trim):] = torch.cat([
             attention_mask[b, -pre_pad_lengths[b]:strt_idx],
             attention_mask[b, strt_idx + 1:end_idx - trim],
@@ -165,16 +165,14 @@ class TagQAMetaTaskBatch:
         pos_query_idxs: List[int] = pos_idxs[n_support_per_cls:]
 
         self.supports: LongTensorT[
-            'NClasses,TaskSize/NClasses,SrcSeqLen'] = \
+            'NClasses,NSupport/NClasses,SrcSeqLen'] = \
             LongTensorT(torch.stack(
                 [src_ids[neg_sup_idxs, :], src_ids[pos_sup_idxs, :]],
-                dim=0)).to(
-                torch.long)
+                dim=0)).to(torch.long)
         self.support_masks = \
             LongTensorT(torch.stack(
                 [src_masks[neg_sup_idxs, :], src_masks[pos_sup_idxs, :]],
-                dim=0)).to(
-                torch.long)
+                dim=0)).to(torch.long)
 
         self.queries: LongTensorT[
             'TaskSize,SrcSeqLen'] = src_ids[neg_query_idxs + pos_query_idxs, :]
@@ -235,6 +233,12 @@ class TagQAMetaTaskBatch:
                                                device=device)
         label_tensor = LongTensorT(
             torch.tensor(labels, dtype=torch.long, device=device))
+        # for i, prompt in enumerate(prompts):
+        #     print('------')
+        #     print('------')
+        #     print('------')
+        #     print(label_tensor[i])
+        #     print('src_ids', prompt.get_tokenizer_input()[400:600])
         return TagQAMetaTaskBatch(src_ids=src_ids,
                                   src_masks=src_masks,
                                   labels=label_tensor,
@@ -279,16 +283,17 @@ class TagQAMetaTaskBatch:
         pos_batch: List[Tuple[PromptingInput, LabelT]] = \
             [(ContextPromptingInput(
                 prompt_config=ds.prompt_config,
-                # ds.data[i][SampleType.FILE_NAME] +
+                # document_text=ds.data[i][SampleType.FILE_NAME] + ds.data[i][
+                #     SampleType.FULL_AS_STRING],
                 document_text=ds.data[i][SampleType.FULL_AS_STRING],
                 document_requests=pos_tag, ),
               1) for i in positive_examples]
-
         neg_batch: List[Tuple[PromptingInput, LabelT]] = \
             [(ContextPromptingInput(
                 prompt_config=ds.prompt_config,
-                #                 ds.data[i][SampleType.FILE_NAME] +
-                document_text=ds.data[i][SampleType.FULL_AS_STRING],
+                # document_text=ds.data[i][SampleType.FILE_NAME] + ds.data[i][
+                #     SampleType.FULL_AS_STRING],
+                                document_text=ds.data[i][SampleType.FULL_AS_STRING],
                 document_requests=pos_tag, ),
               0) for i in negative_examples]
 
