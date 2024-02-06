@@ -148,7 +148,7 @@ class TaggingRoutine(BaseNLPProtocol):
         with torch.no_grad():
             support_centers: FloatTensorT[
                 'NClasses,EmbedLen'] = self._2dim_batchify(
-                batch, model.decode_relevance, model.embed_dim,
+                batch, model.decoder_embedding_w_logits, model.embed_dim,
                 self.gpu_max_batch_size)
 
         self.debug_log_batch_info(batch)

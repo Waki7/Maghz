@@ -392,20 +392,13 @@ class MistralForCausalLMHugMock(MistralForCausalLMHug):
             with open(os.path.normpath(os.path.join(path, 'config.json')),
                       'r') as f:
                 config = json.load(f)
-                if hasattr(config, 'quantization_config'):
-                    if (quantization_config != config.quantization_config):
-                        logging.warning(
-                            'quantization configs do not match, {} vs {}'.format(
-                                quantization_config,
-                                config.quantization_config))
-                    quantization_config = config.quantization_config
             config = MistralConfig.from_dict(config)
             config._attn_implementation = "flash_attention_2"
             if torch.cuda.is_available():
                 with init_empty_weights():
-                    model = cls(config).half()
+                    model = cls(config)
             else:
-                model = cls(config).half()
+                model = cls(config)
             return model
         except FileNotFoundError:
             return None
