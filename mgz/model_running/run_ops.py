@@ -41,25 +41,23 @@ def embedding_controller_from_texts(model: BaseTransformer, texts: List[str],
     src_ids, src_mask = strings_to_padded_id_tensor_w_mask(texts, tokenizer,
                                                            max_src_len,
                                                            settings.DEVICE)
-
-    tgt_ids, tgt_mask = strings_to_padded_id_tensor_w_mask(
-        [tokenizer.sep_token], tokenizer,
-        max_len=1,
-        device=settings.DEVICE)
-
-    if isinstance(model, EncoderDecoderTransformer):
+    if isinstance(model, DecoderTransformer):
+        embedding: FloatTensorT[
+            'TaskSize,EmbedLen'] = model.decoder_embedding(
+            src_ids=src_ids,
+            src_mask=src_mask,
+        )
+    elif isinstance(model, EncoderDecoderTransformer):
+        tgt_ids, tgt_mask = strings_to_padded_id_tensor_w_mask(
+            [tokenizer.sep_token], tokenizer,
+            max_len=1,
+            device=settings.DEVICE)
         embedding: FloatTensorT[
             'TaskSize,EmbedLen'] = model.encoder_decoder_embedding(
             src_ids=src_ids,
             tgt_ids=tgt_ids,
             src_mask=src_mask,
             tgt_mask=tgt_mask
-        )
-    elif isinstance(model, DecoderTransformer):
-        embedding: FloatTensorT[
-            'TaskSize,EmbedLen'] = model.decoder_embedding(
-            src_ids=src_ids,
-            src_mask=src_mask,
         )
     else:
         raise NotImplementedError
@@ -417,7 +415,6 @@ def tagging_embedding_controller(model: EncoderDecoderTransformer,
         max_src_len = model.get_max_encoder_positions()
     if max_tgt_len is None:
         max_tgt_len = model.get_max_decoder_positions() - 1
-
     src_ids, src_mask = strings_to_padded_id_tensor_w_mask(texts, tokenizer,
                                                            max_src_len,
                                                            settings.DEVICE)
