@@ -490,7 +490,7 @@ class MistralForCausalLMHugMock(MistralForCausalLMHug):
     def __init__(self, config: MistralConfig):
         self.config = config
         self.embed_dim = config.hidden_size
-
+        torch.nn.Module.__init__(self)
 
 def main():
     pth = os.path.join(get_models_path(), 'mistralai/Mistral-7B-v0.1')
