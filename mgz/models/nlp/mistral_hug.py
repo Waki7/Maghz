@@ -213,6 +213,8 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         tokenizer = hug.LlamaTokenizer.from_pretrained(model_id)
         if tokenizer.pad_token_id is None:
             tokenizer.pad_token_id = tokenizer.eos_token_id
+        if tokenizer.sep_token_id is None:
+            tokenizer.sep_token_id = tokenizer.eos_token_id
         tokenizer.save_pretrained(path)
         if not os.path.exists(os.path.join(path, 'tokenizer.json')):
             with open(os.path.join(path, 'tokenizer.json'), 'w') as f:
@@ -410,6 +412,8 @@ class MistralForCausalLMHugMock(MistralForCausalLMHug):
         tokenizer = hug.LlamaTokenizer.from_pretrained(model_id)
         if tokenizer.pad_token_id is None:
             tokenizer.pad_token_id = tokenizer.eos_token_id
+        if tokenizer.sep_token_id is None:
+            tokenizer.sep_token_id = tokenizer.eos_token_id
         tokenizer.save_pretrained(path)
         if not os.path.exists(os.path.join(path, 'tokenizer.json')):
             with open(os.path.join(path, 'tokenizer.json'), 'w') as f:
