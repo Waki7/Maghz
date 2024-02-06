@@ -139,9 +139,12 @@ def _qa_controller_from_prompts(model: DecoderTransformer,
     """
     assert isinstance(model, DecoderTransformer)
     if max_src_len is None:
+        logging.info(
+            f'max_src_len is None, setting to model max_decoder_positions - max_new_tokens {model.get_max_decoder_positions()} - {max_new_tokens}')
         max_src_len = model.get_max_decoder_positions() - max_new_tokens
-    max_src_len = min(max_src_len,
-                      model.get_max_decoder_positions() - max_new_tokens)
+    else:
+        max_src_len = min(max_src_len,
+                          model.get_max_decoder_positions() - max_new_tokens)
 
     src_ids, src_mask = prompts_to_padded_id_tensor_w_mask(prompts,
                                                            tokenizer,

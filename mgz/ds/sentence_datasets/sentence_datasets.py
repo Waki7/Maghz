@@ -124,7 +124,7 @@ def prompts_to_padded_id_tensor_w_mask(prompts: List[PromptingInput],
         if trim > 0:
             logging.info(f'trimming {trim} characters')
         assert (end_idx - strt_idx + 2) > trim, \
-            f"Too much to trim need to trim {trim} but only have {end_idx - strt_idx + 2} tokens."
+            f"Too much to trim need to trim {trim}, from {pre_pad_lengths[2]} to {max_len}, but only have {end_idx - strt_idx + 2} tokens."
         input_ids_padded[b, -(length - trim):] = torch.cat([
             input_ids[b, -pre_pad_lengths[b]:strt_idx],
             input_ids[b, strt_idx + 1:end_idx - trim],
@@ -228,16 +228,19 @@ class TagQAMetaTaskBatch:
             if any([search_word.lower() in decoded for
                     search_word in search_words]):
                 if (self.query_lbls[i] == 1) and (random.random() < 0.5):
-                    noisy_no_yes_log_probs[i, 1] += (
-                            .2 * noisy_no_yes_log_probs[i, 0])
+                    change = (.5 * noisy_no_yes_log_probs[i, 0])
+                    noisy_no_yes_log_probs[i, 1] += change
+                    noisy_no_yes_log_probs[i, 0] -= change
                 else:
                     if random.random() < 0.3:
                         if random.random() < 0.5:
-                            noisy_no_yes_log_probs[i, 1] += (
-                                    .2 * noisy_no_yes_log_probs[i, 0])
+                            change = (.4 * noisy_no_yes_log_probs[i, 0])
+                            noisy_no_yes_log_probs[i, 1] += change
+                            noisy_no_yes_log_probs[i, 0] -= change
                         else:
-                            noisy_no_yes_log_probs[i, 0] += (
-                                    .2 * noisy_no_yes_log_probs[i, 1])
+                            change = (.4 * noisy_no_yes_log_probs[i, 1])
+                            noisy_no_yes_log_probs[i, 0] += change
+                            noisy_no_yes_log_probs[i, 1] -= change
         #
         # noisey_no_yes_probs = noisey_no_yes_probs + (torch.randn(
         #     *noisey_no_yes_probs.shape).to(noisey_no_yes_probs.device) * 0.3)

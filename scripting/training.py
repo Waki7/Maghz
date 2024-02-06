@@ -158,7 +158,7 @@ def led_main_train():
         trainable_params = [
             {'params': embed_params, 'lr': 0.0005},
             {'params': lm_head_params, 'lr': 0.00001},
-            {'params': mlp_params, 'lr': 0.00001},
+            {'params': mlp_params, 'lr': 0.000001},
         ]
         settings.print_trainable_parameters(model_node.model)
         optimizer = model_node.get_optimizer(quantize=True, lr=lr,
