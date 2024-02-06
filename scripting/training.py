@@ -61,14 +61,14 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
                                      system_context=system_context)
         ds = EnronEmailsTagQA(model_node.tokenizer,
                               prompt_config=prompt_config,
-                              max_src_len=6000,
+                              max_src_len=7000,
                               n_episodes=100,
                               n_query_per_cls=[1],
                               n_support_per_cls=[1, 2, 3, 4, 5, 6, 7, 8],
                               dataset_dir="/home/ceyer/Documents/Projects/Maghz/datasets/enron_export_investigations_diff_mistralai_Mistral-7B-Instruct-v0.1")
         val_ds = EnronEmailsTagQA(model_node.tokenizer,
                                   prompt_config=prompt_config,
-                                  max_src_len=6000,
+                                  max_src_len=7000,
                                   n_episodes=25,
                                   n_query_per_cls=[1],
                                   n_support_per_cls=[1, 2, 3, 4, 5, 6, 7, 8],
@@ -133,13 +133,13 @@ def led_main_train():
         settings.print_gpu_usage()
         ds, val_ds = dataset_select(model_node, aus=False, enron=True)
         # loss_fn = torch.nn.NLLLoss()
-        loss_fn = torch.nn.CrossEntropyLoss(label_smoothing=0.3)
+        loss_fn = torch.nn.CrossEntropyLoss()
 
         training_cfg = {}
-        lr = 0.00002
+        lr = 0.001
         weight_decay = 0.0000
         betas = (0.9, 0.999)
-        eps = 1e-6
+        eps = 1e-4
 
         model_node.freeze_parameters(['embedding_head'])
         settings.print_trainable_parameters(model_node.model)
@@ -155,7 +155,7 @@ def led_main_train():
         train_transition_edge = ModelTransitionEdge(model_node, loss_fn,
                                                     optimizer, ds)
         routine = TaggingRoutine(
-            distance_measure=DistanceMeasure.COSINE,
+            distance_measure=DistanceMeasure.L2,
             tokenizer=model_node.tokenizer, debug=False, gpu_max_batch_size=2)
 
         # routine.evaluate(model_node=model_node, val_ds=val_ds)

@@ -69,10 +69,19 @@ class TestBert(unittest.TestCase):
         print(probs.argmax(dim=-1))
 
     def test_distance_measures_dot_sparseMatch(self):
+        cos = nn.CosineSimilarity(dim=-1, eps=1e-4)
+        print(cos(torch.tensor([1, 1, 1]).float(),
+                  torch.tensor([1, 2, 1]).float()))
+        print(cos(torch.tensor([1, 2, 3]).float(),
+                  torch.tensor([1, 2, 1]).float()))
+
         class_embeddings: FloatTensorT['NClasses,EmbedLen'] = torch.tensor(
-            [[1, 1, 1], [5, 5, 5]]).float()
-        query_embeddings: FloatTensorT['NQuery,EmbedLen'] = torch.tensor(
-            [[1, 0, 1], [5, 5, 5]]).float()
+            [[1, 1, 1],
+             [1, 2, 3],
+             [5, 5, 5]]).float()
+        query_embeddings: FloatTensorT['NQuery,NClasses'] = torch.tensor(
+            [[1, 2, 1],
+             [5, 5, 5]]).float()
         similarity_to_classes = DistanceMeasuresPerClass.inner_dot_product(
             class_embeddings=class_embeddings,
             query_embeddings=query_embeddings)
@@ -81,10 +90,13 @@ class TestBert(unittest.TestCase):
             query_embeddings.shape[0], class_embeddings.shape[0]))
         self.assertTrue(
             similarity_to_classes[0, 0] > similarity_to_classes[0, 1])
+        # cosine similarity is more for the angle between the vectors,
+        # so different magnitude but same orientation should be the same (1,
+        # 1,1) and (5,5,5)
         self.assertTrue(
-            similarity_to_classes[0, 0] > similarity_to_classes[0, 2])
+            similarity_to_classes[0, 0] == similarity_to_classes[0, 2])
         self.assertTrue(
-            similarity_to_classes[1, 2] > similarity_to_classes[1, 0])
+            similarity_to_classes[1, 2] == similarity_to_classes[1, 0])
         self.assertTrue(
             similarity_to_classes[1, 2] > similarity_to_classes[1, 1])
         probs = torch.softmax(similarity_to_classes, dim=-1)

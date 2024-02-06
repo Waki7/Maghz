@@ -102,7 +102,6 @@ class TaggingRoutine(BaseNLPProtocol):
                        embed_dim: int,
                        gpu_max_batch_size: int) -> \
             FloatTensorT['NClasses,EmbedLen']:
-        embed_dim = 3 * embed_dim
         n_cls, n_sup, src_len = batch.supports.shape
         support: LongTensorT[
             'NClasses,NSupport/NClasses,SrcSeqLen'] = batch.supports
@@ -123,7 +122,6 @@ class TaggingRoutine(BaseNLPProtocol):
                     src_ids=support[i, j: end, :],
                     src_mask=support_mask[i, j: end, :],
                 )
-
                 support_embed_total[i] += batch_embeds.detach().sum(dim=0,
                                                                     keepdim=True)
                 support_ids[i, j: end, :] = support[i, j: end, :]
@@ -148,7 +146,7 @@ class TaggingRoutine(BaseNLPProtocol):
         with torch.no_grad():
             support_centers: FloatTensorT[
                 'NClasses,EmbedLen'] = self._2dim_batchify(
-                batch, model.decoder_embedding_w_logits, model.embed_dim,
+                batch, model.decode_relevance, model.embed_dim,
                 self.gpu_max_batch_size)
 
         self.debug_log_batch_info(batch)

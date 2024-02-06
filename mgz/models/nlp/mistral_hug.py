@@ -89,16 +89,16 @@ class MistralPreTrainedModel(DecoderTransformer, ABC):
 class PrototypeEmbedding(nn.Module):
     def __init__(self, n_tokens: int, hidden_size: int):
         super().__init__()
-        self.conv1 = nn.Conv1d(hidden_size, hidden_size, kernel_size=7,
-                               padding=3, stride=5)
-        self.embedder = nn.Linear(3 * hidden_size, 3 * hidden_size, bias=False)
+        # self.conv1 = nn.Conv1d(hidden_size, hidden_size, kernel_size=7,
+        #                        padding=3, stride=5)
+        self.embedder = nn.Linear(3 * hidden_size, hidden_size, bias=False)
 
     def forward(self, x: FloatTensorT['B,SrcSeqLen,EmbedLen']):
-        # treat embed len as the channels
-        x: FloatTensorT['B,EmbedLen,SrcSeqLen'] = x.permute(0, 2, 1)
-        # print('pre-conv', x.shape)
-        x = self.conv1(x)
-        x: FloatTensorT['B,SrcSeqLen/Stride,EmbedLen'] = x.permute(0, 2, 1)
+        # # treat embed len as the channels
+        # x: FloatTensorT['B,EmbedLen,SrcSeqLen'] = x.permute(0, 2, 1)
+        # # print('pre-conv', x.shape)
+        # x = self.conv1(x)
+        # x: FloatTensorT['B,SrcSeqLen/Stride,EmbedLen'] = x.permute(0, 2, 1)
         max_pool = torch.max(x, dim=1)
         avg_pool = torch.mean(x, dim=1)
         last = x[:, -1, :]
@@ -491,6 +491,7 @@ class MistralForCausalLMHugMock(MistralForCausalLMHug):
         self.config = config
         self.embed_dim = config.hidden_size
         torch.nn.Module.__init__(self)
+
 
 def main():
     pth = os.path.join(get_models_path(), 'mistralai/Mistral-7B-v0.1')
