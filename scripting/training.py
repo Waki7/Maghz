@@ -141,17 +141,26 @@ def led_main_train():
         weight_decay = 0.0000
         betas = (0.9, 0.999)
         eps = 1e-4
-        # settings.print_trainable_parameters(model_node.model)
-        # print('----')
+
         model_node.freeze_parameters_except_for([
             'embedding_head',
             'lm_head',
             'model.layers.31.mlp'
         ])
-        settings.print_trainable_parameters(model_node.model)
-        trainable_params = [p for n, p in model_node.model.named_parameters() if
-                            p.requires_grad]
+        # trainable_params = [p for n, p in model_node.model.named_parameters() if
+        #                     p.requires_grad]
 
+        embed_params = model_node.get_parameters_by_string_in_name(
+            'embedding_head')
+        lm_head_params = model_node.get_parameters_by_string_in_name('lm_head')
+        mlp_params = model_node.get_parameters_by_string_in_name(
+            'model.layers.31.mlp')
+        trainable_params = [
+            {'params': embed_params, 'lr': 0.0005},
+            {'params': lm_head_params, 'lr': 0.00001},
+            {'params': mlp_params, 'lr': 0.00001},
+        ]
+        settings.print_trainable_parameters(model_node.model)
         optimizer = model_node.get_optimizer(quantize=True, lr=lr,
                                              params=trainable_params,
                                              weight_decay=weight_decay,

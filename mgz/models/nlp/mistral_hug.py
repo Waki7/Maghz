@@ -503,7 +503,7 @@ class MistralForCausalLMHugMock(MistralForCausalLMHug):
                  max_new_tokens: int = None,
                  ) -> LongTensorT['TgtSeqLen']:
         b, src_len = src_ids.shape
-        return LongTensorT(torch.randint(b, src_ids + 1))
+        return LongTensorT(torch.randint(b, src_ids.shape[-1] + 1))
 
     def __init__(self, config: MistralConfig):
         self.config = config
