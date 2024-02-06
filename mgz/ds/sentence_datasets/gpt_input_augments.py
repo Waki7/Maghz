@@ -135,7 +135,7 @@ class PromptingInput:
         self.truncate_token_end = prompt_config.truncate_token_end
         self.system_context = prompt_config.system_context
 
-    def get_tokenizer_input(self, *args, **kwargs):
+    def get_tokenizer_input(self, add_trunc: bool = True):
         raise NotImplementedError(
             "This method should be implemented in the child class")
 
@@ -205,8 +205,11 @@ class SummarizePromptInput(PromptingInput):
         )
         self.word_limit = word_limit
 
-    def get_tokenizer_input(self):
-        qa_prefix = f"Could you summarize this {self.document_type} in less than {self.word_limit} words?\n{self.document_text}"
+    def get_tokenizer_input(self, add_trunc: bool = True):
+        if add_trunc:
+            qa_prefix = f"Could you summarize this {self.truncate_token_start}{self.document_text}{self.truncate_token_end} in less than {self.word_limit} words?\n{self.document_text}"
+        else:
+            qa_prefix = f"Could you summarize this  {self.document_text}  in less than {self.word_limit} words?\n{self.document_text}"
         if self.prompt_type == PromptType.MISTRAL:
             return self.prompt_mistral(qa_prefix)
         else:

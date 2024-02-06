@@ -215,6 +215,34 @@ class TagQAMetaTaskBatch:
         print('Correct Labels:', self.query_lbls)
         print('---------')
 
+    def use_heuristic_to_identify_hard_query(self,
+                                             no_yes_log_probs: FloatTensorT[
+                                                 'NQuery,NClasses'],
+                                             tokenizer: PreTrainedTokenizerBase) -> \
+            ProbTensorT[
+                'NQuery,NClasses']:
+        noisy_no_yes_log_probs = no_yes_log_probs.clone()
+        search_words = ["government", "inquir", "FERC", "investigat"]
+        for i, query in enumerate(self.queries):
+            decoded = tokenizer.decode(query)
+            if any([search_word.lower() in decoded for
+                    search_word in search_words]):
+                if (self.query_lbls[i] == 1) and (random.random() < 0.5):
+                    noisy_no_yes_log_probs[i, 1] += (
+                            .2 * noisy_no_yes_log_probs[i, 0])
+                else:
+                    if random.random() < 0.3:
+                        if random.random() < 0.5:
+                            noisy_no_yes_log_probs[i, 1] += (
+                                    .2 * noisy_no_yes_log_probs[i, 0])
+                        else:
+                            noisy_no_yes_log_probs[i, 0] += (
+                                    .2 * noisy_no_yes_log_probs[i, 1])
+        #
+        # noisey_no_yes_probs = noisey_no_yes_probs + (torch.randn(
+        #     *noisey_no_yes_probs.shape).to(noisey_no_yes_probs.device) * 0.3)
+        return noisy_no_yes_log_probs
+
     @staticmethod
     def collate_batch(batch: List[Tuple[PromptingInput, int]],
                       tokenizer: PreTrainedTokenizerBase,
@@ -293,7 +321,7 @@ class TagQAMetaTaskBatch:
                 prompt_config=ds.prompt_config,
                 # document_text=ds.data[i][SampleType.FILE_NAME] + ds.data[i][
                 #     SampleType.FULL_AS_STRING],
-                                document_text=ds.data[i][SampleType.FULL_AS_STRING],
+                document_text=ds.data[i][SampleType.FULL_AS_STRING],
                 document_requests=pos_tag, ),
               0) for i in negative_examples]
 

@@ -394,7 +394,8 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
 
 class EnronEmailsTagQA(EnronEmailsTagging, MetaLearningMixIn):
 
-    def __init__(self, tokenizer: Union[LlamaTokenizer, LlamaTokenizer, PreTrainedTokenizerBase],
+    def __init__(self, tokenizer: Union[
+        LlamaTokenizer, LlamaTokenizer, PreTrainedTokenizerBase],
                  max_src_len: SrcSeqLen,
                  prompt_config: PromptConfig,
                  n_query_per_cls: List[int] = 5,
@@ -479,12 +480,12 @@ def dump_n_examples(n: int = 100000000):
         "along with its trading practices and their impact on electricity markets across the United States. Determine if the email should be produced as evidence based on the document request.")
     export_dir = os.path.join(
         Path(__file__).resolve().parent.parent.parent.parent,
-        f"datasets/enron_export_investigations_diff_{model_name.replace('/', '_')}/").replace(
+        f"datasets/enron_export_investigations_{model_name.replace('/', '_')}/").replace(
         "\\", "/")
     model_node: ModelNode = ModelDatabase.mistral_openchat(model_name)
     model_node.model.eval()
 
-    contains_words = ["government", "inquiries", "investigation"]
+    contains_words = ["government", "inquir", "FERC", "investigat"]
     bsz = 2
     max_src_len = 8191
     sample_negative = False
@@ -631,7 +632,7 @@ def dump_n_examples(n: int = 100000000):
             yes_inclusion = no_yes_scores[i].argmax(0) == 1
 
             maybe_inclusion = any(
-                [word in doc[SampleType.FULL_AS_STRING] for word in
+                [word.lower() in doc[SampleType.FULL_AS_STRING].lower() for word in
                  contains_words]) and random.random() < p_contained
             if sample_negative and (
                     not (

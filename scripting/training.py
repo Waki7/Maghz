@@ -65,14 +65,14 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
                               n_episodes=100,
                               n_query_per_cls=[1],
                               n_support_per_cls=[1, 2, 3, 4, 5, 6, 7, 8],
-                              dataset_dir="/home/ceyer/Documents/Projects/Maghz/datasets/enron_export_investigations_diff_mistralai_Mistral-7B-Instruct-v0.1")
+                              dataset_dir="/home/ceyer/Documents/Projects/Maghz/datasets/enron_export_investigations_mistral_labeled")
         val_ds = EnronEmailsTagQA(model_node.tokenizer,
                                   prompt_config=prompt_config,
                                   max_src_len=7000,
                                   n_episodes=25,
                                   n_query_per_cls=[1],
                                   n_support_per_cls=[1, 2, 3, 4, 5, 6, 7, 8],
-                                  dataset_dir="/home/ceyer/Documents/Projects/Maghz/datasets/enron_export_investigations_diff_mistralai_Mistral-7B-Instruct-v0.1")
+                                  dataset_dir="/home/ceyer/Documents/Projects/Maghz/datasets/enron_export_investigations_mistral_labeled")
     if old_enron:
         ds = EnronEmailsTagging(model_node.tokenizer,
                                 max_src_len=3000,
@@ -117,6 +117,7 @@ def led_main_train():
     # Mistral Models
     # model_name = 'mistralai/Mistral-7B-v0.1'
     model_name = 'mistralai/Mistral-7B-Instruct-v0.1'
+    model_name = 'mistralai/Mistral-cont-exp'
     # model_name = 'openchat/openchat_3.5'
     # model_name = 'openchat/openchat-3.5-0106'
     # model_name = 'AdaptLLM/law-chat'
@@ -132,16 +133,21 @@ def led_main_train():
         model_node.model.train()
         settings.print_gpu_usage()
         ds, val_ds = dataset_select(model_node, aus=False, enron=True)
-        # loss_fn = torch.nn.NLLLoss()
-        loss_fn = torch.nn.CrossEntropyLoss()
+        loss_fn = torch.nn.NLLLoss()
+        # loss_fn = torch.nn.CrossEntropyLoss()
 
         training_cfg = {}
-        lr = 0.001
+        lr = 0.0001
         weight_decay = 0.0000
         betas = (0.9, 0.999)
         eps = 1e-4
-
-        model_node.freeze_parameters(['embedding_head'])
+        # settings.print_trainable_parameters(model_node.model)
+        # print('----')
+        model_node.freeze_parameters_except_for([
+            'embedding_head',
+            'lm_head',
+            'model.layers.31.mlp'
+        ])
         settings.print_trainable_parameters(model_node.model)
         trainable_params = [p for n, p in model_node.model.named_parameters() if
                             p.requires_grad]

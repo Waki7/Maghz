@@ -110,6 +110,14 @@ class PrototypeEmbedding(nn.Module):
 
 
 class MistralForCausalLMHug(MistralPreTrainedModel):
+    FREEZE_CONFIGURATIONS = {
+        "embed_only": ["model.encoder.embed_tokens",
+                       "model.encoder.embed_positions", ],
+        "embed_lm": ["model.encoder.embed_tokens",
+                     "model.encoder.embed_positions", ],
+        "embed_lm_last_decoder": ['embedding_head', 'lm_head',
+                                  'model.layers.31'],
+    }
 
     @classmethod
     def modules_to_not_convert(cls):
@@ -130,7 +138,8 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
 
     @overrides(BaseTransformer)
     def save(self, path: DirPath,
-             quantization_config: Optional[BnbQuantizationConfig] = None):
+             quantization_config: Optional[BnbQuantizationConfig] = None,
+             save_all_layers: bool = True):
         if not os.path.exists(path):
             os.makedirs(path)
         with open(os.path.normpath(os.path.join(path, 'config.json')),
@@ -139,6 +148,11 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         weights_path: FilePath = os.path.normpath(
             os.path.join(path, 'embedding_head.bin'))
         torch.save(self.embedding_head.state_dict(), weights_path)
+
+        if save_all_layers:
+            weights_path: FilePath = os.path.normpath(
+                os.path.join(path, 'weights.bin'))
+            torch.save(self.hug.state_dict(), weights_path)
 
     @classmethod
     def load_model(cls, path: DirPath,
@@ -348,7 +362,7 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         output: FloatTensorT[
             'B,TgtSeqLen,EmbedLen'] = FloatTensorT(
             full_output.last_hidden_state)
-        lm_logits = self.hug.lm_head(output[:, -2:, :].detach())[:, -1, :]
+        lm_logits = self.hug.lm_head(output[:, -2:, :])[:, -1, :]
         # unhinged wtf is this, these first two are not identical, the last two are
         # print(self.hug.lm_head(output[:, -1, :]))
         # print(self.hug.lm_head(output[:, -2:, :])[:,-1,:])

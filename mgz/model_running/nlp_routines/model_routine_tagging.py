@@ -198,6 +198,7 @@ class TaggingRoutine(BaseNLPProtocol):
             Tuple[FloatTensorT['1'], float]:
         cls_logits: ['NQuery,NClasses']
         query_lbls: LongTensorT['NQuery']
+        no_yes_logits: FloatTensorT['NQuery,NClasses']
         cls_logits, query_lbls, no_yes_logits = self.run_prototype_decoder(
             model, batch)
 
@@ -206,6 +207,7 @@ class TaggingRoutine(BaseNLPProtocol):
             cls_logits_weighted = (batch.n_support_per_cls * torch.softmax(
                 cls_logits.detach(), dim=-1))
             no_yes_probs = torch.softmax(no_yes_logits.detach(), dim=-1)
+
             pred_augment_weak: LongTensorT['NQuery'] = (
                     cls_logits_weighted + no_yes_probs).argmax(-1)
             accuracy_augment_weak = (
@@ -215,6 +217,10 @@ class TaggingRoutine(BaseNLPProtocol):
                     cls_logits_weighted + (2 * no_yes_probs)).argmax(-1)
             accuracy_augment_strong = (
                     pred_augment_strong == query_lbls).float().mean().item()
+
+            pred_classification = no_yes_logits.argmax(-1)
+            classification_accuracy = (
+                    pred_classification == query_lbls).float().mean().item()
 
             predictions: LongTensorT['NQuery'] = cls_logits.argmax(-1)
             accuracy = (predictions == query_lbls).float().mean().item()
@@ -229,7 +235,21 @@ class TaggingRoutine(BaseNLPProtocol):
             # print('accuracy_augment_strong', accuracy_augment_strong)
         if model_edge is not None:
             total_samples = cls_logits.shape[0] * cls_logits.shape[1]
-            loss = model_edge.loss_fn(cls_logits, query_lbls)
+
+            no_yes_log_probs = torch.log_softmax(no_yes_logits, dim=-1)
+            noisy_no_yes_probs = batch.use_heuristic_to_identify_hard_query(
+                no_yes_log_probs=no_yes_log_probs.detach(),
+                tokenizer=self.tokenizer)
+            prototypical_probs = torch.log_softmax(cls_logits, dim=-1)
+            loss = model_edge.loss_fn(
+                prototypical_probs + noisy_no_yes_probs.detach(),
+                query_lbls)
+            # print('loss1', loss)
+            if classification_accuracy < 1.0:
+                loss += .1 * (
+                    model_edge.loss_fn(no_yes_log_probs, query_lbls))
+                # print('loss', loss)
+            # print('total_samples', total_samples)
             loss = loss / total_samples
             if model.training:
                 model_edge.record_metric(Metrics.TRAIN_ACC_MEAN, accuracy)
@@ -241,6 +261,8 @@ class TaggingRoutine(BaseNLPProtocol):
                                       accuracy_augment_weak)
                 model_edge.log_metric("train/accuracy_augment_strong",
                                       accuracy_augment_strong)
+                model_edge.log_metric("train/accuracy_classification",
+                                      classification_accuracy)
             else:
                 model_edge.record_metric(Metrics.VAL_AVG_PRED,
                                          predictions.float().mean().item())
@@ -250,6 +272,8 @@ class TaggingRoutine(BaseNLPProtocol):
                                       accuracy_augment_strong)
                 model_edge.log_metric("val/accuracy_all_augment_strong",
                                       accuracy_augment_strong)
+                model_edge.log_metric("val/accuracy_all_classification",
+                                      classification_accuracy)
         else:
             loss = FloatTensorT([0.0])
         return loss, accuracy
