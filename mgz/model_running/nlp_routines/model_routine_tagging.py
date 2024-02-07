@@ -40,7 +40,7 @@ def predict_with_prototypes(
     if distance_measure == DistanceMeasure.L2:
         similarity_to_classes = -1 * DistanceMeasuresPerClass.euclidean_distance(
             class_embeddings=support_embedding,
-            query_embeddings=query_embedding)
+            query_embeddings=query_embedding, normalize=True)
     elif distance_measure == DistanceMeasure.COSINE:
         similarity_to_classes = DistanceMeasuresPerClass.cosine_similarity(
             class_embeddings=support_embedding,

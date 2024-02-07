@@ -16,12 +16,20 @@ class DistanceMeasuresPerClass:
 
     @staticmethod
     def euclidean_distance(class_embeddings: FloatTensorT['NClasses,EmbedLen'],
-                           query_embeddings: FloatTensorT['NQuery,EmbedLen']) -> \
+                           query_embeddings: FloatTensorT['NQuery,EmbedLen'],
+                           normalize: bool = False) -> \
             FloatTensorT['NQuery,NClasses']:
-        distance_to_classes: FloatTensorT['NQuery,NClasses'] = \
-            torch.linalg.norm(
-                query_embeddings[:, None, :] - class_embeddings[None, :, :],
-                dim=-1, ord=2)
+        if normalize:
+            query_n, class_n = query_embeddings.norm(dim=-1)[:, None], class_embeddings.norm(dim=-1)[:, None]
+            query_norm = query_embeddings / torch.max(query_n, 1.0e-4 * torch.ones_like(query_n))
+            class_norm = class_embeddings / torch.max(class_n, 1.0e-4 * torch.ones_like(class_n))
+            distance_to_classes: FloatTensorT['NQuery,NClasses'] = torch.linalg.norm(
+                query_norm[:, None, :] - class_norm[None, :, :], dim=-1, ord=2)
+        else:
+            distance_to_classes: FloatTensorT['NQuery,NClasses'] = \
+                torch.linalg.norm(
+                    query_embeddings[:, None, :] - class_embeddings[None, :, :],
+                    dim=-1, ord=2)
         return distance_to_classes
 
     @staticmethod
@@ -50,7 +58,7 @@ class DistanceMeasuresPerClass:
     def inner_dot_product(class_embeddings: FloatTensorT['NClasses,EmbedLen'],
                           query_embeddings: FloatTensorT['NQuery,EmbedLen']) -> \
             FloatTensorT['NQuery,NClasses']:
-        return torch.mm(query_embeddings, class_embeddings)
+        return torch.mm(class_embeddings, query_embeddings)
 
 
 def bleu_from_tokenized_sentences(candidate_corpus: List[TokenT],

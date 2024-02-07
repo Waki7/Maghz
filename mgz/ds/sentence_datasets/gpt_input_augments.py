@@ -207,9 +207,9 @@ class SummarizePromptInput(PromptingInput):
 
     def get_tokenizer_input(self, add_trunc: bool = True):
         if add_trunc:
-            qa_prefix = f"Could you summarize this {self.truncate_token_start}{self.document_text}{self.truncate_token_end} in less than {self.word_limit} words?\n{self.document_text}"
+            qa_prefix = f"Could you summarize this in less than {self.word_limit} words?\n{self.truncate_token_start}{self.document_text}{self.truncate_token_end}"
         else:
-            qa_prefix = f"Could you summarize this  {self.document_text}  in less than {self.word_limit} words?\n{self.document_text}"
+            qa_prefix = f"Could you summarize this in less than {self.word_limit} words?\n {self.document_text} "
         if self.prompt_type == PromptType.MISTRAL:
             return self.prompt_mistral(qa_prefix)
         else:

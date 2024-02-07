@@ -172,7 +172,7 @@ def led_main_train():
         train_transition_edge = ModelTransitionEdge(model_node, loss_fn,
                                                     optimizer, ds)
         routine = TaggingRoutine(
-            distance_measure=DistanceMeasure.COSINE,
+            distance_measure=DistanceMeasure.L2,
             tokenizer=model_node.tokenizer, debug=False, gpu_max_batch_size=2)
 
         # routine.evaluate(model_node=model_node, val_ds=val_ds)
