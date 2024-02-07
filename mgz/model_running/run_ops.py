@@ -220,7 +220,6 @@ def summarize_controller_from_texts(model: DecoderTransformer,
                                     tokenizer: PreTrainedTokenizerBase,
                                     system_context: str = None,
                                     max_src_len: int = None,
-                                    max_new_tokens=1000,
                                     return_just_new: bool = True,
                                     word_limit: int = 50,
                                     prompt_config: PromptConfig = None,
@@ -232,9 +231,10 @@ def summarize_controller_from_texts(model: DecoderTransformer,
                                              document_texts=texts,
                                              word_limit=word_limit)
     with torch.cuda.amp.autocast(enabled=True):
+        # TODO, confusion about the whole word limit vs token limit
         return _qa_controller_from_prompts(model, prompts, tokenizer,
                                            max_src_len=max_src_len,
-                                           max_new_tokens=max_new_tokens,
+                                           max_new_tokens=2 * word_limit,
                                            return_just_new=return_just_new, )
 
 
