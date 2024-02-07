@@ -124,7 +124,7 @@ def prompts_to_padded_id_tensor_w_mask(prompts: List[PromptingInput],
         if trim > 0:
             logging.info(f'trimming {trim} characters')
         assert (end_idx - strt_idx + 2) > trim, \
-            f"Too much to trim need to trim {trim}, from {pre_pad_lengths[2]} to {max_len}, but only have {end_idx - strt_idx + 2} tokens."
+            f"Too much to trim need to trim {trim}, from {pre_pad_lengths[b]} to {max_len}, but only have {end_idx - strt_idx + 2} tokens."
         input_ids_padded[b, -(length - trim):] = torch.cat([
             input_ids[b, -pre_pad_lengths[b]:strt_idx],
             input_ids[b, strt_idx + 1:end_idx - trim],

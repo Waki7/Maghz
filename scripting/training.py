@@ -117,7 +117,7 @@ def led_main_train():
     # Mistral Models
     # model_name = 'mistralai/Mistral-7B-v0.1'
     model_name = 'mistralai/Mistral-7B-Instruct-v0.1'
-    model_name = 'mistralai/Mistral-cont-exp'
+    # model_name = 'mistralai/Mistral-cont-exp'
     # model_name = 'openchat/openchat_3.5'
     # model_name = 'openchat/openchat-3.5-0106'
     # model_name = 'AdaptLLM/law-chat'
@@ -137,29 +137,31 @@ def led_main_train():
         # loss_fn = torch.nn.CrossEntropyLoss()
 
         training_cfg = {}
-        lr = 0.0001
+        lr = 0.001
         weight_decay = 0.0000
         betas = (0.9, 0.999)
         eps = 1e-4
 
         model_node.freeze_parameters_except_for([
             'embedding_head',
-            'lm_head',
-            'model.layers.31.mlp'
+            # 'lm_head',
+            # 'model.layers.31.mlp'
         ])
-        # trainable_params = [p for n, p in model_node.model.named_parameters() if
-        #                     p.requires_grad]
 
-        embed_params = model_node.get_parameters_by_string_in_name(
-            'embedding_head')
-        lm_head_params = model_node.get_parameters_by_string_in_name('lm_head')
-        mlp_params = model_node.get_parameters_by_string_in_name(
-            'model.layers.31.mlp')
-        trainable_params = [
-            {'params': embed_params, 'lr': 0.0005},
-            {'params': lm_head_params, 'lr': 0.00001},
-            {'params': mlp_params, 'lr': 0.000001},
-        ]
+        # embed_params = model_node.get_parameters_by_string_in_name(
+        #     'embedding_head')
+        # lm_head_params = model_node.get_parameters_by_string_in_name('lm_head')
+        # mlp_params = model_node.get_parameters_by_string_in_name(
+        #     'model.layers.31.mlp')
+        # trainable_params = [
+        #     {'params': embed_params, 'lr': 0.0005},
+        #     {'params': lm_head_params, 'lr': 0.00001},
+        #     {'params': mlp_params, 'lr': 0.000001},
+        # ]
+
+        trainable_params = [p for n, p in model_node.model.named_parameters() if
+                            p.requires_grad]
+
         settings.print_trainable_parameters(model_node.model)
         optimizer = model_node.get_optimizer(quantize=True, lr=lr,
                                              params=trainable_params,
@@ -170,7 +172,7 @@ def led_main_train():
         train_transition_edge = ModelTransitionEdge(model_node, loss_fn,
                                                     optimizer, ds)
         routine = TaggingRoutine(
-            distance_measure=DistanceMeasure.L2,
+            distance_measure=DistanceMeasure.COSINE,
             tokenizer=model_node.tokenizer, debug=False, gpu_max_batch_size=2)
 
         # routine.evaluate(model_node=model_node, val_ds=val_ds)

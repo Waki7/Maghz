@@ -204,17 +204,17 @@ class TaggingRoutine(BaseNLPProtocol):
 
         # Calculate accuracy
         with torch.no_grad():
-            cls_logits_weighted = (batch.n_support_per_cls * torch.softmax(
-                cls_logits.detach(), dim=-1))
+            proto_probs = torch.softmax(cls_logits.detach(), dim=-1)
+            proto_probs_weighted = (batch.n_support_per_cls * proto_probs)
             no_yes_probs = torch.softmax(no_yes_logits.detach(), dim=-1)
 
             pred_augment_weak: LongTensorT['NQuery'] = (
-                    cls_logits_weighted + no_yes_probs).argmax(-1)
+                    proto_probs_weighted + no_yes_probs).argmax(-1)
             accuracy_augment_weak = (
                     pred_augment_weak == query_lbls).float().mean().item()
 
             pred_augment_strong: LongTensorT['NQuery'] = (
-                    cls_logits_weighted + (2 * no_yes_probs)).argmax(-1)
+                    proto_probs_weighted + (2 * no_yes_probs)).argmax(-1)
             accuracy_augment_strong = (
                     pred_augment_strong == query_lbls).float().mean().item()
 
@@ -224,6 +224,11 @@ class TaggingRoutine(BaseNLPProtocol):
 
             predictions: LongTensorT['NQuery'] = cls_logits.argmax(-1)
             accuracy = (predictions == query_lbls).float().mean().item()
+            print('accuracy', accuracy)
+            print('proto_probs', torch.softmax(
+                cls_logits.detach(), dim=-1))
+            print('classification_accuracy', classification_accuracy)
+            print('no_yes_probs', no_yes_probs)
             # print('no_yes_probs', no_yes_probs)
             # print('cls_logits', cls_logits)
             # print('argmax', cls_logits.argmax(-1))
@@ -263,6 +268,16 @@ class TaggingRoutine(BaseNLPProtocol):
                                       accuracy_augment_strong)
                 model_edge.log_metric("train/accuracy_classification",
                                       classification_accuracy)
+
+                model_edge.log_metric("train/proto_score_no",
+                                      proto_probs[:, 0].mean(0))
+                model_edge.log_metric("train/proto_score_yes",
+                                      proto_probs[:, 1].mean(0))
+                model_edge.log_metric("train/noyes_score_no",
+                                      no_yes_probs[:, 0].mean(0))
+                model_edge.log_metric("train/noyes_score_yes",
+                                      no_yes_probs[:, 1].mean(0))
+
             else:
                 model_edge.record_metric(Metrics.VAL_AVG_PRED,
                                          predictions.float().mean().item())
@@ -274,6 +289,17 @@ class TaggingRoutine(BaseNLPProtocol):
                                       accuracy_augment_strong)
                 model_edge.log_metric("val/accuracy_all_classification",
                                       classification_accuracy)
+
+                model_edge.log_metric("val/proto_score_no",
+                                      proto_probs[:, 0].mean(0))
+                model_edge.log_metric("val/proto_score_yes",
+                                      proto_probs[:, 1].mean(0))
+                model_edge.log_metric("val/noyes_score_no",
+                                      no_yes_probs[:, 0].mean(0))
+                model_edge.log_metric("val/noyes_score_yes",
+                                      no_yes_probs[:, 1].mean(0))
+
+
         else:
             loss = FloatTensorT([0.0])
         return loss, accuracy
