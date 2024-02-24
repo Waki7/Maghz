@@ -6,6 +6,7 @@ import torch.utils.data
 import transformers as hug
 
 import spaces as sp
+from mgz import settings
 from mgz.ds.base_dataset import BaseDataset
 from mgz.ds.sentence_datasets.sentence_datasets import Sent2TagMetaTaskBatch, \
     TagQAMetaTaskBatch
@@ -202,11 +203,17 @@ class TaggingRoutine(BaseNLPProtocol):
         cls_logits, query_lbls, no_yes_logits = self.run_prototype_decoder(
             model, batch)
 
+        if self.distance_measure == DistanceMeasure.L2:
+            T = 10.0
+        else:
+            T = 1.0
+
         # Calculate accuracy
         with torch.no_grad():
-            proto_probs = torch.softmax(cls_logits.detach(), dim=-1)
-            proto_probs_weighted = (batch.n_support_per_cls * proto_probs)
+            proto_probs = torch.softmax(cls_logits.detach() / T, dim=-1)
             no_yes_probs = torch.softmax(no_yes_logits.detach(), dim=-1)
+
+            proto_probs_weighted = (batch.n_support_per_cls * proto_probs)
 
             pred_augment_weak: LongTensorT['NQuery'] = (
                     proto_probs_weighted + no_yes_probs).argmax(-1)
@@ -245,13 +252,13 @@ class TaggingRoutine(BaseNLPProtocol):
             noisy_no_yes_probs = batch.use_heuristic_to_identify_hard_query(
                 no_yes_log_probs=no_yes_log_probs.detach(),
                 tokenizer=self.tokenizer)
-            prototypical_probs = torch.log_softmax(cls_logits, dim=-1)
+            prototypical_probs = torch.log_softmax(cls_logits / T, dim=-1)
             loss = model_edge.loss_fn(
                 prototypical_probs + noisy_no_yes_probs.detach(),
                 query_lbls)
             # print('loss1', loss)
             if classification_accuracy < 1.0:
-                loss += .1 * (
+                loss += 0.5 * (
                     model_edge.loss_fn(no_yes_log_probs, query_lbls))
                 # print('loss', loss)
             # print('total_samples', total_samples)

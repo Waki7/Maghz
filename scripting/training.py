@@ -61,14 +61,14 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
                                      system_context=system_context)
         ds = EnronEmailsTagQA(model_node.tokenizer,
                               prompt_config=prompt_config,
-                              max_src_len=7000,
+                              max_src_len=4095,
                               n_episodes=100,
                               n_query_per_cls=[1],
                               n_support_per_cls=[1, 2, 3, 4, 5, 6, 7, 8],
                               dataset_dir="/home/ceyer/Documents/Projects/Maghz/datasets/enron_export_investigations_mistral_labeled")
         val_ds = EnronEmailsTagQA(model_node.tokenizer,
                                   prompt_config=prompt_config,
-                                  max_src_len=7000,
+                                  max_src_len=4095,
                                   n_episodes=25,
                                   n_query_per_cls=[1],
                                   n_support_per_cls=[1, 2, 3, 4, 5, 6, 7, 8],
@@ -117,7 +117,8 @@ def led_main_train():
     # Mistral Models
     # model_name = 'mistralai/Mistral-7B-v0.1'
     model_name = 'mistralai/Mistral-7B-Instruct-v0.1'
-    # model_name = 'mistralai/Mistral-cont-exp'
+    model_name = 'mistralai/Mistral-cont-exp'
+
     # model_name = 'openchat/openchat_3.5'
     # model_name = 'openchat/openchat-3.5-0106'
     # model_name = 'AdaptLLM/law-chat'
@@ -137,30 +138,30 @@ def led_main_train():
         # loss_fn = torch.nn.CrossEntropyLoss()
 
         training_cfg = {}
-        lr = 0.001
+        lr = 0.00001
         weight_decay = 0.0000
         betas = (0.9, 0.999)
         eps = 1e-4
 
         model_node.freeze_parameters_except_for([
             'embedding_head',
-            # 'lm_head',
-            # 'model.layers.31.mlp'
+            'lm_head',
+            'model.layers.31.mlp'
         ])
 
-        # embed_params = model_node.get_parameters_by_string_in_name(
-        #     'embedding_head')
-        # lm_head_params = model_node.get_parameters_by_string_in_name('lm_head')
-        # mlp_params = model_node.get_parameters_by_string_in_name(
-        #     'model.layers.31.mlp')
-        # trainable_params = [
-        #     {'params': embed_params, 'lr': 0.0005},
-        #     {'params': lm_head_params, 'lr': 0.00001},
-        #     {'params': mlp_params, 'lr': 0.000001},
-        # ]
+        embed_params = model_node.get_parameters_by_string_in_name(
+            'embedding_head')
+        lm_head_params = model_node.get_parameters_by_string_in_name('lm_head')
+        mlp_params = model_node.get_parameters_by_string_in_name(
+            'model.layers.31.mlp')
+        trainable_params = [
+            {'params': embed_params, 'lr': 0.0005},
+            {'params': lm_head_params, 'lr': 0.00001},
+            {'params': mlp_params, 'lr': 0.00001},
+        ]
 
-        trainable_params = [p for n, p in model_node.model.named_parameters() if
-                            p.requires_grad]
+        # trainable_params = [p for n, p in model_node.model.named_parameters() if
+        #                     p.requires_grad]
 
         settings.print_trainable_parameters(model_node.model)
         optimizer = model_node.get_optimizer(quantize=True, lr=lr,
@@ -180,7 +181,7 @@ def led_main_train():
             model_node=model_node, ds=ds, val_ds=val_ds,
             model_edge=train_transition_edge,
             device=settings.DEVICE, distributed=False,
-            turn_off_shuffle=True, n_epochs=50, )
+            turn_off_shuffle=True, n_epochs=20, )
         torch.cuda.empty_cache()
 
 

@@ -12,6 +12,10 @@ from setuptools import find_packages
 
 
 def is_cuda_available():
+    # NVIDIA Docker images set NVIDIA_VISIBLE_DEVICES environment variable
+    if os.getenv('NVIDIA_VISIBLE_DEVICES', None) is not None:
+        return True
+
     # Check CUDA_HOME environment variable
     if os.getenv('CUDA_HOME', None) is None:
         return False
@@ -41,6 +45,7 @@ elif is_linux:
         []
 elif is_mac:
     tf_deps = ['tensorflow-macos']
+
 
 cuda_deps = []
 if is_cuda_available():

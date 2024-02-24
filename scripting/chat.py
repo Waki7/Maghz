@@ -12,65 +12,52 @@ from mgz.version_control import ModelNode, ModelDatabase
 logging.basicConfig(level=logging.WARNING)
 model_node: ModelNode = ModelDatabase.mistral_openchat(
     # "AdaptLLM/law-chat")
-    "mistralai/Mistral-7B-Instruct-v0.1")
+    # "mistralai/Mistral-7B-Instruct-v0.1")
+    "mistralai/Mistral-cont-exp/data_EnronEmailsTagQA_1e-5_lbl_fix1/BEST")
+    # "mistralai/Mistral-cont-exp/data_EnronEmailsTagQA_1e-7")
 # "openchat/openchat-3.5-0106")
 # "teknium/OpenHermes-2.5-Mistral-7B")
 # AdaptLLM/law-chat
 model_node.model.eval()
 print(model_node.tokenizer.special_tokens_map)
 
-email = """Message-ID: <21112352.1075851644449.JavaMail.evans@thyme>
-Date: Thu, 20 Sep 2001 06:30:51 -0700 (PDT)
-From: robert.frank@enron.com
-To: ray.alvarez@enron.com, alan.comnes@enron.com, steve.walton@enron.com,
-	susan.mara@enron.com, leslie.lawner@enron.com, w..cantrell@enron.com,
-	donna.fulton@enron.com, jeff.dasovich@enron.com,
-	l..nicolay@enron.com, d..steffes@enron.com, j..noske@enron.com,
-	dave.perrino@enron.com, don.black@enron.com,
-	stephanie.miller@enron.com, barry.tycholiz@enron.com,
-	sarah.novosel@enron.com, jennifer.thome@enron.com,
-	legal <.hall@enron.com>, susan.lindberg@enron.com
-Subject: RE: Western Wholesale Activities - Gas & Power Conf. Call
- Privileged & Confidential Communication Attorney-Client Communication and
- Attorney Work Product Privileges Asserted
+email = """Message-ID: <5140735.1075840386341.JavaMail.evans@thyme>
+Date: Thu, 13 Dec 2001 15:21:00 -0800 (PST)
+From: richardson@copn.com
+To: cliff.baxter@enron.com, rick.buy@enron.com, richard.causey@enron.com, 
+	mark.frevert@enron.com, joe.hirko@enron.com, 
+	stanley.horton@enron.com, j..kean@enron.com, mark.koenig@enron.com, 
+	mike.mcconnell@enron.com, jeffrey.mcmahon@enron.com, 
+	mark.metts@enron.com, cindy.olson@enron.com, lou.pai@enron.com, 
+	ken.rice@enron.com, joe.sutton@enron.com, c..williams@enron.com
+Subject: Confidential communications
+Cc: c..williams@enron.com, gail.brownfeld@enron.com
 Mime-Version: 1.0
 Content-Type: text/plain; charset=us-ascii
 Content-Transfer-Encoding: 7bit
-X-From: Frank, Robert </O=ENRON/OU=NA/CN=RECIPIENTS/CN=RFRANK>
-X-To: Alvarez, Ray </O=ENRON/OU=NA/CN=RECIPIENTS/CN=Ralvare2>, Comnes, Alan </O=ENRON/OU=NA/CN=RECIPIENTS/CN=Acomnes>, Walton, Steve </O=ENRON/OU=NA/CN=RECIPIENTS/CN=Swalto2>, Mara, Susan </O=ENRON/OU=NA/CN=RECIPIENTS/CN=Smara>, Lawner, Leslie </O=ENRON/OU=NA/CN=RECIPIENTS/CN=Llawner>, Cantrell, Rebecca W. </O=ENRON/OU=NA/CN=RECIPIENTS/CN=Bcantre>, Fulton, Donna </O=ENRON/OU=NA/CN=RECIPIENTS/CN=Dfulton>, Dasovich, Jeff </O=ENRON/OU=NA/CN=RECIPIENTS/CN=Jdasovic>, Nicolay, Christi L. </O=ENRON/OU=NA/CN=RECIPIENTS/CN=Cnicola>, Steffes, James D. </O=ENRON/OU=NA/CN=RECIPIENTS/CN=Jsteffe>, 'jalexander@gibbs-bruns.com', Allen, Phillip K. </O=ENRON/OU=NA/CN=RECIPIENTS/CN=Pallen>, Noske, Linda J. </O=ENRON/OU=NA/CN=RECIPIENTS/CN=Lnoske>, Perrino, Dave </O=ENRON/OU=NA/CN=RECIPIENTS/CN=Dperrino>, Black, Don </O=ENRON/OU=NA/CN=RECIPIENTS/CN=Dblack>, Miller, Stephanie </O=ENRON/OU=NA/CN=RECIPIENTS/CN=Smiller2>, Tycholiz, Barry </O=ENRON/OU=NA/CN=RECIPIENTS/CN=Btychol>, Novosel, Sarah </O=ENRON/OU=NA/CN=RECIPIENTS/CN=Snovose>, Thome, Jennifer </O=ENRON/OU=NA/CN=RECIPIENTS/CN=Jthome>, Hall, Steve C. (Legal) </O=ENRON/OU=NA/CN=RECIPIENTS/CN=Shall4>, Lindberg, Susan </O=ENRON/OU=NA/CN=RECIPIENTS/CN=Slindber>
-X-cc: 
+Bcc: c..williams@enron.com, gail.brownfeld@enron.com
+X-From: Richardson, Terri <richardson@copn.com>
+X-To: Baxter, Cliff <jcbax1@aol.com>, Buy, Rick </O=ENRON/OU=NA/CN=RECIPIENTS/CN=RBUY>, Causey, Richard </O=ENRON/OU=NA/CN=RECIPIENTS/CN=RCAUSEY>, Frevert, Mark </O=ENRON/OU=NA/CN=RECIPIENTS/CN=MFREVERT>, Hirko, Joe <joehirko@aol.com>, Horton, Stanley </O=ENRON/OU=NA/CN=RECIPIENTS/CN=SHORTON>, Kean, Steven J. </O=ENRON/OU=NA/CN=RECIPIENTS/CN=SKEAN>, Koenig, Mark </O=ENRON/OU=NA/CN=RECIPIENTS/CN=MKOENIG>, McConnell, Mike <mike_s_mcconnell@hotmail.com>, McMahon, Jeffrey </O=ENRON/OU=NA/CN=RECIPIENTS/CN=JMCMAHO>, Metts, Mark </O=ENRON/OU=NA/CN=RECIPIENTS/CN=MMETTS>, Olson, Cindy </O=ENRON/OU=NA/CN=RECIPIENTS/CN=COLSON>, Pai, Lou <kowens@loupai.com>, Rice, Ken <krice@rvtcapital.com>, Sutton, Joe <jsutton@suttonventures.com>, Williams, Robert C. </O=ENRON/OU=NA/CN=RECIPIENTS/CN=RWILLIA2>
+X-cc: Williams, Robert C. </O=ENRON/OU=NA/CN=RECIPIENTS/CN=RWILLIA2>, Brownfeld, Gail </O=ENRON/OU=NA/CN=RECIPIENTS/CN=GBROWNF>
 X-bcc: 
-X-Folder: \Dasovich, Jeff (Non-Privileged)\Dasovich, Jeff\Inbox
-X-Origin: DASOVICH-J
-X-FileName: Dasovich, Jeff (Non-Privileged).pst
+X-Folder: \rbuy\Inbox
+X-Origin: BUY-R
+X-FileName: richard buy 1-30-02..pst
 
-FYI, Attached is memo I prepared for Jim and Rick on the PNW refund case.
+J.C. asked that I send you the following message:
+
+In light of rumors that investigations into Enron's financial difficulties may be launched or expanded, including investigations by the civil plaintiffs or by the FBI on behalf of the SEC or Congress, we believe it prudent to advise you that if anyone contacts you and seeks to question you (even someone with a badge and an authoritative demeanor), don't answer their questions. Refer them to us for the purpose of arranging an interview.
+
+Second, if you know of any individuals who you believe might be interviewed in connection with these investigations, please call us so we can discuss how such information should be forwarded to the appropriate people.
+
+Please call if you have any questions.
 
  
 
- -----Original Message-----
-From: 	Alvarez, Ray  
-Sent:	Thursday, September 20, 2001 7:22 AM
-To:	Comnes, Alan; Walton, Steve; Mara, Susan; Lawner, Leslie; Cantrell, Rebecca W.; Fulton, Donna; Dasovich, Jeff; Nicolay, Christi L.; Steffes, James D.; 'jalexander@gibbs-bruns.com'; Allen, Phillip K.; Noske, Linda J.; Perrino, Dave; Black, Don; Frank, Robert; Miller, Stephanie; Tycholiz, Barry; Novosel, Sarah; Thome, Jennifer; Hall, Steve C. (Legal); Lindberg, Susan
-Subject:	RE: Western Wholesale Activities - Gas & Power Conf. Call Privileged & Confidential Communication Attorney-Client Communication and Attorney Work Product Privileges Asserted
 
-[Alvarez, Ray]  I will be unable to host the call this morning since I must attend a hearing in the CA refund proceeding.  Please proceed with the call in my absence.  Thanks!  Ray 
-PLEASE MARK YOUR CALENDAR
-Date:			Every Thursday
-Time: 		7:30 am Pacific, 9:30 am Central, and 10:30 am Eastern time
- Number: 		1-888-271-0949 
- Host Code:		661877 (for Ray only)
- Participant Code:	936022 (for everyone else)
 
-The table of the on-going FERC issues and proceedings is available to all team members on the O drive. Please feel free to revise/add to/ update this table as appropriate.
-
-Proposed agenda for today :
-
-ISO settlement redesign and imbalance energy agreement
-FERC sponsored reliability meeting at CAISO offices
-CA and PAC NW refund proceeding status
-
-Please feel free to communicate any additional agenda items to the group ."""
+This e-mail and any attached files may be confidential and subject to attorney/client privilege. If you received it in error, please immediately notify the sender by return e-mail or by calling (713)654-7600. 
+"""
 # tag = 'document or communication between enron employees discussing government inquiries and investigations into enron'
 tag = 'all documents or communications between enron employees discussing government inquiries and investigations into enron'
 system_context = (
@@ -81,7 +68,7 @@ system_context = (
 print('--------------------------------------------')
 # print(email)
 # print('--------------------------------------------')
-max_src_len = 4000
+max_src_len = 3000
 
 lm_logits = prompt_lm_logits_controller(model=model_node.model,
                                         texts=[email],
@@ -107,7 +94,7 @@ src_ids, src_mask = prompts_to_padded_id_tensor_w_mask(
     device=settings.DEVICE)
 
 result = model_node.model.generate(src_ids=src_ids, src_mask=src_mask,
-                                   max_new_tokens=96)
+                                   max_new_tokens=200)
 
 answer_start = int(src_ids.shape[-1])
 answer = model_node.tokenizer.batch_decode(result[:, answer_start:],
