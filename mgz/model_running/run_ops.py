@@ -307,8 +307,8 @@ def hybrid_generation_tagging_from_texts(model: DecoderTransformer,
     # don't need tgt_mask because you are generating one token at a time
     embedding: FloatTensorT['B,EmbedLen']
     lm_logits: FloatTensorT['NClasses']
-    embedding, lm_logits = model.decode_relevance(src_ids=src_ids,
-                                                  src_mask=src_mask)
+    embedding, lm_logits = model.decode_embedding_w_lm_logits(src_ids=src_ids,
+                                                              src_mask=src_mask)
     no_yes_logits: FloatTensorT['2'] = InferenceContext(
         tokenizer).get_word_scores_from_logits(lm_logits)
     return embedding, ProbTensorT(torch.softmax(no_yes_logits, dim=-1))
@@ -469,7 +469,7 @@ def prompt_lm_logits_controller(model: DecoderTransformer,
     src_ids, src_mask = prompts_to_padded_id_tensor_w_mask(
         prompts, tokenizer, max_src_len, settings.DEVICE)
     # don't need tgt_mask because you are generating one token at a time
-    lm_logits = model.decode_relevance(src_ids=src_ids, src_mask=src_mask)[1]
+    lm_logits = model.decode_embedding_w_lm_logits(src_ids=src_ids, src_mask=src_mask)[1]
     return lm_logits
 
 

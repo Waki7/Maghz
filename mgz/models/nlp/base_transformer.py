@@ -557,19 +557,12 @@ class DecoderTransformer(BaseTransformer):
             FloatTensorT['B,Opt[SrcSeqLen],EmbedLen']:
         raise NotImplementedError
 
-    def decoder_embedding_w_logits(self,
-                                   src_ids: LongTensorT['B,SrcSeqLen'],
-                                   src_mask: IntTensorT['B,SrcSeqLen'],
-                                   ret_last: bool = True) -> \
-            Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], FloatTensorT[
-                'B,Opt[SrcSeqLen],VocabSize']]:
-        raise NotImplementedError
-
-    def decode_relevance(self,
-                         src_ids: LongTensorT['B,SrcSeqLen'],
-                         src_mask: IntTensorT['B,SrcSeqLen'],
-                         inference_context: InferenceContext = None) -> \
-            Tuple[FloatTensorT['B,EmbedLen'], Optional[FloatTensorT['B,2']]]:
+    def decode_embedding_w_lm_logits(self,
+                                     src_ids: LongTensorT['B,SrcSeqLen'],
+                                     src_mask: IntTensorT['B,SrcSeqLen'],
+                                     return_last_logits: bool = True) -> \
+            Tuple[FloatTensorT['B,EmbedLen'], Optional[
+                FloatTensorT['B,VocabSize|2|N']]]:
         raise NotImplementedError
 
 

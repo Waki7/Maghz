@@ -16,7 +16,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPast
 
 import mgz.settings as settings
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext, \
-    DecoderTransformer
+    DecoderTransformer, InferenceContext
 from mgz.typing import *
 from mgz.version_control.model_index import get_models_path
 
@@ -311,7 +311,7 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
     @overrides(DecoderTransformer)
     def decoder_embedding(self,
                           src_ids: LongTensorT['B,SrcSeqLen'],
-                          src_mask: IntTensorT['B,SrcSeqLen'],) -> \
+                          src_mask: IntTensorT['B,SrcSeqLen'], ) -> \
             FloatTensorT['B,Opt[SrcSeqLen],EmbedLen']:
         full_output: BaseModelOutputWithPast = self.hug.model.forward(
             input_ids=src_ids, attention_mask=src_mask)
@@ -322,52 +322,21 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         return embedding
 
     @overrides(DecoderTransformer)
-    def decoder_embedding_w_logits(self,
-                                   src_ids: LongTensorT['B,SrcSeqLen'],
-                                   src_mask: IntTensorT['B,SrcSeqLen'],
-                                   ret_last: bool = True) -> \
-            Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], FloatTensorT[
-                'B,Opt[SrcSeqLen],VocabSize']]:
-        full_output: BaseModelOutputWithPast = self.hug.model.forward(
-            input_ids=src_ids, attention_mask=src_mask)
-        output: FloatTensorT[
-            'B,TgtSeqLen,EmbedLen'] = FloatTensorT(
-            full_output.last_hidden_state)
-        if ret_last:
-            lm_logits = self.hug.lm_head(output[:, -1, :])
-        else:
-            lm_logits = self.hug.lm_head(output)
-        # embedding = self.embedding_head(output)
-
-        max_pool = torch.max(output, dim=1)
-        avg_pool = torch.mean(output, dim=1)
-        last = output[:, -1, :]
-        combined_pool = torch.cat([max_pool.values, avg_pool, last], dim=-1)
-
-        return combined_pool, lm_logits
-
-    @overrides(DecoderTransformer)
-    def decode_relevance(self,
-                         src_ids: LongTensorT['B,SrcSeqLen'],
-                         src_mask: IntTensorT['B,SrcSeqLen'], ) -> \
+    def decode_embedding_w_lm_logits(self,
+                                     src_ids: LongTensorT['B,SrcSeqLen'],
+                                     src_mask: IntTensorT['B,SrcSeqLen'],
+                                     return_last_logits: bool = True) -> \
             Tuple[FloatTensorT['B,EmbedLen'], Optional[
-                FloatTensorT['B,NClasses']]]:
+                FloatTensorT['B,VocabSize|2|N']]]:
         full_output: BaseModelOutputWithPast = self.hug.model.forward(
             input_ids=src_ids, attention_mask=src_mask)
         output: FloatTensorT[
             'B,TgtSeqLen,EmbedLen'] = FloatTensorT(
             full_output.last_hidden_state)
-        lm_logits = self.hug.lm_head(output[:, -2:, :])[:, -1, :]
-        # unhinged wtf is this, these first two are not identical, the last two are
-        # print(self.hug.lm_head(output[:, -1, :]))
-        # print(self.hug.lm_head(output[:, -2:, :])[:,-1,:])
-        # print(self.embedding_head(output[:, -1, :]))
-        # print(self.embedding_head(output[:, -2:, :])[:,-1,:])
+        lm_logits = self.hug.lm_head(output[:, -2:, :])
+        if return_last_logits:
+            lm_logits = lm_logits[:, -1, :]
         embedding = self.embedding_head(output)
-        # avg_embedding = output[:, -1, :]
-        # print(avg_embedding.shape)
-        # print(embedding.shape)
-        # exit(3)
         return embedding, lm_logits
 
     @overrides(BaseTransformer)
@@ -470,20 +439,9 @@ class MistralForCausalLMHugMock(MistralForCausalLMHug):
         return FloatTensorT(torch.rand(b, self.embed_dim))
 
     @overrides(DecoderTransformer)
-    def decoder_embedding_w_logits(self,
-                                   src_ids: LongTensorT['B,SrcSeqLen'],
-                                   src_mask: IntTensorT['B,SrcSeqLen'],
-                                   ret_last: bool = True) -> \
-            Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], FloatTensorT[
-                'B,Opt[SrcSeqLen],VocabSize']]:
-        b, src_len = src_ids.shape
-        return FloatTensorT(torch.rand(b, self.embed_dim)), FloatTensorT(
-            torch.rand(b, 2))
-
-    @overrides(DecoderTransformer)
-    def decode_relevance(self,
-                         src_ids: LongTensorT['B,SrcSeqLen'],
-                         src_mask: IntTensorT['B,SrcSeqLen'], ) -> \
+    def decode_embedding_w_lm_logits(self,
+                                     src_ids: LongTensorT['B,SrcSeqLen'],
+                                     src_mask: IntTensorT['B,SrcSeqLen'], ) -> \
             Tuple[FloatTensorT['B,EmbedLen'], Optional[
                 FloatTensorT['B,NClasses']]]:
         b, src_len = src_ids.shape

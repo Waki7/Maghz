@@ -1006,27 +1006,12 @@ class MistralForCausalLM(MistralPreTrainedModel):
         embedding = self.embedding_head(output)
         return embedding
 
-    @overrides(DecoderTransformer)
-    def decoder_embedding_w_logits(self,
-                                   src_ids: LongTensorT['B,SrcSeqLen'],
-                                   src_mask: IntTensorT['B,SrcSeqLen'],
-                                   ret_last: bool = True) -> \
-            Tuple[FloatTensorT['B,SrcSeqLen,EmbedLen'], FloatTensorT[
-                'B,Opt[SrcSeqLen],VocabSize']]:
-        output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.hug.model.forward(
-            src_ids=src_ids, src_mask=src_mask)
-        if ret_last:
-            output = output[:, -1, :]
-        output = self._change_output_if_configured(output)
-        lm_logits = self.hug.lm_head(output)
-        embedding = self.embedding_head(output)
-        return embedding, lm_logits
 
     @overrides(DecoderTransformer)
-    def decode_relevance(self,
-                         src_ids: LongTensorT['B,SrcSeqLen'],
-                         src_mask: IntTensorT['B,SrcSeqLen'],
-                         inference_context: InferenceContext = None) -> \
+    def decode_embedding_w_lm_logits(self,
+                                     src_ids: LongTensorT['B,SrcSeqLen'],
+                                     src_mask: IntTensorT['B,SrcSeqLen'],
+                                     inference_context: InferenceContext = None) -> \
     FloatTensorT['B,2']:
         output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.hug.model.forward(
             src_ids=src_ids, src_mask=src_mask)
