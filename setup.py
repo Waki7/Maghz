@@ -128,7 +128,7 @@ setup(
                          'optimum',
                          'torch==2.1.2',
                          'bitsandbytes==0.41.3.post2',
-                         'transformers',
+                         'transformers==4.37.2',
                          'torchaudio==2.1.2',
                          'torchmetrics',
                          'torchvision==0.16.2',

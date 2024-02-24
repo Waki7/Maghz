@@ -703,6 +703,13 @@ class CustomTqdm(tqdm):
 
 def main():
     with torch.no_grad():
+        ds = EnronEmails(LlamaTokenizer.from_pretrained("AdaptLLM/law-chat"),
+                         training_ratio=0.1,
+                         max_src_len=4096,
+                         max_tgt_len=-1,
+                         dataset_dir='/Users/ceyer/Documents/Projects/Maghz/datasets/enron_with_categories').load_training_data()
+        print(ds[0].get(SampleType.FULL_AS_STRING))
+        exit(4)
         dump_n_examples()
 
 
