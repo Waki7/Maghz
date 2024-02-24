@@ -305,7 +305,6 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
             full_output.last_hidden_state)
         if ret_last:
             output = output[:, -1, :]
-        output = self._change_output_if_configured(output)
         lm_logits = self.hug.lm_head(output)
         return lm_logits
 
@@ -322,7 +321,6 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
             full_output.last_hidden_state)
         if ret_last:
             output = output[:, -1, :]
-        output = self._change_output_if_configured(output)
         embedding = self.embedding_head(output)
         return embedding
 
