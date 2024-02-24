@@ -311,16 +311,13 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
     @overrides(DecoderTransformer)
     def decoder_embedding(self,
                           src_ids: LongTensorT['B,SrcSeqLen'],
-                          src_mask: IntTensorT['B,SrcSeqLen'],
-                          ret_last: bool = True) -> \
+                          src_mask: IntTensorT['B,SrcSeqLen'],) -> \
             FloatTensorT['B,Opt[SrcSeqLen],EmbedLen']:
         full_output: BaseModelOutputWithPast = self.hug.model.forward(
             input_ids=src_ids, attention_mask=src_mask)
         output: FloatTensorT[
             'B,TgtSeqLen,EmbedLen'] = FloatTensorT(
             full_output.last_hidden_state)
-        if ret_last:
-            output = output[:, -1, :]
         embedding = self.embedding_head(output)
         return embedding
 
