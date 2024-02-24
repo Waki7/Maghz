@@ -199,8 +199,8 @@ class ModelTransitionEdge:
             store_model = True
             if latest_mean_val_acc >= self.best_val_acc:
                 identifiers.append("BEST")
-            else:
-                identifiers.append("LATEST")
+            # else:
+            #     identifiers.append("LATEST")
 
             self.best_val_acc = max(self.best_val_acc, latest_mean_val_acc)
         summary_dir = '_'.join(identifiers)
