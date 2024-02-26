@@ -70,7 +70,7 @@ def predict_probs_with_optional_prototypes(
             query_embeddings=query_embedding))
         query_probs = torch.softmax(similarity_to_classes, dim=-1)
         pred_augment_strong: ProbTensorT['NQuery,NClasses'] = \
-            (n_supports * query_probs) + (2 * no_yes_probs)
+            ((n_supports * query_probs) + (2 * no_yes_probs)) / (n_supports + 2)
         return pred_augment_strong
     else:
         return no_yes_probs
