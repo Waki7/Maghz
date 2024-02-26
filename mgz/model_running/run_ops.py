@@ -234,7 +234,7 @@ def summarize_controller_from_texts(model: DecoderTransformer,
         # TODO, confusion about the whole word limit vs token limit
         return _qa_controller_from_prompts(model, prompts, tokenizer,
                                            max_src_len=max_src_len,
-                                           max_new_tokens=2 * word_limit,
+                                           max_new_tokens=4 * word_limit,
                                            return_just_new=return_just_new, )
 
 
