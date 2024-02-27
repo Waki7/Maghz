@@ -115,8 +115,8 @@ def led_main_train():
     # model_name = 'allenai/led-base-16384-multi_lexsum-source-long'
 
     # Mistral Models
-    # model_name = 'mistralai/Mistral-7B-v0.1'
-    model_name = 'mistralai/Mistral-7B-Instruct-v0.1'
+    model_name = 'mistralai/Mistral-7B-v0.2'
+    # model_name = 'mistralai/Mistral-7B-Instruct-v0.1'
     # model_name = 'mistralai/Mistral-cont-exp/data_EnronEmailsTagQA_1e-7'
 
     # model_name = 'openchat/openchat_3.5'
@@ -181,7 +181,7 @@ def led_main_train():
             model_node=model_node, ds=ds, val_ds=val_ds,
             model_edge=train_transition_edge,
             device=settings.DEVICE, distributed=False,
-            turn_off_shuffle=True, n_epochs=20, )
+            turn_off_shuffle=True, n_epochs=5, )
         torch.cuda.empty_cache()
 
 

@@ -237,11 +237,11 @@ class TaggingRoutine(BaseNLPProtocol):
 
             predictions: LongTensorT['NQuery'] = cls_logits.argmax(-1)
             accuracy = (predictions == query_lbls).float().mean().item()
-            print('accuracy', accuracy)
-            print('proto_probs', torch.softmax(
-                cls_logits.detach(), dim=-1))
-            print('classification_accuracy', classification_accuracy)
-            print('no_yes_probs', no_yes_probs)
+            # print('accuracy', accuracy)
+            # print('proto_probs', torch.softmax(
+            #     cls_logits.detach(), dim=-1))
+            # print('classification_accuracy', classification_accuracy)
+            # print('no_yes_probs', no_yes_probs)
             # print('no_yes_probs', no_yes_probs)
             # print('cls_logits', cls_logits)
             # print('argmax', cls_logits.argmax(-1))
