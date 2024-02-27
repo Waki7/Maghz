@@ -115,8 +115,8 @@ def led_main_train():
     # model_name = 'allenai/led-base-16384-multi_lexsum-source-long'
 
     # Mistral Models
-    model_name = 'mistralai/Mistral-7B-v0.2'
-    # model_name = 'mistralai/Mistral-7B-Instruct-v0.1'
+    # model_name = 'mistralai/Mistral-7B-v0.2'
+    model_name = 'mistralai/Mistral-7B-Instruct-v0.2'
     # model_name = 'mistralai/Mistral-cont-exp/data_EnronEmailsTagQA_1e-7'
 
     # model_name = 'openchat/openchat_3.5'
