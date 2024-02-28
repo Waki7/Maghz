@@ -239,6 +239,24 @@ def summarize_controller_from_texts(model: DecoderTransformer,
 
 
 @torch.no_grad()
+def summarize_controller_from_prompts(model: DecoderTransformer,
+                                      prompts: List[SummarizePromptInput],
+                                      tokenizer: PreTrainedTokenizerBase,
+                                      max_src_len: int = None,
+                                      return_just_new: bool = True,
+                                      word_limit: int = None,
+                                      ) -> List[str]:
+    if word_limit is None:
+        word_limit = prompts[0].word_limit
+    with torch.cuda.amp.autocast(enabled=True):
+        # TODO, confusion about the whole word limit vs token limit
+        return _qa_controller_from_prompts(model, prompts, tokenizer,
+                                           max_src_len=max_src_len,
+                                           max_new_tokens=4 * word_limit,
+                                           return_just_new=return_just_new, )
+
+
+@torch.no_grad()
 def tag_questions_controller_from_texts(model: DecoderTransformer,
                                         texts: List[str],
                                         tags: List[str],
@@ -469,7 +487,8 @@ def prompt_lm_logits_controller(model: DecoderTransformer,
     src_ids, src_mask = prompts_to_padded_id_tensor_w_mask(
         prompts, tokenizer, max_src_len, settings.DEVICE)
     # don't need tgt_mask because you are generating one token at a time
-    lm_logits = model.decode_embedding_w_lm_logits(src_ids=src_ids, src_mask=src_mask)[1]
+    lm_logits = \
+    model.decode_embedding_w_lm_logits(src_ids=src_ids, src_mask=src_mask)[1]
     return lm_logits
 
 
