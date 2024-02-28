@@ -61,14 +61,14 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
                                      system_context=system_context)
         ds = EnronEmailsTagQA(model_node.tokenizer,
                               prompt_config=prompt_config,
-                              max_src_len=4095,
+                              max_src_len=8000,
                               n_episodes=100,
                               n_query_per_cls=[1],
                               n_support_per_cls=[1, 2, 3, 4, 5, 6, 7, 8],
                               dataset_dir="/home/ceyer/Documents/Projects/Maghz/datasets/enron_export_investigations_mistral_labeled")
         val_ds = EnronEmailsTagQA(model_node.tokenizer,
                                   prompt_config=prompt_config,
-                                  max_src_len=4095,
+                                  max_src_len=8000,
                                   n_episodes=25,
                                   n_query_per_cls=[1],
                                   n_support_per_cls=[1, 2, 3, 4, 5, 6, 7, 8],
@@ -181,7 +181,7 @@ def led_main_train():
             model_node=model_node, ds=ds, val_ds=val_ds,
             model_edge=train_transition_edge,
             device=settings.DEVICE, distributed=False,
-            turn_off_shuffle=True, n_epochs=5, )
+            turn_off_shuffle=True, n_epochs=50, )
         torch.cuda.empty_cache()
 
 
