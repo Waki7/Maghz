@@ -32,7 +32,8 @@ class PromptConfig:
 
     def __init__(self, system_context: Optional[str] = None,
                  model: DecoderTransformer = None,
-                 prompt_type: PromptType = None, ):
+                 prompt_type: PromptType = None,
+                 question_wording_component: Optional[str] = None,):
         if prompt_type is None:
             self.prompt_type = self.infer_prompt_type(model)
         else:
@@ -40,6 +41,7 @@ class PromptConfig:
         self.system_context = system_context
         self.truncate_token_start = '[TRUNCABTABLE_START]'
         self.truncate_token_end = '[TRUNCABTABLE_END]'
+        self.question_wording_component = question_wording_component
 
 
 class PromptingInput:
@@ -206,10 +208,14 @@ class SummarizePromptInput(PromptingInput):
         self.word_limit = word_limit
 
     def get_tokenizer_input(self, add_trunc: bool = True):
-        if add_trunc:
-            qa_prefix = f"Could you summarize this in less than {self.word_limit} words?\n{self.truncate_token_start}{self.document_text}{self.truncate_token_end}"
+        if self.prompt_config.question_wording_component is not None:
+            question = self.prompt_config.question_wording_component
         else:
-            qa_prefix = f"Could you summarize this in less than {self.word_limit} words?\n {self.document_text} "
+            question = "Could you summarize this in at most"
+        if add_trunc:
+            qa_prefix = f"{question} {self.word_limit} words?\n{self.truncate_token_start}{self.document_text}{self.truncate_token_end}"
+        else:
+            qa_prefix = f"{question} {self.word_limit} words?\n {self.document_text} "
         if self.prompt_type == PromptType.MISTRAL:
             return self.prompt_mistral(qa_prefix)
         else:
