@@ -116,7 +116,8 @@ def led_main_train():
 
     # Mistral Models
     # model_name = 'mistralai/Mistral-7B-v0.2'
-    model_name = 'mistralai/Mistral-7B-Instruct-v0.2'
+    # model_name = 'mistralai/Mistral-7B-Instruct-v0.2'
+    model_name = 'jan-hq/Mistral-7B-Instruct-v0.2-SLERP'
     # model_name = 'mistralai/Mistral-cont-exp/data_EnronEmailsTagQA_1e-7'
 
     # model_name = 'openchat/openchat_3.5'
@@ -155,7 +156,7 @@ def led_main_train():
         mlp_params = model_node.get_parameters_by_string_in_name(
             'model.layers.31.mlp')
         trainable_params = [
-            {'params': embed_params, 'lr': 0.0005},
+            {'params': embed_params, 'lr': 0.001},
             {'params': lm_head_params, 'lr': 0.00001},
             {'params': mlp_params, 'lr': 0.00001},
         ]
