@@ -236,6 +236,7 @@ class FreePromptInput(PromptingInput):
                  ):
         super().__init__(
             prompt_config=prompt_config,
+            document_text=text,
         )
         self.text = text
 
