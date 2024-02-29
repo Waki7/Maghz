@@ -33,7 +33,7 @@ class PromptConfig:
     def __init__(self, system_context: Optional[str] = None,
                  model: DecoderTransformer = None,
                  prompt_type: PromptType = None,
-                 question_wording_component: Optional[str] = None,):
+                 question_wording_component: Optional[str] = None, ):
         if prompt_type is None:
             self.prompt_type = self.infer_prompt_type(model)
         else:
@@ -220,6 +220,30 @@ class SummarizePromptInput(PromptingInput):
             return self.prompt_mistral(qa_prefix)
         else:
             return self.prompt_adapt(qa_prefix)
+
+
+class FreePromptInput(PromptingInput):
+    @classmethod
+    def from_list(cls,
+                  prompt_config: PromptConfig,
+                  texts: List[str]):
+        return [cls(prompt_config=prompt_config,
+                    text=text, )
+                for text in texts]
+
+    def __init__(self, prompt_config: PromptConfig,
+                 text: str = "",
+                 ):
+        super().__init__(
+            prompt_config=prompt_config,
+        )
+        self.text = text
+
+    def get_tokenizer_input(self, add_trunc: bool = True):
+        if self.prompt_type == PromptType.MISTRAL:
+            return self.prompt_mistral(self.text)
+        else:
+            return self.prompt_adapt(self.text)
 
 
 def tag_question_augment(document_text: str, pos_tag: str,
