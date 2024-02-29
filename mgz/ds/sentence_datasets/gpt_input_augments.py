@@ -246,9 +246,9 @@ class FreePromptInput(PromptingInput):
         else:
             text = self.document_text
         if self.prompt_type == PromptType.MISTRAL:
-            return self.prompt_mistral(self.text)
+            return self.prompt_mistral(text)
         else:
-            return self.prompt_adapt(self.text)
+            return self.prompt_adapt(text)
 
 
 def tag_question_augment(document_text: str, pos_tag: str,
