@@ -241,6 +241,10 @@ class FreePromptInput(PromptingInput):
         self.text = text
 
     def get_tokenizer_input(self, add_trunc: bool = True):
+        if add_trunc:
+            text = f'{self.truncate_token_start}{self.document_text}{self.truncate_token_end}'
+        else:
+            text = self.document_text
         if self.prompt_type == PromptType.MISTRAL:
             return self.prompt_mistral(self.text)
         else:
