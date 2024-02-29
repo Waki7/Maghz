@@ -13,6 +13,8 @@ from setuptools import find_packages
 
 def is_cuda_available():
     # NVIDIA Docker images set NVIDIA_VISIBLE_DEVICES environment variable
+    print('------------------')
+    print(os.getenv('NVIDIA_VISIBLE_DEVICES', None))
     if os.getenv('NVIDIA_VISIBLE_DEVICES', None) in ['cpu', 'None', 'mps']:
         return False
     else:
