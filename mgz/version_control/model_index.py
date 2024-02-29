@@ -36,7 +36,8 @@ class ModelDatabase:
 
     @staticmethod
     def mistral_openchat(
-            model_name: str = "openchat/openchat-3.5-0106", quantized=False) -> ModelNode:
+            model_name: str = "openchat/openchat-3.5-0106",
+            quantized=False) -> ModelNode:
         # AdaptLLM/law-chat
         # OpenHermes-2.5-Mistral-7B
         from mgz.models.nlp.mistral_hug import MistralForCausalLMHug
@@ -58,6 +59,34 @@ class ModelDatabase:
                                       model_name,
                                       model_name,
                                       quantization_config=quantization_cfg)
+
+    @staticmethod
+    def get_quantized_model(
+            model_name: str,
+            quantized=False) -> ModelNode:
+        # AdaptLLM/law-chat
+        # OpenHermes-2.5-Mistral-7B
+        from mgz.models.nlp.mistral_hug import MistralForCausalLMHug
+        quantize = False
+        quantization_cfg = None
+
+        if quantize and settings.DEVICE != torch.device('cpu'):
+            try:
+                from accelerate.utils import BnbQuantizationConfig
+                import bitsandbytes
+                quantization_cfg = BnbQuantizationConfig(
+                    load_in_4bit=quantize, llm_int8_threshold=6,
+                    torch_dtype=torch.float16)
+
+            except ImportError:
+                print("Module 'some_module' is not installed.")
+                quantization_cfg = None
+        node = ModelNode.load_from_id(MistralForCausalLMHug,
+                                      model_name,
+                                      model_name,
+                                      quantization_config=quantization_cfg)
+        torch.compile(torch.jit.script(node.model))
+        return node
 
 
 # DEFAULTS

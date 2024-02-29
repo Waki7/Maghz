@@ -713,7 +713,6 @@ def main():
         # model_name = 'openchat/openchat-3.5-0106'
         # model_name = 'mistralai/Mistral-7B-Instruct-v0.1'
         # model_name = 'jan-hq/Mistral-7B-Instruct-v0.2-SLERP'
-        dump_n_examples('jan-hq/Mistral-7B-Instruct-v0.2-SLERP')
         dump_n_examples('mistralai/Mistral-7B-Instruct-v0.2')
 
 
