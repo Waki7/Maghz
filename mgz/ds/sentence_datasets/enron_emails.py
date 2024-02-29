@@ -468,17 +468,14 @@ def look_through_data():
         print('-----------------')
 
 
-def dump_n_examples(n: int = 100000000):
+def dump_n_examples(model_name: str, n: int = 100000000):
     from mgz.version_control import ModelDatabase, ModelNode
     logging.basicConfig(level=logging.WARNING)
 
-    # model_name = 'openchat/openchat-3.5-0106'
-    # model_name = 'mistralai/Mistral-7B-Instruct-v0.1'
-    model_name = 'jan-hq/Mistral-7B-Instruct-v0.2-SLERP'
     tag_to_sample = 'all documents or communications between enron employees discussing government inquiries and investigations into enron'
     system_context = (
         "Given this as the only background: The FERC's investigating enron for market manipulation. The FERC investigation primarily focused on Enron's role in the California energy crisis of 2000-2001, "
-            "along with its trading practices and their impact on electricity markets across the United States. Determine if the email should be produced as evidence based on the document request.")
+        "along with its trading practices and their impact on electricity markets across the United States. Determine if the email should be produced as evidence based on the document request.")
     export_dir = os.path.join(
         Path(__file__).resolve().parent.parent.parent.parent,
         f"datasets/enron_export_investigations_{model_name.replace('/', '_')}/").replace(
@@ -633,7 +630,8 @@ def dump_n_examples(n: int = 100000000):
             yes_inclusion = no_yes_scores[i].argmax(0) == 1
 
             maybe_inclusion = any(
-                [word.lower() in doc[SampleType.FULL_AS_STRING].lower() for word in
+                [word.lower() in doc[SampleType.FULL_AS_STRING].lower() for word
+                 in
                  contains_words]) and random.random() < p_contained
             if sample_negative and (
                     not (
@@ -711,7 +709,12 @@ def main():
         #                  dataset_dir='/Users/ceyer/Documents/Projects/Maghz/datasets/enron_with_categories').load_training_data()
         # print(ds[0].get(SampleType.FULL_AS_STRING))
         # exit(4)
-        dump_n_examples()
+
+        # model_name = 'openchat/openchat-3.5-0106'
+        # model_name = 'mistralai/Mistral-7B-Instruct-v0.1'
+        # model_name = 'jan-hq/Mistral-7B-Instruct-v0.2-SLERP'
+        dump_n_examples('jan-hq/Mistral-7B-Instruct-v0.2-SLERP')
+        dump_n_examples('mistralai/Mistral-7B-Instruct-v0.2')
 
 
 if __name__ == '__main__':
