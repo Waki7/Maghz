@@ -217,9 +217,11 @@ class SummarizePromptInput(PromptingInput):
         else:
             qa_prefix = f"{question} {self.word_limit} words?:\n {self.document_text} "
         if self.prompt_type == PromptType.MISTRAL:
-            return self.prompt_mistral(qa_prefix)
+            return self.prompt_mistral(qa_prefix,
+                                       system_context=self.system_context)
         else:
-            return self.prompt_adapt(qa_prefix)
+            return self.prompt_adapt(qa_prefix,
+                                     system_context=self.system_context)
 
 
 class FreePromptInput(PromptingInput):
