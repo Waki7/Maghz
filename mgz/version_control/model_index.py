@@ -55,10 +55,12 @@ class ModelDatabase:
             except ImportError:
                 print("Module 'some_module' is not installed.")
                 quantization_cfg = None
-        return ModelNode.load_from_id(MistralForCausalLMHug,
+        node = ModelNode.load_from_id(MistralForCausalLMHug,
                                       model_name,
                                       model_name,
                                       quantization_config=quantization_cfg)
+        node.model = torch.compile(torch.jit.script(node.model))
+        return node
 
     @staticmethod
     def get_quantized_model(
@@ -85,7 +87,7 @@ class ModelDatabase:
                                       model_name,
                                       model_name,
                                       quantization_config=quantization_cfg)
-        torch.compile(torch.jit.script(node.model))
+        node.model = torch.compile(torch.jit.script(node.model))
         return node
 
 
