@@ -33,7 +33,7 @@ def embedding_controller_from_texts(model: BaseTransformer, texts: List[str],
         FloatTensorT['B,EmbedLen']: Tensor containing the embeddings.
     """
     if max_src_len is None:
-        if isinstance(model, EncoderDecoderTransformer):
+        if model.MODEL_TYPE == ModelType.EncoderDecoderTransformer:
             max_src_len = model.get_max_encoder_positions()
         else:
             max_src_len = model.get_max_decoder_positions() - 1
@@ -41,13 +41,13 @@ def embedding_controller_from_texts(model: BaseTransformer, texts: List[str],
     src_ids, src_mask = strings_to_padded_id_tensor_w_mask(texts, tokenizer,
                                                            max_src_len,
                                                            settings.DEVICE)
-    if isinstance(model, DecoderTransformer):
+    if model.MODEL_TYPE == ModelType.DecoderTransformer:
         embedding: FloatTensorT[
             'TaskSize,EmbedLen'] = model.decoder_embedding(
             src_ids=src_ids,
             src_mask=src_mask,
         )
-    elif isinstance(model, EncoderDecoderTransformer):
+    elif model.MODEL_TYPE == ModelType.EncoderDecoderTransformer:
         tgt_ids, tgt_mask = strings_to_padded_id_tensor_w_mask(
             [tokenizer.sep_token], tokenizer,
             max_len=1,
@@ -137,7 +137,7 @@ def _qa_controller_from_prompts(model: DecoderTransformer,
     Returns:
         Tensor: Generated sequences.
     """
-    assert isinstance(model, DecoderTransformer)
+    assert model.MODEL_TYPE == ModelType.DecoderTransformer
     if max_src_len is None:
         logging.info(
             f'max_src_len is None, setting to model max_decoder_positions - max_new_tokens {model.get_max_decoder_positions()} - {max_new_tokens}')
