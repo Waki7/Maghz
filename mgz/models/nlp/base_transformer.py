@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from enum import Enum
+
 import torch.nn as nn
 import transformers as hug
 from transformers import BitsAndBytesConfig, LlamaTokenizer, \
@@ -11,6 +13,12 @@ import mgz.settings as settings
 from mgz.models.base_model import BaseModel
 from mgz.models.nlp.inference import BeamInference, Greedy
 from mgz.typing import *
+
+
+class ModelType(Enum):
+    BaseTransformer = 0
+    EncoderDecoderTransformer = 1
+    DecoderTransformer = 2
 
 
 def replace_8bit_linear(model, threshold=6.0, module_to_not_convert=None):
@@ -316,6 +324,7 @@ class LogitsRuleEnforce:
 
 
 class BaseTransformer(BaseModel):
+    MODEL_TYPE: ModelType = ModelType.BaseTransformer
 
     @classmethod
     def modules_to_apply_lora(cls) -> List[str]:
@@ -490,6 +499,7 @@ class BaseTransformer(BaseModel):
 
 
 class EncoderDecoderTransformer(BaseTransformer):
+    MODEL_TYPE: ModelType = ModelType.EncoderDecoderTransformer
 
     @classmethod
     def is_encoder_decoder(cls) -> bool:
@@ -524,6 +534,7 @@ class EncoderDecoderTransformer(BaseTransformer):
 
 
 class DecoderTransformer(BaseTransformer):
+    MODEL_TYPE: ModelType = ModelType.DecoderTransformer
 
     @classmethod
     def is_encoder_decoder(cls) -> bool:

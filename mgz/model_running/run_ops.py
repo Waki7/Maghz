@@ -11,7 +11,7 @@ from mgz.ds.sentence_datasets.gpt_input_augments import tag_question_augment, \
 from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask, \
     strings_to_padded_id_tensor_w_mask, prompts_to_padded_id_tensor_w_mask
 from mgz.models.nlp.base_transformer import BaseTransformer, \
-    EncoderDecoderTransformer, DecoderTransformer, InferenceContext
+    EncoderDecoderTransformer, DecoderTransformer, InferenceContext, ModelType
 from mgz.typing import *
 
 
@@ -267,7 +267,7 @@ def tag_questions_controller_from_texts(model: DecoderTransformer,
                                         return_just_new: bool = True,
                                         prompt_config: PromptConfig = None,
                                         ) -> List[str]:
-    assert isinstance(model, DecoderTransformer)
+    assert model.MODEL_TYPE == ModelType.DecoderTransformer
     assert len(texts) == len(tags)
     if prompt_config is None:
         prompt_config = PromptConfig(system_context=system_context,
@@ -306,7 +306,7 @@ def hybrid_generation_tagging_from_texts(model: DecoderTransformer,
        Returns:
            FloatTensorT['B,EmbedLen']: Tensor containing the embeddings.
        """
-    assert isinstance(model, DecoderTransformer)
+    assert model.MODEL_TYPE == ModelType.DecoderTransformer
     assert len(texts) == len(tags)
     if prompt_config is None:
         prompt_config = PromptConfig(system_context=system_context,
@@ -353,7 +353,7 @@ def test(model: DecoderTransformer,
        Returns:
            FloatTensorT['B,EmbedLen']: Tensor containing the embeddings.
        """
-    assert isinstance(model, DecoderTransformer)
+    assert model.MODEL_TYPE == ModelType.DecoderTransformer
     assert len(texts) == len(tag_text)
     if max_src_len is None:
         max_src_len = model.get_max_decoder_positions() - 1
@@ -433,7 +433,7 @@ def tagging_embedding_controller(model: EncoderDecoderTransformer,
     Returns:
         FloatTensorT['B,EmbedLen']: Tensor containing the embeddings.
     """
-    assert isinstance(model, EncoderDecoderTransformer)
+    assert model.MODEL_TYPE == ModelType.EncoderDecoderTransformer
     if max_src_len is None:
         max_src_len = model.get_max_encoder_positions()
     if max_tgt_len is None:
@@ -473,7 +473,7 @@ def prompt_lm_logits_controller(model: DecoderTransformer,
     Returns:
         FloatTensorT['B,EmbedLen']: Tensor containing the embeddings.
     """
-    assert isinstance(model, DecoderTransformer)
+    assert model.MODEL_TYPE == ModelType.DecoderTransformer
     assert len(texts) == len(tags)
     if prompt_config is None:
         prompt_config = PromptConfig(system_context=system_context,
@@ -488,7 +488,8 @@ def prompt_lm_logits_controller(model: DecoderTransformer,
         prompts, tokenizer, max_src_len, settings.DEVICE)
     # don't need tgt_mask because you are generating one token at a time
     lm_logits = \
-    model.decode_embedding_w_lm_logits(src_ids=src_ids, src_mask=src_mask)[1]
+        model.decode_embedding_w_lm_logits(src_ids=src_ids, src_mask=src_mask)[
+            1]
     return lm_logits
 
 
