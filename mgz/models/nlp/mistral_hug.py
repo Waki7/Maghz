@@ -16,7 +16,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPast
 
 import mgz.settings as settings
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext, \
-    DecoderTransformer, InferenceContext
+    DecoderTransformer
 from mgz.typing import *
 from mgz.version_control.model_index import get_models_path
 
@@ -446,7 +446,7 @@ class MistralForCausalLMHugMock(MistralForCausalLMHug):
                 FloatTensorT['B,NClasses']]]:
         b, src_len = src_ids.shape
         return FloatTensorT(torch.rand(b, self.embed_dim)), FloatTensorT(
-            torch.rand(b, 2))
+            torch.rand(b, self.vocab_size))
 
     @overrides(BaseTransformer)
     def generate(self,
