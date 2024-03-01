@@ -59,7 +59,7 @@ class ModelDatabase:
                                       model_name,
                                       model_name,
                                       quantization_config=quantization_cfg)
-        node.model = torch.compile(torch.jit.script(node.model))
+        node.model = torch.compile(node.model)
         return node
 
     @staticmethod
@@ -87,7 +87,7 @@ class ModelDatabase:
                                       model_name,
                                       model_name,
                                       quantization_config=quantization_cfg)
-        node.model = torch.compile(torch.jit.script(node.model))
+        node.model = torch.compile(node.model)
         return node
 
 
