@@ -213,9 +213,9 @@ class SummarizePromptInput(PromptingInput):
         else:
             question = "Could you summarize this in at most"
         if add_trunc:
-            qa_prefix = f"{question} {self.word_limit} words?\n{self.truncate_token_start}{self.document_text}{self.truncate_token_end}"
+            qa_prefix = f"{question} {self.word_limit} words?:\n{self.truncate_token_start}{self.document_text}{self.truncate_token_end}"
         else:
-            qa_prefix = f"{question} {self.word_limit} words?\n {self.document_text} "
+            qa_prefix = f"{question} {self.word_limit} words?:\n {self.document_text} "
         if self.prompt_type == PromptType.MISTRAL:
             return self.prompt_mistral(qa_prefix)
         else:
@@ -246,9 +246,9 @@ class FreePromptInput(PromptingInput):
         else:
             text = self.document_text
         if self.prompt_type == PromptType.MISTRAL:
-            return self.prompt_mistral(text)
+            return self.prompt_mistral(text, system_context=self.system_context)
         else:
-            return self.prompt_adapt(text)
+            return self.prompt_adapt(text, system_context=self.system_context)
 
 
 def tag_question_augment(document_text: str, pos_tag: str,
