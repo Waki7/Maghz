@@ -13,7 +13,7 @@ from mgz.math_utils.nlp.metrics import DistanceMeasuresPerClass
 from mgz.model_running.base_routine import BaseProtocol
 from mgz.model_running.nlp_routines.base_nlp_routine import BaseNLPProtocol
 from mgz.models.nlp.base_transformer import EncoderDecoderTransformer, \
-    DecoderTransformer, InferenceContext
+    DecoderTransformer, InferenceContext, ModelType
 from mgz.typing import *
 from mgz.version_control.metrics import Metrics
 
@@ -146,7 +146,7 @@ class TaggingRoutine(BaseNLPProtocol):
                               batch: TagQAMetaTaskBatch) -> \
             Tuple[FloatTensorT['NQuery,NClasses'], LongTensorT['NQuery'],
             Optional[FloatTensorT['NQuery,NClasses']]]:
-        is_decoder = isinstance(model, DecoderTransformer) and \
+        is_decoder = model.MODEL_TYPE == ModelType.DecoderTransformer and \
                      isinstance(batch, TagQAMetaTaskBatch)
         assert is_decoder, 'Bad combination of model and batch'
 
@@ -166,7 +166,6 @@ class TaggingRoutine(BaseNLPProtocol):
         no_yes_logits = (
             InferenceContext(self.tokenizer).get_word_scores_from_logits(
                 lm_logits))
-        assert isinstance(model, DecoderTransformer)
         query_lbls: LongTensorT['NQuery'] = batch.query_lbls
         cls_logits: FloatTensorT[
             'NQuery,NClasses'] = predict_with_prototypes(
