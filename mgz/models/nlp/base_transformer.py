@@ -368,8 +368,11 @@ class BaseTransformer(BaseModel):
             self.embed_dim = config.d_model
         if hasattr(config, 'hidden_size'):
             self.embed_dim = config.hidden_size
-        if hasattr(config, 'embed_dim'):
+        if hasattr(config, 'vocab_size'):
             self.vocab_size = config.embed_dim
+
+        if hasattr(config, 'embed_dim'):
+            self.embed_dim = config.embed_dim
 
         self.n_decoder_layers: int = None
         if hasattr(config, 'decoder_layers'):
