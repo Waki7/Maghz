@@ -459,7 +459,8 @@ class MistralForCausalLMHugMock(MistralForCausalLMHug):
                                          size=(b, self.embed_dim)))
 
     def __init__(self, config: MistralConfig):
-        super().__init__(config)
+        BaseTransformer.__init__(self, config)
+        torch.nn.Module.__init__(self)
 
 
 def main():
