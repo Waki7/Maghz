@@ -369,7 +369,7 @@ class BaseTransformer(BaseModel):
         if hasattr(config, 'hidden_size'):
             self.embed_dim = config.hidden_size
         if hasattr(config, 'vocab_size'):
-            self.vocab_size = config.embed_dim
+            self.vocab_size = config.vocab_size
 
         if hasattr(config, 'embed_dim'):
             self.embed_dim = config.embed_dim
