@@ -362,7 +362,7 @@ class BaseTransformer(BaseModel):
     def __init__(self, config):
         super(BaseTransformer, self).__init__()
         self.config: hug.PretrainedConfig = config
-
+        print('config', config)
         self.embed_dim: int = None
         if hasattr(config, 'd_model'):
             self.embed_dim = config.d_model

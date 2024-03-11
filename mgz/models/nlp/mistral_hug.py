@@ -18,7 +18,6 @@ import mgz.settings as settings
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext, \
     DecoderTransformer
 from mgz.typing import *
-from mgz.version_control.model_index import get_models_path
 
 
 class MistralMLP(nn.Module):
@@ -460,20 +459,23 @@ class MistralForCausalLMHugMock(MistralForCausalLMHug):
                                          size=(b, self.embed_dim)))
 
     def __init__(self, config: MistralConfig):
-        self.config = config
-        self.embed_dim = config.hidden_size
-        torch.nn.Module.__init__(self)
+        super().__init__(config)
 
 
 def main():
-    pth = os.path.join(get_models_path(), 'mistralai/Mistral-7B-v0.1')
-    model = hug.MistralForSequenceClassification(
-        hug.MistralConfig())
-    model.load_state_dict(
-        torch.load(pth + '/pytorch_model-00001-of-00002.bin', ), strict=False)
-    model.load_state_dict(
-        torch.load(pth + '/pytorch_model-00002-of-00002.bin', ), strict=False)
-    torch.save(model.half().cuda().state_dict(), pth + '/weights.bin')
+    from mgz.version_control import ModelNode
+
+    with ((torch.cuda.amp.autocast(enabled=True))):
+        model_to_load = MistralForCausalLMHugMock
+        model_node: ModelNode = ModelNode.load_from_id(model_to_load,
+                                                       '/Users/ceyer/Documents/Projects/LoA/backend/model_weights/tagging',
+                                                       '/Users/ceyer/Documents/Projects/LoA/backend/model_weights/tagging',
+                                                       quantization_config=None)
+        print('before', model_node.model.vocab_size)
+        model_node.model = torch.compile(model_node.model)
+        print('after', model_node.model.vocab_size)
+        model: MistralForCausalLMHug | MistralForCausalLMHugMock = model_node.model
+        # TODO fix this
 
 
 if __name__ == '__main__':
