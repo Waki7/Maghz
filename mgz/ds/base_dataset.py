@@ -99,6 +99,7 @@ class BaseDataset(Dataset):
             shuffle=not turn_off_shuffle and (valid_sampler is None),
             sampler=valid_sampler,
             collate_fn=self.get_collate_fn(device)
+
         )
         return dataloader
 

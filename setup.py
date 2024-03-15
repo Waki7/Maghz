@@ -140,7 +140,7 @@ setup(
                          'pyarrow==11.0.0',
                          'protobuf',
                          'numpy',
-
+                         'torchtyping',
                          # 'torchvision',
                          # 'torchaudio',
                          # 'torchdata',
