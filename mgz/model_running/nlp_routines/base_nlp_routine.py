@@ -23,8 +23,8 @@ class BaseNLPProtocol(BaseProtocol):
     def __init__(self,
                  tokenizer: hug.PreTrainedTokenizerBase = None,
                  gpu_max_batch_size: int = 4,
-                 debug: bool = False,
                  gradient_accumulation_steps: int = 4,
+                 debug: bool = False,
                  ):
         self.tokenizer = tokenizer
         self.debug = debug

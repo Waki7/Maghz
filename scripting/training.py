@@ -8,16 +8,16 @@ os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 # from mgz.models.nlp.bart_interface import BARTHubInterface
 
 from mgz.model_running.nlp_routines.model_routine_tagging import DistanceMeasure
-from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagging, \
+from mgz.ds.sentence_datasets.responsivenes_datasets.enron_emails import \
     EnronEmailsTagQA
 from mgz.typing import *
 
 import torch
 import mgz.settings as settings
-from mgz.ds.sentence_datasets.synthetic_memorization import \
+from mgz.ds.sentence_datasets.behavioral_tuning_datasets.synthetic_memorization import \
     SyntheticMemorization
 import logging
-from mgz.ds.sentence_datasets.aus_legal_case_reports import \
+from mgz.ds.sentence_datasets.summarization_datasets.aus_legal_case_reports import \
     AusCaseReportsToTagGrouped
 from mgz.model_running.nlp_routines.model_routine_tagging import TaggingRoutine
 from mgz.version_control import ModelNode, ModelDatabase
@@ -56,38 +56,33 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
     if enron:
         system_context = (
             "Given this as the only background: The FERC's investigating enron for market manipulation. The FERC investigation primarily focused on Enron's role in the California energy crisis of 2000-2001, "
-            "along with its trading practices and their impact on electricity markets across the United States. Determine if the email should be produced as evidence based on the document request.")
+            "along with its trading practices and their impact on electricity markets across the United States. Determine if the email should be produced as evidence based on the document request. ")
         prompt_config = PromptConfig(model=model_node.model,
                                      system_context=system_context)
         ds = EnronEmailsTagQA(model_node.tokenizer,
                               prompt_config=prompt_config,
-                              max_src_len=8000,
+                              max_src_len=4095,
                               n_episodes=100,
                               n_query_per_cls=[1],
                               n_support_per_cls=[1, 2, 3, 4, 5, 6, 7, 8],
                               dataset_dir="/home/ceyer/Documents/Projects/Maghz/datasets/enron_export_investigations_mistral_labeled")
         val_ds = EnronEmailsTagQA(model_node.tokenizer,
                                   prompt_config=prompt_config,
-                                  max_src_len=8000,
+                                  max_src_len=4095,
                                   n_episodes=25,
                                   n_query_per_cls=[1],
                                   n_support_per_cls=[1, 2, 3, 4, 5, 6, 7, 8],
                                   dataset_dir="/home/ceyer/Documents/Projects/Maghz/datasets/enron_export_investigations_mistral_labeled")
-    if old_enron:
-        ds = EnronEmailsTagging(model_node.tokenizer,
-                                max_src_len=3000,
-                                n_episodes=2000,
-                                n_query_per_cls=[1],
-                                n_support_per_cls=[1, 2, 3])
-        val_ds = EnronEmailsTagging(model_node.tokenizer,
-                                    max_src_len=3000,
-                                    n_episodes=25,
-                                    n_query_per_cls=[1],
-                                    n_support_per_cls=[1, 2, 3])
     return ds, val_ds
 
 
-# 174178
+def get_routine(model_node, tagging: bool):
+    if tagging:
+        return TaggingRoutine(
+            distance_measure=DistanceMeasure.L2,
+            tokenizer=model_node.tokenizer, debug=False, gpu_max_batch_size=2)
+    else:
+        return None
 
 
 def led_main_train():
@@ -116,8 +111,8 @@ def led_main_train():
 
     # Mistral Models
     # model_name = 'mistralai/Mistral-7B-v0.2'
-    # model_name = 'mistralai/Mistral-7B-Instruct-v0.2'
-    model_name = 'jan-hq/Mistral-7B-Instruct-v0.2-SLERP'
+    model_name = 'mistralai/Mistral-7B-Instruct-v0.2'
+    # model_name = 'jan-hq/Mistral-7B-Instruct-v0.2-SLERP'
     # model_name = 'mistralai/Mistral-cont-exp/data_EnronEmailsTagQA_1e-7'
 
     # model_name = 'openchat/openchat_3.5'
@@ -173,10 +168,6 @@ def led_main_train():
         # scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda)
         train_transition_edge = ModelTransitionEdge(model_node, loss_fn,
                                                     optimizer, ds)
-        routine = TaggingRoutine(
-            distance_measure=DistanceMeasure.L2,
-            tokenizer=model_node.tokenizer, debug=False, gpu_max_batch_size=2)
-
         # routine.evaluate(model_node=model_node, val_ds=val_ds)
         routine.train(
             model_node=model_node, ds=ds, val_ds=val_ds,

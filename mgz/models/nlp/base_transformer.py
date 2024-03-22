@@ -185,6 +185,7 @@ class InferenceContext:
 
     def match_triggers(self, src_ids: LongTensorT['B,SrcSeqLen']) -> \
             LongTensorT['NDim,SrcSeqLen']:
+        raise NotImplementedError("")
         values_to_find: LongTensorT['N'] = self.answer_triggers
 
         n_to_match = values_to_find.shape[0]

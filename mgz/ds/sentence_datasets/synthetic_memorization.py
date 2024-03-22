@@ -60,12 +60,6 @@ class SyntheticMemorization(SentenceDataset):
         assert self.loaded, "Dataset not loaded"
         return partial(self._collate_fn, device)
 
-    def tokenize_src(self, text) -> List[str]:
-        return tokenize(text, self.tokenizer_src)
-
-    def tokenize_tgt(self, text) -> List[str]:
-        return tokenize(text, self.tokenizer_tgt)
-
     def pad_idx(self) -> int:
         return -1
 

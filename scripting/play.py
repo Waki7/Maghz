@@ -36,6 +36,13 @@ def model_inference(model: hug.PreTrainedModel, x: TensorType('B,Optional[1]')):
 
 model = hug.MistralForCausalLM.from_pretrained("openaccess-ai-collective/tiny-mistral")
 tokenizer = hug.LlamaTokenizer.from_pretrained("openaccess-ai-collective/tiny-mistral")
+print(tokenizer.encode("hello [mask]"))
+print(tokenizer.encode("hello"))
+print(tokenizer.pad_token)
+print(tokenizer.mask_token)
+exit(3)
+
+
 tokenizer.pad_token_id = tokenizer.eos_token_id
 encodings: TensorType('B,SrcLen') = tokenizer.apply_chat_template([
   {"role": "user", "content": "Hello, world! What is your name"}

@@ -6,7 +6,7 @@ import unittest
 import torch.testing
 
 import mgz.settings as settings
-from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagQA
+from mgz.ds.sentence_datasets.responsivenes_datasets.enron_emails import EnronEmailsTagQA
 from mgz.models.nlp.mistral import MistralForCausalLM
 from mgz.version_control import Metrics, ModelNode
 

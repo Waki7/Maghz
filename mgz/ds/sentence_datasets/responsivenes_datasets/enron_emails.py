@@ -16,9 +16,11 @@ from transformers import PreTrainedTokenizerBase, LlamaTokenizer
 import spaces as sp
 from mgz.ds.base_dataset import BaseDataset, DataState
 from mgz.ds.sentence_datasets.gpt_input_augments import PromptConfig
-from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
-    Sent2SentBatch, SampleType, MetaLearningMixIn, Sent2TagMetaTaskBatch, \
+from mgz.ds.sentence_datasets.heuristic_matching import DocumentRuleEvaluator
+from mgz.ds.sentence_datasets.responsivenes_datasets.responsive_batch import \
     TagQAMetaTaskBatch
+from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
+    Sent2SentBatch, SampleType, MetaLearningMixIn
 from mgz.model_running.run_ops import prompt_lm_logits_controller
 from mgz.models.nlp.base_transformer import InferenceContext
 from mgz.typing import *
@@ -303,37 +305,31 @@ class EnronEmails(SentenceDataset):
         return len(self.vocab_tgt)
 
 
-class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
-    def __init__(self, tokenizer: PreTrainedTokenizerBase,
-                 max_src_len: SrcSeqLen, n_query_per_cls: List[int] = 5,
+class EnronEmailsTagQA(EnronEmails, MetaLearningMixIn):
+
+    def __init__(self, tokenizer: Union[
+        LlamaTokenizer, LlamaTokenizer, PreTrainedTokenizerBase],
+                 max_src_len: SrcSeqLen,
+                 prompt_config: PromptConfig,
+                 n_query_per_cls: List[int] = 5,
                  n_support_per_cls: List[int] = 5,
                  n_episodes: int = 100,
                  training_ratio: float = 0.75,
                  dataset_dir: str = None):
-        if dataset_dir is None:
-            dataset_dir = DATASET_DIR
-        max_tgt_len = self.get_max_tgt_len(dataset_dir, tokenizer)
-        super(EnronEmailsTagging, self).__init__(tokenizer=tokenizer,
-                                                 max_src_len=max_src_len,
-                                                 max_tgt_len=max_tgt_len,
-                                                 dataset_dir=dataset_dir)
-        # --- Initialization flags ---
-        self.training_ratio = training_ratio
-        self.validation_ratio = .2
-        self.test_ratio = .1
-
+        assert isinstance(tokenizer, LlamaTokenizer) or isinstance(
+            tokenizer, LlamaTokenizer), \
+            f'This dataset requires the LLamaTokenizer found {type(tokenizer)}'
+        super(EnronEmailsTagQA, self).__init__(tokenizer=tokenizer,
+                                               max_src_len=max_src_len,
+                                               dataset_dir=dataset_dir,
+                                               training_ratio=training_ratio)
+        self._prompt_config = prompt_config
         self._tag_to_sample_idx_map: OrderedDict[str, List[int]] = OrderedDict()
 
         # Meta Learning Sampling Parameters
         self._n_query_per_cls = n_query_per_cls  # Will be roughly n_shot per class, not exact
         self._n_support_per_cls = n_support_per_cls  # Will be roughly n_shot per class, not exact
         self.n_episodes = n_episodes
-
-    @property
-    @overrides(SentenceDataset)
-    def input_space(self) -> sp.Sentence:
-        return sp.Sentence(
-            len((self.vocab_src)), sequence_len=self.max_src_len)
 
     def _load(self, train: bool = False, val: bool = False, test: bool = False):
         super()._load(train, val, test)  # Only loads into self.data
@@ -365,6 +361,12 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
             str, List[int]] = self.create_tag_to_sample_idx_map()
         self.loaded = True
 
+    @property
+    @overrides(SentenceDataset)
+    def input_space(self) -> sp.Sentence:
+        return sp.Sentence(
+            len((self.vocab_src)), sequence_len=self.max_src_len)
+
     def __len__(self):
         'Denotes the total number of samples'
         assert self.loaded, "Dataset not loaded"
@@ -379,7 +381,7 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
 
     def get_collate_fn(self, device: Union[int, torch.device]):
         assert self.loaded, "Dataset not loaded"
-        return partial(Sent2TagMetaTaskBatch.default_collate_fn, self, device)
+        return partial(TagQAMetaTaskBatch.default_collate_fn, self, device)
 
     @overrides(EnronEmails)
     def __getitem__(self, idx) -> (SrcStringT, TgtStringT):
@@ -390,83 +392,6 @@ class EnronEmailsTagging(EnronEmails, MetaLearningMixIn):
             self._tag_to_sample_idx_map[selected_tag])][
             SampleType.FULL_AS_STRING]
         return rand_sample_for_tag, selected_tag
-
-
-class EnronEmailsTagQA(EnronEmailsTagging, MetaLearningMixIn):
-
-    def __init__(self, tokenizer: Union[
-        LlamaTokenizer, LlamaTokenizer, PreTrainedTokenizerBase],
-                 max_src_len: SrcSeqLen,
-                 prompt_config: PromptConfig,
-                 n_query_per_cls: List[int] = 5,
-                 n_support_per_cls: List[int] = 5,
-                 n_episodes: int = 100,
-                 training_ratio: float = 0.75,
-                 dataset_dir: str = None):
-        assert isinstance(tokenizer, LlamaTokenizer) or isinstance(
-            tokenizer, LlamaTokenizer), \
-            f'This dataset requires the LLamaTokenizer found {type(tokenizer)}'
-        super(EnronEmailsTagQA, self).__init__(tokenizer=tokenizer,
-                                               max_src_len=max_src_len,
-                                               dataset_dir=dataset_dir,
-                                               n_query_per_cls=n_query_per_cls,
-                                               n_support_per_cls=n_support_per_cls,
-                                               n_episodes=n_episodes,
-                                               training_ratio=training_ratio)
-        self._prompt_config = prompt_config
-
-    def get_collate_fn(self, device: Union[int, torch.device]):
-        assert self.loaded, "Dataset not loaded"
-        return partial(TagQAMetaTaskBatch.default_collate_fn, self, device)
-
-    @overrides(EnronEmailsTagging)
-    def __getitem__(self, idx) -> (SrcStringT, TgtStringT):
-        tags = list(self._tag_to_sample_idx_map.keys())
-        tag_idx = idx % len(self._tag_to_sample_idx_map)
-        selected_tag: TgtStringT = tags[tag_idx]
-        rand_sample_for_tag: SrcStringT = self.data[random.choice(
-            self._tag_to_sample_idx_map[selected_tag])][
-            SampleType.FULL_AS_STRING]
-        return rand_sample_for_tag, selected_tag
-
-
-def inspect_src_test():
-    from transformers import LEDTokenizer
-    tokenizer = LEDTokenizer.from_pretrained("AdaptLLM/law-chat")
-    ds = EnronEmailsTagging(tokenizer,
-                            max_src_len=2000,
-                            n_episodes=1000,
-                            task_size_per_cls=2).load_training_data()
-    max_lens = []
-    max_emails = []
-    i: Tuple[str, str]
-    for i in ds:
-        lent = len(tokenizer.tokenize(i[0]))
-        email = i[0]
-        if len(max_emails) < 10:
-            max_emails.append(email)
-            max_lens.append(lent)
-        else:
-            lowest_high_val = np.argmin(max_lens)
-            if lent > max_lens[lowest_high_val]:
-                max_lens.pop(lowest_high_val)
-                max_emails.pop(lowest_high_val)
-                max_lens.append(lent)
-                max_emails.append(email)
-    print(max_lens)
-
-
-def look_through_data():
-    from transformers import LEDTokenizer
-    tokenizer = LEDTokenizer.from_pretrained()
-    ds = EnronEmailsTagging(tokenizer,
-                            max_src_len=2000,
-                            n_episodes=1000).load_training_data()
-    for i in ds:
-        print(i[0])
-        print(i[1])
-        print('-----------------')
-
 
 def dump_n_examples(model_name: str, n: int = 100000000):
     from mgz.version_control import ModelDatabase, ModelNode
@@ -483,15 +408,27 @@ def dump_n_examples(model_name: str, n: int = 100000000):
     model_node: ModelNode = ModelDatabase.mistral_openchat(model_name)
     model_node.model.eval()
 
-    contains_words = ["government", "inquir", "FERC", "investigat"]
+    rule_set = ("or",
+                ("inquir", 1),
+                ("investigat", 1),
+                ("government", 1),
+                ("FERC", 2),
+                ("and", "government", "investigat", 3),
+                ("and", "government", "inquir", 3),
+                ("and", "FERC", "investigat", 4),
+                ("and", "FERC", "inquir", 4),
+                ("and", "FERC", "government", 4),
+                )
+    heuristic_evaluator = DocumentRuleEvaluator(rule_set)
+
     bsz = 2
     max_src_len = 8191
     sample_negative = False
     if sample_negative:
-        p_contained = 0.25
+        p_should_include_maybes = 0.25
         p_random = 0.09
     else:
-        p_contained = 1.0
+        p_should_include_maybes = 1.0
         p_random = 1.0
     # mgz.settings.print_parameters(model_node.model)
     # model_node.tokenizer = LlamaTokenizer.from_pretrained(
@@ -504,7 +441,7 @@ def dump_n_examples(model_name: str, n: int = 100000000):
                      training_ratio=1.0,
                      max_src_len=max_src_len,
                      max_tgt_len=-1,
-                     dataset_dir='/home/ceyer/Documents/Projects/Maghz/datasets/enron_with_categories').load_training_data()
+                     dataset_dir='/datasets/enron_with_categories').load_training_data()
 
     #     answers = tag_questions_controller(
     #         model=model_node.model, texts=[r'''Message-ID: <7361482.1075847628266.JavaMail.evans@thyme>
@@ -627,12 +564,19 @@ def dump_n_examples(model_name: str, n: int = 100000000):
             random_p = random.random()
             no_inclusion = no_yes_scores[i].argmax(
                 0) == 0 and random_p < p_random
-            yes_inclusion = no_yes_scores[i].argmax(0) == 1
 
-            maybe_inclusion = any(
-                [word.lower() in doc[SampleType.FULL_AS_STRING].lower() for word
-                 in
-                 contains_words]) and random.random() < p_contained
+            doc_content_lower = doc[SampleType.FULL_AS_STRING].lower()
+            doc_heuristic_score = heuristic_evaluator.check_document(
+                doc_content_lower)
+            maybe_inclusion = doc_heuristic_score > 0 and random.random() < p_should_include_maybes
+
+            cls_probs = torch.softmax(no_yes_scores[i], 0)
+            yes_inclusion = cls_probs.argmax(0) == 1 or (
+                    maybe_inclusion and cls_probs[1] > (
+                    0.6 - (doc_heuristic_score * 0.025)))
+            if yes_inclusion:
+                maybe_inclusion = False
+
             if sample_negative and (
                     not (
                             no_inclusion or maybe_inclusion or yes_inclusion)):

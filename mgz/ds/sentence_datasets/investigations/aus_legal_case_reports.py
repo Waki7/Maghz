@@ -1,4 +1,4 @@
-from mgz.ds.sentence_datasets.aus_legal_case_reports import *
+from mgz.ds.sentence_datasets.summarization_datasets.aus_legal_case_reports import *
 
 
 class PhrasePairDifference:
