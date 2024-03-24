@@ -12,8 +12,6 @@ from transformers import PreTrainedTokenizerBase, BatchEncoding
 from mgz.ds.base_dataset import BaseDataset, DataState
 from mgz.ds.sentence_datasets.gpt_input_augments import PromptingInput, \
     ContextPromptingInput, PromptConfig
-from mgz.ds.sentence_datasets.summarization_datasets.summarization_batch import \
-    Sent2SentBatch
 from mgz.typing import *
 
 
@@ -202,9 +200,10 @@ class SentenceDataset(BaseDataset, ABC):
         return len(self.vocab_tgt)
 
     def get_collate_fn(self, device: Union[int, torch.device]) -> Callable[
-        [List[Tuple[SrcStringT, TgtStringT]]], Sent2SentBatch]:
-        assert self.loaded, "Dataset not loaded"
-        return partial(Sent2SentBatch.default_collate_fn, self, device)
+        [List[Tuple[SrcStringT, TgtStringT]]], Any]:
+        raise NotImplementedError
+        # assert self.loaded, "Dataset not loaded"
+        # return partial(Sent2SentBatch.default_collate_fn, self, device)
 
 
 # links:
@@ -245,7 +244,7 @@ class MetaLearningMixIn(SentenceDataset, ABC):
         return self._tag_to_sample_idx_map
 
     def get_collate_fn(self, device: Union[int, torch.device]) -> Callable[
-        [List[Tuple[SrcStringT, TgtStringT]]], Sent2SentBatch]:
+        [List[Tuple[SrcStringT, TgtStringT]]], any]:
         raise NotImplementedError
 
     def create_tag_to_sample_idx_map(self) -> Dict[str, List[int]]:

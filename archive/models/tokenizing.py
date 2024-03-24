@@ -49,7 +49,7 @@ class Tokenizer:
         return spacy_de
 
 def main():
-    from mgz.ds.sentence_datasets.multi_lex_sum import MultiLexSum
+    from mgz.ds.sentence_datasets.seq_to_sequence_datasets.multi_lex_sum import MultiLexSum
 
     # global variables used later in the script
     spacy_de, spacy_en = Tokenizer.load_de_news_sm(), Tokenizer.load_en_web_sm()

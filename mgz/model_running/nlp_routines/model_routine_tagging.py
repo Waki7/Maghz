@@ -7,7 +7,7 @@ import transformers as hug
 
 import spaces as sp
 from mgz.ds.base_dataset import BaseDataset
-from mgz.ds.sentence_datasets.sentence_datasets import Sent2TagMetaTaskBatch, \
+from mgz.ds.sentence_datasets.responsivenes_datasets.responsive_batch import \
     TagQAMetaTaskBatch
 from mgz.math_utils.nlp.metrics import DistanceMeasuresPerClass
 from mgz.model_running.base_routine import BaseProtocol
@@ -177,7 +177,7 @@ class TaggingRoutine(BaseNLPProtocol):
     @overrides(BaseProtocol)
     def run_batch(self,
                   model: Union[EncoderDecoderTransformer, DecoderTransformer],
-                  batch: Union[Sent2TagMetaTaskBatch, TagQAMetaTaskBatch],
+                  batch: TagQAMetaTaskBatch,
                   model_edge: ModelTransitionEdge, ) -> \
             Tuple[FloatTensorT['1'], float]:
         cls_logits: ['NQuery,NClasses']

@@ -2,25 +2,13 @@ from mgz.ds import SentenceDataset
 from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask, \
     prompts_to_padded_id_tensor_w_mask
 
-'''
-
-Model
-
-Dataset
-
-    Batch Implementation of Dataset
-    Batch
-
-
-
-
-'''
 class BehavioralBatch:
     """Object for holding a batch of data with mask during training."""
 
     def __init__(self,
                  src_ids: LongTensorT['TaskSize,SrcSeqLen'],
-                 src_masks: IntTensorT['TaskSize,SrcSeqLen']):
+                 src_masks: IntTensorT['TaskSize,SrcSeqLen',
+                            ]):
         self.src_ids: LongTensorT['TaskSize,SrcSeqLen'] = src_ids
         self.src_masks: IntTensorT['TaskSize,SrcSeqLen'] = src_masks
 
@@ -43,8 +31,8 @@ class BehavioralBatch:
         label_tensor = LongTensorT(
             torch.tensor(labels, dtype=torch.long, device=device))
         return BehavioralBatch(src_ids=src_ids,
-                                  src_masks=src_masks,
-                                  labels=label_tensor)
+                              src_masks=src_masks,
+                              labels=label_tensor)
 
     @staticmethod
     def default_collate_fn(ds: SentenceDataset,
@@ -53,8 +41,7 @@ class BehavioralBatch:
         assert ds.data_state != DataState.NOT_LOADED, "Dataset not loaded"
         return BehavioralBatch.collate_batch(
             batch=batch,
-            src_tokenizer=ds.tokenizer_src,
-            tgt_tokenizer=ds.tokenizer_tgt,
+            tokenizer=ds.tokenizer_tgt,
             device=device,
             max_src_len=ds.max_src_len,
             max_tgt_len=ds.max_tgt_len

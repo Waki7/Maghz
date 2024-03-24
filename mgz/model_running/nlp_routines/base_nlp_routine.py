@@ -7,7 +7,7 @@ from accelerate.utils import set_seed
 from tqdm import tqdm
 
 import mgz.settings as settings
-from mgz.ds.sentence_datasets.sentence_datasets import Sent2TagMetaTaskBatch, \
+from mgz.ds.sentence_datasets.responsivenes_datasets.responsive_batch import \
     TagQAMetaTaskBatch
 from mgz.model_running.base_routine import BaseProtocol
 from mgz.typing import *
@@ -63,7 +63,6 @@ class BaseNLPProtocol(BaseProtocol):
         model.train()
         set_seed(0)
 
-        batch: Sent2TagMetaTaskBatch
         if not model_node.has_initial_metrics():
             model_node.store_metrics(
                 self.val_model(val_data_loader, model_node, model_edge))
@@ -128,15 +127,10 @@ class BaseNLPProtocol(BaseProtocol):
         started_training = model.training
         model.eval()
 
-        i: int
-        batch: Sent2TagMetaTaskBatch
-
         # Number of times to sample per tag, there may be
         # different combinations of support and queries, so a higher number willg
         # give you a better idea of the accuracy per tag.
         accuracies: List[float] = []
-
-        batch: Sent2TagMetaTaskBatch
         for i, batch in tqdm(enumerate(val_data_loader)):
             if batch is None:
                 logging.warning(

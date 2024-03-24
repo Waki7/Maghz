@@ -6,7 +6,7 @@ from torch.nn.functional import log_softmax
 
 # import altair as alt
 # import GPUtil
-from mgz.ds.sentence_datasets.multi_lex_sum import MultiLexSum
+from mgz.ds.sentence_datasets.seq_to_sequence_datasets.multi_lex_sum import MultiLexSum
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.typing import *
 

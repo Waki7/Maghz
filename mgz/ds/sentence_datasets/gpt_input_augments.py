@@ -123,9 +123,10 @@ class PromptingInput:
             prompt = f"<s>[INST] \n\n{main_body} [/INST]"
         if prompt_prefix:
             prompt = f" {prompt} {prompt_prefix} "
-        for chat in follow_up_questions:
-            prompt += f" </s><s>[INST]" \
-                      f"{chat} [/INST]"
+        if follow_up_questions:
+            for chat in follow_up_questions:
+                prompt += f" </s><s>[INST]" \
+                          f"{chat} [/INST]"
         return prompt
 
     def __init__(self,

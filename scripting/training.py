@@ -3,22 +3,20 @@ from __future__ import annotations
 import os
 
 from mgz.ds.sentence_datasets.gpt_input_augments import PromptConfig
+from mgz.ds.sentence_datasets.responsivenes_datasets.enron_responsive import \
+    EnronEmailsTagQA
+from mgz.ds.sentence_datasets.sequence_to_sequence_datasets.enron_behavioral import \
+    EnronBehavioral
 
 os.putenv("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 # from mgz.models.nlp.bart_interface import BARTHubInterface
 
 from mgz.model_running.nlp_routines.model_routine_tagging import DistanceMeasure
-from mgz.ds.sentence_datasets.responsivenes_datasets.enron_emails import \
-    EnronEmailsTagQA
 from mgz.typing import *
 
 import torch
 import mgz.settings as settings
-from mgz.ds.sentence_datasets.behavioral_tuning_datasets.synthetic_memorization import \
-    SyntheticMemorization
 import logging
-from mgz.ds.sentence_datasets.summarization_datasets.aus_legal_case_reports import \
-    AusCaseReportsToTagGrouped
 from mgz.model_running.nlp_routines.model_routine_tagging import TaggingRoutine
 from mgz.version_control import ModelNode, ModelDatabase
 from mgz.version_control.model_edge import ModelTransitionEdge
@@ -31,34 +29,23 @@ attn_weights torch.Size([16, 6, 6])
 attn_probs torch.Size([16, 6, 6])
 '''
 
-
-def dataset_memorization():
-    return SyntheticMemorization(128, 128, 128, 1000, 1), SyntheticMemorization(
-        128, 128, 128, 1000, 1)
-
-
-def dataset_select(model_node: ModelNode, aus: bool = False,
-                   enron: bool = False, old_enron=False) -> Tuple[
+def dataset_select(model_node: ModelNode, rlhf=False,) -> Tuple[
     SentenceDataset, SentenceDataset]:
-    assert aus or enron or old_enron, 'must select a dataset'
-    ds, val_ds = None, None
-    cfg = model_node.model.config
-    if aus:
-        ds = AusCaseReportsToTagGrouped(model_node.tokenizer,
-                                        max_src_len=3000,
-                                        n_episodes=1000, n_queries_per_cls=[2],
-                                        n_supports_per_cls=[3, 4])
-        val_ds = AusCaseReportsToTagGrouped(model_node.tokenizer,
-                                            max_src_len=3000,
-                                            n_episodes=100,
-                                            n_queries_per_cls=[2],
-                                            n_supports_per_cls=[3, 4])
-    if enron:
-        system_context = (
-            "Given this as the only background: The FERC's investigating enron for market manipulation. The FERC investigation primarily focused on Enron's role in the California energy crisis of 2000-2001, "
-            "along with its trading practices and their impact on electricity markets across the United States. Determine if the email should be produced as evidence based on the document request. ")
-        prompt_config = PromptConfig(model=model_node.model,
-                                     system_context=system_context)
+    system_context = (
+        "Given this as the only background: The FERC's investigating enron for market manipulation. The FERC investigation primarily focused on Enron's role in the California energy crisis of 2000-2001, "
+        "along with its trading practices and their impact on electricity markets across the United States. Determine if the email should be produced as evidence based on the document request. ")
+    prompt_config = PromptConfig(model=model_node.model,
+                                 system_context=system_context)
+    if rlhf:
+        ds = EnronBehavioral(model_node.tokenizer,
+                              prompt_config=prompt_config,
+                              max_src_len=4095,
+                              dataset_dir="/home/ceyer/Documents/Projects/Maghz/datasets/enron_export_investigations_mistral_labeled")
+        val_ds = EnronBehavioral(model_node.tokenizer,
+                                  prompt_config=prompt_config,
+                                  max_src_len=4095,
+                                  dataset_dir="/home/ceyer/Documents/Projects/Maghz/datasets/enron_export_investigations_mistral_labeled")
+    else:
         ds = EnronEmailsTagQA(model_node.tokenizer,
                               prompt_config=prompt_config,
                               max_src_len=4095,
@@ -76,25 +63,7 @@ def dataset_select(model_node: ModelNode, aus: bool = False,
     return ds, val_ds
 
 
-def get_routine(model_node, tagging: bool):
-    if tagging:
-        return TaggingRoutine(
-            distance_measure=DistanceMeasure.L2,
-            tokenizer=model_node.tokenizer, debug=False, gpu_max_batch_size=2)
-    else:
-        return None
-
-
-def led_main_train():
-    # import transformers
-    # tokenizer = transformers.LlamaTokenizer.from_pretrained(
-    #     "openchat/openchat_3.5")
-    # print(tokenizer.chat_template)
-    # print(tokenizer.chat_template_ids)
-    # print(type(tokenizer))
-    # print(tokenizer)
-    # exit(4)
-
+def main_train():
     logging.basicConfig(level=logging.WARNING)
 
     # Bart Models
@@ -129,9 +98,9 @@ def led_main_train():
         # ModelNode.load_from_id(LEDForConditionalGeneration, model_name,
         model_node.model.train()
         settings.print_gpu_usage()
-        ds, val_ds = dataset_select(model_node, aus=False, enron=True)
-        loss_fn = torch.nn.NLLLoss()
-        # loss_fn = torch.nn.CrossEntropyLoss()
+        ds, val_ds = dataset_select(model_node)
+        loss_fn = torch.nn.NLLLoss() # expect log prob
+        # loss_fn = torch.nn.CrossEntropyLoss() # expect logits
 
         training_cfg = {}
         lr = 0.00001
@@ -168,6 +137,10 @@ def led_main_train():
         # scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda)
         train_transition_edge = ModelTransitionEdge(model_node, loss_fn,
                                                     optimizer, ds)
+        routine = TaggingRoutine(
+            distance_measure=DistanceMeasure.L2,
+            tokenizer=model_node.tokenizer, debug=False, gpu_max_batch_size=2)
+
         # routine.evaluate(model_node=model_node, val_ds=val_ds)
         routine.train(
             model_node=model_node, ds=ds, val_ds=val_ds,
@@ -178,4 +151,4 @@ def led_main_train():
 
 
 if __name__ == '__main__':
-    led_main_train()
+    main_train()

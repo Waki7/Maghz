@@ -7,7 +7,7 @@ import torch.utils.data
 import mgz.settings as settings
 import mgz.version_control as vc
 from mgz.ds.base_dataset import BaseDataset
-from mgz.ds.sentence_datasets.sentence_datasets import Sent2TagMetaTaskBatch, \
+from mgz.ds.sentence_datasets.responsivenes_datasets.responsive_batch import \
     TagQAMetaTaskBatch
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.typing import *
@@ -45,7 +45,7 @@ class BaseProtocol(object):
 
     @abstractmethod
     def run_batch(self, model: BaseTransformer,
-                  batch: Union[Sent2TagMetaTaskBatch, TagQAMetaTaskBatch],
+                  batch:  TagQAMetaTaskBatch,
                   model_edge: ModelTransitionEdge,
                   gpu_max_batch_size=4) -> \
             Tuple[FloatTensorT['1'], float]:

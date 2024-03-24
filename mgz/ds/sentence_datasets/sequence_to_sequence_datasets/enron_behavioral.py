@@ -1,22 +1,16 @@
-import random
 from functools import partial
 
 from transformers import LlamaTokenizer, PreTrainedTokenizerBase
 
-import mgz.settings as settings
 import spaces as sp
-from mgz.ds.sentence_datasets.behavioral_tuning_datasets.behavioral_batch import \
-    BehavioralBatch
+from mgz.ds.sentence_datasets.enron_emails import EnronEmails
 from mgz.ds.sentence_datasets.gpt_input_augments import PromptConfig
-from mgz.ds.sentence_datasets.responsivenes_datasets.enron_emails import \
-    EnronEmails
 from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
-    Sent2SentBatch, SampleType
+    SampleType
 from mgz.typing import *
 
 
-
-class EnronEmailsTagQA(EnronEmails):
+class EnronBehavioral(EnronEmails):
 
     def __init__(self, tokenizer: Union[
         LlamaTokenizer, LlamaTokenizer, PreTrainedTokenizerBase],
@@ -27,10 +21,10 @@ class EnronEmailsTagQA(EnronEmails):
         assert isinstance(tokenizer, LlamaTokenizer) or isinstance(
             tokenizer, LlamaTokenizer), \
             f'This dataset requires the LLamaTokenizer found {type(tokenizer)}'
-        super(EnronEmailsTagQA, self).__init__(tokenizer=tokenizer,
-                                               max_src_len=max_src_len,
-                                               dataset_dir=dataset_dir,
-                                               training_ratio=training_ratio)
+        super(EnronBehavioral, self).__init__(tokenizer=tokenizer,
+                                              max_src_len=max_src_len,
+                                              dataset_dir=dataset_dir,
+                                              training_ratio=training_ratio)
         self._prompt_config = prompt_config
 
     def _load(self, train: bool = False, val: bool = False, test: bool = False):
@@ -63,14 +57,9 @@ class EnronEmailsTagQA(EnronEmails):
 
     def get_collate_fn(self, device: Union[int, torch.device]):
         assert self.loaded, "Dataset not loaded"
-        return partial(BehavioralBatch.default_collate_fn, self, device)
+        return partial(Sent2SentBatch.default_collate_fn, self, device)
 
     @overrides(EnronEmails)
     def __getitem__(self, idx) -> (SrcStringT, TgtStringT):
-        tags = list(self._tag_to_sample_idx_map.keys())
-        tag_idx = idx % len(self._tag_to_sample_idx_map)
-        selected_tag: TgtStringT = tags[tag_idx]
-        rand_sample_for_tag: SrcStringT = self.data[random.choice(
-            self._tag_to_sample_idx_map[selected_tag])][
-            SampleType.FULL_AS_STRING]
-        return rand_sample_for_tag, selected_tag
+        return self.data[idx][SampleType.FULL_AS_STRING], self.data[idx][
+            SampleType.CATCHPHRASES]

@@ -8,7 +8,7 @@ import unittest
 from transformers import LlamaTokenizer
 
 import mgz.settings as settings
-from mgz.ds.sentence_datasets.summarization_datasets.aus_legal_case_reports import SampleType
+from mgz.ds.sentence_datasets.seq_to_sequence_datasets.aus_legal_case_reports import SampleType
 from mgz.ds.sentence_datasets.responsivenes_datasets.enron_emails import EnronEmailsTagQA
 from mgz.model_running.run_ops import tagging_embedding_controller, \
     embedding_controller_from_texts, summarize_controller_from_texts
