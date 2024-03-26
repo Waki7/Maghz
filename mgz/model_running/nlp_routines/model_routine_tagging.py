@@ -7,7 +7,7 @@ import transformers as hug
 
 import spaces as sp
 from mgz.ds.base_dataset import BaseDataset
-from mgz.ds.sentence_datasets.responsivenes_datasets.responsive_batch import \
+from mgz.ds.sentence_datasets.datasets_metalearning_responsiveness.responsive_batch import \
     TagQAMetaTaskBatch
 from mgz.math_utils.nlp.metrics import DistanceMeasuresPerClass
 from mgz.model_running.base_routine import BaseProtocol

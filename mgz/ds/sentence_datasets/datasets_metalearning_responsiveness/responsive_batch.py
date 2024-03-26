@@ -1,21 +1,16 @@
-
 from __future__ import annotations
 
-import copy
 import random
-from abc import ABC
-from enum import Enum
-from functools import partial
 
 import torch.utils.data
-from transformers import PreTrainedTokenizerBase, BatchEncoding
+from transformers import PreTrainedTokenizerBase
 
-from mgz.ds.base_dataset import BaseDataset, DataState
+from mgz.ds.sentence_datasets.datasets_base.sentence_datasets import \
+    prompts_to_padded_id_tensor_w_mask, MetaLearningMixIn
 from mgz.ds.sentence_datasets.gpt_input_augments import PromptingInput, \
-    ContextPromptingInput, PromptConfig
-from mgz.ds.sentence_datasets.sentence_datasets import \
-    prompts_to_padded_id_tensor_w_mask, MetaLearningMixIn, SampleType
+    ContextPromptingInput
 from mgz.typing import *
+
 
 class TagQAMetaTaskBatch:
     def __init__(self,
@@ -145,71 +140,21 @@ class TagQAMetaTaskBatch:
                                   n_support_per_cls=n_support_per_cls)
 
     @staticmethod
-    def default_collate_fn(ds: MetaLearningMixIn,
-                           device: Union[int, torch.device],
-                           batch: List[Tuple[SrcStringT, TgtStringT]]):
-        assert ds.data_state != DataState.NOT_LOADED, "Dataset not loaded"
-        assert len(batch) == 1, "Batch size must be 1 for meta-learning for now"
-        src_text, pos_tag = batch[0]
-
-        # self.task_sizes_per_cls can be a single value
-        n_query_per_cls: int = random.choice(ds.n_query_per_cls)
-        n_support_per_cls: int = random.choice(ds.n_support_per_cls)
-        task_size_per_cls: int = n_query_per_cls + n_support_per_cls
-
-        # Select the samples for the task based on the tag.
-        pos_sample_idxs: List[int] = ds.tag_to_sample_idx_map[
-            pos_tag]
-        random.shuffle(pos_sample_idxs)
-        positive_examples = pos_sample_idxs[:task_size_per_cls]
-
-        # If we're having trouble finding negative examples, we'll timeout,
-        # we currently randomly check, we don't keep an index that maps from
-        # negative to the sample indices.
-        timeout = 5 * task_size_per_cls
-        neg_sampling_tries = 0
-        negative_examples: set[int] = set()
-        while (len(negative_examples) < task_size_per_cls) and \
-                neg_sampling_tries < timeout:
-            # TODO: experiment with pulling negative samples that have very
-            #  different embeddings
-            if len(negative_examples) < task_size_per_cls:
-                neg_sample_idx = random.randint(0, len(ds.data) - 1)
-                neg_tags = ds.data[neg_sample_idx][
-                    SampleType.CATCHPHRASES]
-                if pos_tag not in neg_tags:
-                    negative_examples.add(neg_sample_idx)
-            neg_sampling_tries += 1
-        pos_batch: List[Tuple[PromptingInput, LabelT]] = \
-            [(ContextPromptingInput(
-                prompt_config=ds.prompt_config,
-                # document_text=ds.data[i][SampleType.FILE_NAME] + ds.data[i][
-                #     SampleType.FULL_AS_STRING],
-                document_text=ds.data[i][SampleType.FULL_AS_STRING],
-                document_requests=pos_tag, ),
-              1) for i in positive_examples]
-        neg_batch: List[Tuple[PromptingInput, LabelT]] = \
-            [(ContextPromptingInput(
-                prompt_config=ds.prompt_config,
-                # document_text=ds.data[i][SampleType.FILE_NAME] + ds.data[i][
-                #     SampleType.FULL_AS_STRING],
-                document_text=ds.data[i][SampleType.FULL_AS_STRING],
-                document_requests=pos_tag, ),
-              0) for i in negative_examples]
-
-        # TODO fix so we catch this earlier
-        min_to_have_1_query = n_support_per_cls + 1
-        if len(neg_batch) < min_to_have_1_query or len(
-                pos_batch) < min_to_have_1_query:
-            return None
-
-        batch: List[Tuple[PromptingInput, int]] = neg_batch + pos_batch
+    def default_collate_fn(
+            ds: MetaLearningMixIn,
+            device: Union[int, torch.device],
+            batch: List[Tuple[List[Tuple[ContextPromptingInput, int]], List[
+                Tuple[ContextPromptingInput, int]]]],
+    ):
+        assert len(batch) == 1, "Only one meta-task per batch is supported."
+        meta_task = batch[0]
+        batch: List[
+            Tuple[PromptingInput, int]] = meta_task[0] + meta_task[1]
         return TagQAMetaTaskBatch.collate_batch(
             batch=batch,
             tokenizer=ds.tokenizer_src,
             device=device,
             max_src_len=ds.max_src_len,
-            n_query_per_cls=n_query_per_cls,
-            n_support_per_cls=n_support_per_cls,
+            n_query_per_cls=ds.n_query_per_cls,
+            n_support_per_cls=ds.n_support_per_cls,
         )
-

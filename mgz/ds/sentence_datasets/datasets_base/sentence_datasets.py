@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 import copy
-import random
 from abc import ABC
 from enum import Enum
-from functools import partial
 
 import torch.utils.data
 from transformers import PreTrainedTokenizerBase, BatchEncoding
 
 from mgz.ds.base_dataset import BaseDataset, DataState
+from mgz.ds.sentence_datasets.datasets_base.sentence_batch import SentenceBatch
 from mgz.ds.sentence_datasets.gpt_input_augments import PromptingInput, \
-    ContextPromptingInput, PromptConfig
+    PromptConfig
 from mgz.typing import *
 
 
@@ -85,8 +84,12 @@ def strings_to_padded_id_tensor_w_mask(txts: List[SrcStringT],
 def prompts_to_padded_id_tensor_w_mask(prompts: List[PromptingInput],
                                        tokenizer: PreTrainedTokenizerBase,
                                        max_len: int,
-                                       device=torch.device('cpu')) -> \
-        Tuple[LongTensorT['B,SrcSeqLen'], IntTensorT['B,SrcSeqLen']]:
+                                       device=torch.device('cpu'),
+                                       return_original_lengths: bool = False) -> \
+        Union[
+            Tuple[LongTensorT['B,SrcSeqLen'], IntTensorT['B,SrcSeqLen']],
+            Tuple[LongTensorT['B,SrcSeqLen'], IntTensorT['B,SrcSeqLen'],
+            IntTensorT['B']]]:
     """
     This does not truncate at all, minimum length will always be max_len.
     """
@@ -135,6 +138,9 @@ def prompts_to_padded_id_tensor_w_mask(prompts: List[PromptingInput],
             attention_mask[b, strt_idx + 1:end_idx - trim],
             attention_mask[b, end_idx + 1:]
         ], dim=-1)
+    if return_original_lengths:
+        return input_ids_padded.to(device).to(torch.int32), \
+            attention_masks_padded.to(device), pre_pad_lengths
     return input_ids_padded.to(device).to(torch.int32), \
         attention_masks_padded.to(device)
 
@@ -146,6 +152,7 @@ def prompts_to_padded_id_tensor_w_mask(prompts: List[PromptingInput],
 # multilexsum: https://github.com/multilexsum/dataset
 class SentenceDataset(BaseDataset, ABC):
     __metaclass__ = ABCMeta
+    _prompt_config: PromptConfig = None
 
     def __init__(self, tokenizer: PreTrainedTokenizerBase,
                  max_src_len: SrcSeqLen,
@@ -165,6 +172,10 @@ class SentenceDataset(BaseDataset, ABC):
         self.tokenizer_tgt: PreTrainedTokenizerBase = tokenizer
         self.vocab_src: Dict[str, int] = self.tokenizer_src.get_vocab()
         self.vocab_tgt: Dict[str, int] = self.tokenizer_tgt.get_vocab()
+
+    @property
+    def prompt_config(self) -> PromptConfig:
+        return self._prompt_config
 
     def load_training_data(self):
         self._load(train=True)
@@ -200,10 +211,8 @@ class SentenceDataset(BaseDataset, ABC):
         return len(self.vocab_tgt)
 
     def get_collate_fn(self, device: Union[int, torch.device]) -> Callable[
-        [List[Tuple[SrcStringT, TgtStringT]]], Any]:
+        [List[Tuple[SrcStringT, TgtStringT]]], SentenceBatch]:
         raise NotImplementedError
-        # assert self.loaded, "Dataset not loaded"
-        # return partial(Sent2SentBatch.default_collate_fn, self, device)
 
 
 # links:
@@ -216,11 +225,6 @@ class MetaLearningMixIn(SentenceDataset, ABC):
     _n_query_per_cls: List[int] = []
     _n_support_per_cls: List[int] = []
     _tag_to_sample_idx_map: OrderedDict[str, List[int]] = None
-    _prompt_config: PromptConfig = None
-
-    @property
-    def prompt_config(self) -> PromptConfig:
-        return self._prompt_config
 
     @property
     def n_query_per_cls(self):
@@ -244,7 +248,7 @@ class MetaLearningMixIn(SentenceDataset, ABC):
         return self._tag_to_sample_idx_map
 
     def get_collate_fn(self, device: Union[int, torch.device]) -> Callable[
-        [List[Tuple[SrcStringT, TgtStringT]]], any]:
+        [List[Tuple[SrcStringT, TgtStringT]]], SentenceBatch]:
         raise NotImplementedError
 
     def create_tag_to_sample_idx_map(self) -> Dict[str, List[int]]:

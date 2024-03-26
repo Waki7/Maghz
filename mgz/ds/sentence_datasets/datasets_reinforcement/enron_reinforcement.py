@@ -3,14 +3,18 @@ from functools import partial
 from transformers import LlamaTokenizer, PreTrainedTokenizerBase
 
 import spaces as sp
-from mgz.ds.sentence_datasets.enron_emails import EnronEmails
-from mgz.ds.sentence_datasets.gpt_input_augments import PromptConfig
-from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
+from mgz.ds.sentence_datasets.datasets_base.enron_emails import EnronEmails
+from mgz.ds.sentence_datasets.datasets_base.sentence_datasets import \
+    SentenceDataset, \
     SampleType
+from mgz.ds.sentence_datasets.datasets_reinforcement.reinforcement_batch import \
+    ReinforcementBatch
+from mgz.ds.sentence_datasets.gpt_input_augments import PromptConfig, \
+    PromptingInput, ContextPromptingInput
 from mgz.typing import *
 
 
-class EnronBehavioral(EnronEmails):
+class EnronReinforcement(EnronEmails):
 
     def __init__(self, tokenizer: Union[
         LlamaTokenizer, LlamaTokenizer, PreTrainedTokenizerBase],
@@ -21,10 +25,11 @@ class EnronBehavioral(EnronEmails):
         assert isinstance(tokenizer, LlamaTokenizer) or isinstance(
             tokenizer, LlamaTokenizer), \
             f'This dataset requires the LLamaTokenizer found {type(tokenizer)}'
-        super(EnronBehavioral, self).__init__(tokenizer=tokenizer,
-                                              max_src_len=max_src_len,
-                                              dataset_dir=dataset_dir,
-                                              training_ratio=training_ratio)
+        super(EnronReinforcement, self).__init__(tokenizer=tokenizer,
+                                                 max_src_len=max_src_len,
+                                                 dataset_dir=dataset_dir,
+                                                 training_ratio=training_ratio)
+        self.tags: Set
         self._prompt_config = prompt_config
 
     def _load(self, train: bool = False, val: bool = False, test: bool = False):
@@ -34,9 +39,12 @@ class EnronBehavioral(EnronEmails):
             SampleType.CATCHPHRASES,
             SampleType.FULL_AS_STRING,
         ]
+        catchphrases = set()
         for i in range(len(self.data)):
             doc_filtered = {key: self.data[i][key] for key in keys_to_keep}
             self.data[i] = doc_filtered
+            catchphrases.update(self.data[i][SampleType.CATCHPHRASES])
+        self.tags = catchphrases
         self.loaded = True
 
     @property
@@ -57,9 +65,14 @@ class EnronBehavioral(EnronEmails):
 
     def get_collate_fn(self, device: Union[int, torch.device]):
         assert self.loaded, "Dataset not loaded"
-        return partial(Sent2SentBatch.default_collate_fn, self, device)
+        return partial(ReinforcementBatch.default_collate_fn, self, device)
 
     @overrides(EnronEmails)
-    def __getitem__(self, idx) -> (SrcStringT, TgtStringT):
-        return self.data[idx][SampleType.FULL_AS_STRING], self.data[idx][
-            SampleType.CATCHPHRASES]
+    def __getitem__(self, idx) -> PromptingInput:
+        tags_as_list = list(self.tags)[0]
+        prompt_input: PromptingInput = \
+            ContextPromptingInput(
+                prompt_config=self.prompt_config,
+                document_text=self.data[idx][SampleType.FULL_AS_STRING],
+                document_requests=tags_as_list)
+        return prompt_input

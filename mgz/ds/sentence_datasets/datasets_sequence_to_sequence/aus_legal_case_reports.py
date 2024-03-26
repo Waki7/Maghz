@@ -15,7 +15,7 @@ from transformers import PreTrainedTokenizer
 
 import spaces as sp
 from mgz.ds.base_dataset import BaseDataset, DataState
-from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
+from mgz.ds.sentence_datasets.datasets_base.sentence_datasets import SentenceDataset, \
     SampleType, MetaLearningMixIn
 from mgz.ds.sentence_datasets.task_creation import \
     tagging_with_semantic_grouping

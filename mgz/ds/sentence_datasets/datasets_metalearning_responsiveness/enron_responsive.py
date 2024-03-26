@@ -4,7 +4,6 @@ import email
 import json
 import os
 import random
-import re
 import shutil
 from functools import partial
 from pathlib import Path
@@ -14,13 +13,16 @@ from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase, LlamaTokenizer
 
 import spaces as sp
-from mgz.ds.sentence_datasets.enron_emails import EnronEmails
-from mgz.ds.sentence_datasets.gpt_input_augments import PromptConfig
-from mgz.ds.sentence_datasets.heuristic_matching import DocumentRuleEvaluator
-from mgz.ds.sentence_datasets.responsivenes_datasets.responsive_batch import \
+from mgz.ds import DataState
+from mgz.ds.sentence_datasets.datasets_base.enron_emails import EnronEmails
+from mgz.ds.sentence_datasets.datasets_base.sentence_datasets import \
+    SentenceDataset, \
+    SampleType, MetaLearningMixIn
+from mgz.ds.sentence_datasets.datasets_metalearning_responsiveness.responsive_batch import \
     TagQAMetaTaskBatch
-from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
-     SampleType, MetaLearningMixIn
+from mgz.ds.sentence_datasets.gpt_input_augments import PromptConfig, \
+    PromptingInput, ContextPromptingInput
+from mgz.ds.sentence_datasets.heuristic_matching import DocumentRuleEvaluator
 from mgz.model_running.run_ops import prompt_lm_logits_controller
 from mgz.models.nlp.base_transformer import InferenceContext
 from mgz.typing import *
@@ -105,14 +107,71 @@ class EnronEmailsTagQA(EnronEmails, MetaLearningMixIn):
         return partial(TagQAMetaTaskBatch.default_collate_fn, self, device)
 
     @overrides(EnronEmails)
-    def __getitem__(self, idx) -> (SrcStringT, TgtStringT):
+    def __getitem__(self, idx) -> Tuple[
+        List[Tuple[PromptingInput, int]], List[Tuple[PromptingInput, int]]]:
         tags = list(self._tag_to_sample_idx_map.keys())
         tag_idx = idx % len(self._tag_to_sample_idx_map)
         selected_tag: TgtStringT = tags[tag_idx]
         rand_sample_for_tag: SrcStringT = self.data[random.choice(
             self._tag_to_sample_idx_map[selected_tag])][
             SampleType.FULL_AS_STRING]
-        return rand_sample_for_tag, selected_tag
+        batch = rand_sample_for_tag, selected_tag
+        assert self.data_state != DataState.NOT_LOADED, "Dataset not loaded"
+        assert len(batch) == 1, "Batch size must be 1 for meta-learning for now"
+        src_text, pos_tag = batch[0]
+
+        # self.task_sizes_per_cls can be a single value
+        n_query_per_cls: int = random.choice(self.n_query_per_cls)
+        n_support_per_cls: int = random.choice(self.n_support_per_cls)
+        task_size_per_cls: int = n_query_per_cls + n_support_per_cls
+
+        # Select the samples for the task based on the tag.
+        pos_sample_idxs: List[int] = self.tag_to_sample_idx_map[
+            pos_tag]
+        random.shuffle(pos_sample_idxs)
+        positive_examples = pos_sample_idxs[:task_size_per_cls]
+
+        # If we're having trouble finding negative examples, we'll timeout,
+        # we currently randomly check, we don't keep an index that maps from
+        # negative to the sample indices.
+        timeout = 5 * task_size_per_cls
+        neg_sampling_tries = 0
+        negative_examples: set[int] = set()
+        while (len(negative_examples) < task_size_per_cls) and \
+                neg_sampling_tries < timeout:
+            # TODO: experiment with pulling negative samples that have very
+            #  different embeddings
+            if len(negative_examples) < task_size_per_cls:
+                neg_sample_idx = random.randint(0, len(self.data) - 1)
+                neg_tags = self.data[neg_sample_idx][
+                    SampleType.CATCHPHRASES]
+                if pos_tag not in neg_tags:
+                    negative_examples.add(neg_sample_idx)
+            neg_sampling_tries += 1
+        pos_batch: List[Tuple[PromptingInput, LabelT]] = \
+            [(ContextPromptingInput(
+                prompt_config=self.prompt_config,
+                # document_text=ds.data[i][SampleType.FILE_NAME] + ds.data[i][
+                #     SampleType.FULL_AS_STRING],
+                document_text=self.data[i][SampleType.FULL_AS_STRING],
+                document_requests=pos_tag, ),
+              1) for i in positive_examples]
+        neg_batch: List[Tuple[PromptingInput, LabelT]] = \
+            [(ContextPromptingInput(
+                prompt_config=self.prompt_config,
+                # document_text=ds.data[i][SampleType.FILE_NAME] + ds.data[i][
+                #     SampleType.FULL_AS_STRING],
+                document_text=self.data[i][SampleType.FULL_AS_STRING],
+                document_requests=pos_tag, ),
+              0) for i in negative_examples]
+
+        # TODO fix so we catch this earlier
+        min_to_have_1_query = n_support_per_cls + 1
+        if len(neg_batch) < min_to_have_1_query or len(
+                pos_batch) < min_to_have_1_query:
+            return None
+        return neg_batch, pos_batch
+
 
 def dump_n_examples(model_name: str, n: int = 100000000):
     from mgz.version_control import ModelDatabase, ModelNode

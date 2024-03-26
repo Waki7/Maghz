@@ -7,8 +7,7 @@ import torch.utils.data
 import mgz.settings as settings
 import mgz.version_control as vc
 from mgz.ds.base_dataset import BaseDataset
-from mgz.ds.sentence_datasets.responsivenes_datasets.responsive_batch import \
-    TagQAMetaTaskBatch
+from mgz.ds.sentence_datasets.datasets_base.sentence_batch import SentenceBatch
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.typing import *
 
@@ -45,7 +44,7 @@ class BaseProtocol(object):
 
     @abstractmethod
     def run_batch(self, model: BaseTransformer,
-                  batch:  TagQAMetaTaskBatch,
+                  batch:  SentenceBatch,
                   model_edge: ModelTransitionEdge,
                   gpu_max_batch_size=4) -> \
             Tuple[FloatTensorT['1'], float]:
@@ -55,9 +54,9 @@ class BaseProtocol(object):
     def train_epoch(self,
                     model_node: ModelNode,
                     data_loader: torch.utils.data.DataLoader[
-                        TagQAMetaTaskBatch],
+                        SentenceBatch],
                     val_data_loader: torch.utils.data.DataLoader[
-                        TagQAMetaTaskBatch],
+                        SentenceBatch],
                     model_edge: ModelTransitionEdge,
                     log_interval=5,
                     val_interval=50,
@@ -70,7 +69,7 @@ class BaseProtocol(object):
     @torch.no_grad()
     def val_model(self,
                   val_data_loader: torch.utils.data.DataLoader[
-                      TagQAMetaTaskBatch],
+                      SentenceBatch],
                   model_node: ModelNode,
                   training_edge: ModelTransitionEdge = None
                   ) -> Dict[Metrics, Union[float, List[float]]]:

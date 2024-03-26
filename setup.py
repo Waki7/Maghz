@@ -141,6 +141,7 @@ setup(
                          'protobuf',
                          'numpy',
                          'torchtyping',
+                         'einops',
                          # 'torchvision',
                          # 'torchaudio',
                          # 'torchdata',

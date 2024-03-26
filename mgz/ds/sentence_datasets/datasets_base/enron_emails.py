@@ -5,24 +5,16 @@ import json
 import os
 import random
 import re
-import shutil
-from functools import partial
 from pathlib import Path
 
 import torch.utils.data
 from tqdm import tqdm
-from transformers import PreTrainedTokenizerBase, LlamaTokenizer
+from transformers import PreTrainedTokenizerBase
 
 import spaces as sp
 from mgz.ds.base_dataset import BaseDataset, DataState
-from mgz.ds.sentence_datasets.gpt_input_augments import PromptConfig
-from mgz.ds.sentence_datasets.heuristic_matching import DocumentRuleEvaluator
-from mgz.ds.sentence_datasets.responsivenes_datasets.responsive_batch import \
-    TagQAMetaTaskBatch
-from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
-     SampleType, MetaLearningMixIn
-from mgz.model_running.run_ops import prompt_lm_logits_controller
-from mgz.models.nlp.base_transformer import InferenceContext
+from mgz.ds.sentence_datasets.datasets_base.sentence_datasets import SentenceDataset, \
+     SampleType
 from mgz.typing import *
 
 DATASET_DIR = os.path.join(

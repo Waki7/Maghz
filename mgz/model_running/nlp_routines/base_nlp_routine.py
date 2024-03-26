@@ -7,8 +7,7 @@ from accelerate.utils import set_seed
 from tqdm import tqdm
 
 import mgz.settings as settings
-from mgz.ds.sentence_datasets.responsivenes_datasets.responsive_batch import \
-    TagQAMetaTaskBatch
+from mgz.ds.sentence_datasets.datasets_base.sentence_batch import SentenceBatch
 from mgz.model_running.base_routine import BaseProtocol
 from mgz.typing import *
 from mgz.version_control.metrics import Metrics
@@ -30,7 +29,33 @@ class BaseNLPProtocol(BaseProtocol):
         self.debug = debug
         self.gpu_max_batch_size = gpu_max_batch_size
         self.gradient_accumulation_steps = gradient_accumulation_steps
-    def debug_log_batch_info(self, batch: TagQAMetaTaskBatch):
+
+        # To get configured
+        self.configured = False
+        self.lr = None
+        self.weight_decay = None
+        self.betas = None
+        self.eps = None
+        self.loss_fn = None
+        self.scheduler = None
+        self.optimizer = None
+
+    def configure(self, optimizer: torch.optim.Optimizer, lr: float,
+                  weight_decay: float,
+                  betas: Tuple[float, float] = (0.9, 0.999),
+                  eps: float = 1e-8,
+                  scheduler: torch.optim.lr_scheduler.LRScheduler = None,
+                  loss_fn: Callable = None):
+        self.lr = lr
+        self.weight_decay = weight_decay
+        self.betas = betas
+        self.eps = eps
+        self.optimizer = optimizer
+        self.loss_fn = loss_fn
+        self.scheduler = scheduler
+        self.configured = True
+
+    def debug_log_batch_info(self, batch: SentenceBatch):
         if self.debug:
             print(
                 '_____________________________________________________________________')
@@ -50,9 +75,9 @@ class BaseNLPProtocol(BaseProtocol):
     def train_epoch(self,
                     model_node: ModelNode,
                     data_loader: torch.utils.data.DataLoader[
-                        TagQAMetaTaskBatch],
+                        SentenceBatch],
                     val_data_loader: torch.utils.data.DataLoader[
-                        TagQAMetaTaskBatch],
+                        SentenceBatch],
                     model_edge: ModelTransitionEdge,
                     log_interval=5,
                     val_interval=50,
@@ -91,9 +116,6 @@ class BaseNLPProtocol(BaseProtocol):
                 accuracy: float
                 loss_w_grad, accuracy = self.run_batch(model, batch, model_edge)
 
-                # (loss_w_grad / gradient_accumulation_steps).backward()
-                # if (batch_num) % gradient_accumulation_steps == 0 or (
-                # batch_num) % val_interval == 0:
                 accelerator.backward(loss_w_grad)
                 optimizer.step()
                 if scheduler is not None: scheduler.step()
@@ -107,8 +129,8 @@ class BaseNLPProtocol(BaseProtocol):
 
             if (batch_num) % val_interval == 0:
                 acc_val_mean = \
-                self.val_model(val_data_loader, model_node, model_edge)[
-                    Metrics.VAL_ACC_MEAN]
+                    self.val_model(val_data_loader, model_node, model_edge)[
+                        Metrics.VAL_ACC_MEAN]
                 if acc_val_mean > best_val_acc:
                     model_edge.store_with_identifier("BEST_VAL",
                                                      {"val_acc": acc_val_mean})
@@ -119,7 +141,7 @@ class BaseNLPProtocol(BaseProtocol):
     @torch.no_grad()
     def val_model(self,
                   val_data_loader: torch.utils.data.DataLoader[
-                      TagQAMetaTaskBatch],
+                      SentenceBatch],
                   model_node: ModelNode,
                   model_edge: ModelTransitionEdge = None
                   ) -> Dict[Metrics, Union[float, List[float]]]:

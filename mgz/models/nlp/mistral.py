@@ -978,19 +978,6 @@ class MistralForCausalLM(MistralPreTrainedModel):
                               dim=-1))
         return output
 
-    @overrides(DecoderTransformer)
-    def decode_logits(self,
-                      src_ids: LongTensorT['B,SrcSeqLen'],
-                      src_mask: IntTensorT['B,SrcSeqLen'],
-                      ret_last: bool = True) -> (
-            LogitsTensorT)['B,Opt[SrcSeqLen],VocabSize']:
-        output: FloatTensorT['B,TgtSeqLen,EmbedLen'] = self.hug.model.forward(
-            src_ids=src_ids, src_mask=src_mask)
-        if ret_last:
-            output = output[:, -1, :]
-        output = self._change_output_if_configured(output)
-        lm_logits = self.hug.lm_head(output)
-        return lm_logits
 
     @overrides(DecoderTransformer)
     def decoder_embedding(self,

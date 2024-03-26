@@ -136,7 +136,10 @@ class PromptingInput:
                  document_type: str = "e-mail",
                  ):
         self.document_text = document_text
-        self.document_requests = document_requests
+        if isinstance(document_requests, str):
+            self.document_requests = [document_requests]
+        else:
+            self.document_requests = document_requests
         self.document_type = document_type
         self.prompt_config = prompt_config
         self.prompt_type = prompt_config.prompt_type

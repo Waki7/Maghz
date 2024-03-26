@@ -2,8 +2,8 @@ import logging
 
 from mgz import settings
 from mgz.ds.sentence_datasets.gpt_input_augments import \
-    FreePromptInput, ContextPromptingInput, PromptConfig
-from mgz.ds.sentence_datasets.sentence_datasets import \
+    ContextPromptingInput, PromptConfig
+from mgz.ds.sentence_datasets.datasets_base.sentence_datasets import \
     prompts_to_padded_id_tensor_w_mask
 from mgz.model_running.run_ops import prompt_lm_logits_controller
 from mgz.models.nlp.base_transformer import InferenceContext

@@ -8,7 +8,7 @@ import mgz.settings as settings
 from mgz.ds.sentence_datasets.gpt_input_augments import tag_question_augment, \
     SummarizePromptInput, PromptingInput, ContextPromptingInput, \
     PromptConfig
-from mgz.ds.sentence_datasets.sentence_datasets import subsequent_mask, \
+from mgz.ds.sentence_datasets.datasets_base.sentence_datasets import subsequent_mask, \
     strings_to_padded_id_tensor_w_mask, prompts_to_padded_id_tensor_w_mask
 from mgz.models.nlp.base_transformer import BaseTransformer, \
     EncoderDecoderTransformer, DecoderTransformer, InferenceContext, ModelType
