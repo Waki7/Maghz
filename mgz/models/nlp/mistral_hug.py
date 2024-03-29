@@ -358,14 +358,12 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         all_logits: List[FloatTensorT['B,TgtSeqLen,VocabSize']] = []
         selected_tokens: List[LongTensorT['B,TgtSeqLen,VocabSize']] = []
         selected_logits: List[FloatTensorT['B,TgtSeqLen,VocabSize']] = []
-
-        past_key_values = None
+        
         for i in range(0, max_new_tokens):
             output: CausalLMOutputWithPast = self.hug.forward(src_ids,
                                                               attention_mask=src_mask,
                                                               return_dict=True,
-                                                              past_key_values=past_key_values)
-            past_key_values = output.past_key_values
+                                                              use_cache=True)
             logits: FloatTensorT['B,TgtSeqLen,VocabSize'] = output.logits
 
             logits_filtered = top_k(logits)
@@ -379,7 +377,8 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
             all_logits.append(generated_logit)
             selected_tokens.append(sampled_token)
             selected_logits.append(sampled_logits)
-            src_ids = sampled_token.unsqueeze(-1)
+            src_ids = sampled_token
+            src_mask = torch.ones_like(src_ids)
         return (LogitsTensorT(torch.stack(all_logits, dim=1)),
                 LogitsTensorT(torch.cat(selected_tokens, dim=1)),
                 LongTensorT(torch.cat(selected_logits, dim=1)))

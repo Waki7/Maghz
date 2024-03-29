@@ -117,7 +117,7 @@ class ReinforcingRoutine(BaseNLPProtocol):
                 if old_action_probs is None:
                     old_action_probs = new_action_probs.detach()
 
-                ratio = new_action_probs / old_action_probs
+                ratio = new_action_probs / (old_action_probs + 1e-8)
                 print('ratio', ratio)
                 print('rewards', rewards)
                 surr1 = ratio * rewards

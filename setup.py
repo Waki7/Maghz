@@ -130,6 +130,7 @@ setup(
                          'typing_extensions==4.8.0',
                          'peft',
                          'optimum',
+                         'nltk',
                          'torch==2.1.2',
                          'bitsandbytes==0.41.3.post2',
                          'transformers==4.37.2',

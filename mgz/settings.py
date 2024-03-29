@@ -2,7 +2,7 @@ import os
 import random
 
 import numpy as np
-os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+# os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 # os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'garbage_collection_threshold:0.6,max_split_size_mb:128'
 import torch
