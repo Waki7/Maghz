@@ -46,7 +46,7 @@ class ModelDatabase:
                 from accelerate.utils import BnbQuantizationConfig
                 import bitsandbytes
                 quantization_cfg = BnbQuantizationConfig(
-                    load_in_4bit=quantize, llm_int8_threshold=6,
+                    load_in_8bit=quantize,
                     torch_dtype=torch.float16)
 
             except ImportError:
