@@ -25,14 +25,11 @@ class ModelDatabase:
     '''
 
     @staticmethod
-    def led_source_to_long_id() -> str:
-        return 'allenai/led-base-16384-multi_lexsum-source-long'
-
-    @staticmethod
-    def led_source_to_long() -> ModelNode:
+    def get_led_model(
+            model_name: str = 'allenai/led-base-16384-multi_lexsum-source-long') -> ModelNode:
         return ModelNode.load_from_id(ModelDatabase.LEDForConditionalGeneration,
-                                      ModelDatabase.led_source_to_long_id(),
-                                      ModelDatabase.led_source_to_long_id())
+                                      model_name,
+                                      model_name)
 
     @staticmethod
     def mistral_openchat(
@@ -49,7 +46,7 @@ class ModelDatabase:
                 from accelerate.utils import BnbQuantizationConfig
                 import bitsandbytes
                 quantization_cfg = BnbQuantizationConfig(
-                    load_in_4bit=quantize, llm_int8_threshold=6,
+                    load_in_8bit=quantize,
                     torch_dtype=torch.float16)
 
             except ImportError:
@@ -65,13 +62,12 @@ class ModelDatabase:
     @staticmethod
     def get_quantized_model(
             model_name: str,
-            quantized=False) -> ModelNode:
+            quantize=False) -> ModelNode:
         # AdaptLLM/law-chat
         # OpenHermes-2.5-Mistral-7B
         from mgz.models.nlp.mistral_hug import MistralForCausalLMHug
-        quantize = False
-        quantization_cfg = None
 
+        quantization_cfg = None
         if quantize and settings.DEVICE != torch.device('cpu'):
             try:
                 from accelerate.utils import BnbQuantizationConfig

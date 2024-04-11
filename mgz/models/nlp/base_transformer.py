@@ -185,6 +185,7 @@ class InferenceContext:
 
     def match_triggers(self, src_ids: LongTensorT['B,SrcSeqLen']) -> \
             LongTensorT['NDim,SrcSeqLen']:
+        raise NotImplementedError("")
         values_to_find: LongTensorT['N'] = self.answer_triggers
 
         n_to_match = values_to_find.shape[0]
@@ -442,15 +443,24 @@ class BaseTransformer(BaseModel):
                src_mask: IntTensorT['B,SrcSeqLen']):
         raise NotImplementedError
 
+    def generate_logits(self,
+                        src_ids: LongTensorT['B,SrcSeqLen'],
+                        src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
+                        tgt_ids: LongTensorT['B,TgtSeqLen'] = None,
+                        max_new_tokens: int = None,
+                        ) -> LogitsTensorT['B,TgtSeqLen,VocabSize']:
+        raise NotImplementedError
+
     def generate(self,
                  src_ids: LongTensorT['B,SrcSeqLen'],
                  src_mask: IntTensorT['B,1|TgtSeqLen,SrcSeqLen'],
                  tgt_ids: LongTensorT['B,TgtSeqLen'] = None,
                  max_new_tokens: int = None,
-                 ) -> LongTensorT['TgtSeqLen']:
+                 ) -> LongTensorT['B,TgtSeqLen']:
         if max_new_tokens is None:
             max_new_tokens = self.config.max_length
-        max_tokens = max_new_tokens + tgt_ids.shape[1]
+        max_tokens = max_new_tokens + (
+            tgt_ids.shape[1] if tgt_ids is not None else 0)
         n_beams = self.config.num_beams
 
         if self.is_encoder_decoder():
@@ -481,6 +491,9 @@ class BaseTransformer(BaseModel):
                                  batch_size=src_ids.shape[0],
                                  max_tokens=max_tokens)
 
+        if tgt_ids is None:
+            tgt_ids = self.config.bos_token_id * torch.ones(
+                (src_ids.shape[0], 1)).to(src_ids.device).long()
         new_ids: LongTensorT['n_beams*B,1'] = tgt_ids.repeat(n_beams, 1)
         all_ids: LongTensorT['n_beams*B,TgtSeqStep'] = new_ids.clone()
         for i in range(0, max_new_tokens):
@@ -555,13 +568,6 @@ class DecoderTransformer(BaseTransformer):
                transformer_ctx: TransformerContext,
                generation_ids: LongTensorT['B,1']) -> (
             LogitsTensorT)['B,VocabSize']:
-        raise NotImplementedError
-
-    def decode_logits(self,
-                      src_ids: LongTensorT['B,SrcSeqLen'],
-                      src_mask: IntTensorT['B,SrcSeqLen'],
-                      ret_last: bool = True) -> (
-            LogitsTensorT)['B,Opt[SrcSeqLen],VocabSize']:
         raise NotImplementedError
 
     def decoder_embedding(self,

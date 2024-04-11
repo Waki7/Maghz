@@ -169,7 +169,7 @@ class FloatTensorT(torch.Tensor, Generic[Shape]):
 
     def __new__(cls, tensor, shape: Generic[Shape] = None):
         # todo assert shape
-        return torch.as_tensor(tensor)
+        return torch.as_tensor(tensor).float()
 
 
 class ProbTensorT(FloatTensorT, Generic[Shape]):

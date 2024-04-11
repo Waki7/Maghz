@@ -5,8 +5,8 @@ from __future__ import annotations
 import unittest
 
 import mgz.settings as settings
-from mgz.ds.sentence_datasets.aus_legal_case_reports import SampleType
-from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagQA
+from mgz.ds.sentence_datasets.seq_to_sequence_datasets.aus_legal_case_reports import SampleType
+from mgz.ds.sentence_datasets.responsivenes_datasets.enron_emails import EnronEmailsTagQA
 from mgz.models.nlp.base_transformer import BaseTransformer
 from mgz.typing import *
 from mgz.version_control import ModelNode

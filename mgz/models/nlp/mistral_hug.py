@@ -12,11 +12,13 @@ from accelerate.utils import BnbQuantizationConfig
 from torch import nn
 from transformers import BitsAndBytesConfig, MistralConfig
 from transformers.activations import ACT2FN
-from transformers.modeling_outputs import BaseModelOutputWithPast
+from transformers.modeling_outputs import BaseModelOutputWithPast, \
+    CausalLMOutputWithPast
 
 import mgz.settings as settings
 from mgz.models.nlp.base_transformer import BaseTransformer, TransformerContext, \
     DecoderTransformer
+from mgz.models.nlp.sampling_utils import top_k, gumbel_sample
 from mgz.typing import *
 
 
@@ -292,22 +294,6 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         raise NotImplementedError
 
     @overrides(DecoderTransformer)
-    def decode_logits(self,
-                      src_ids: LongTensorT['B,SrcSeqLen'],
-                      src_mask: IntTensorT['B,SrcSeqLen'],
-                      ret_last: bool = True) -> (
-            LogitsTensorT)['B,Opt[SrcSeqLen],VocabSize']:
-        full_output: BaseModelOutputWithPast = self.hug.model.forward(
-            input_ids=src_ids, attention_mask=src_mask)
-        output: FloatTensorT[
-            'B,TgtSeqLen,EmbedLen'] = FloatTensorT(
-            full_output.last_hidden_state)
-        if ret_last:
-            output = output[:, -1, :]
-        lm_logits = self.hug.lm_head(output)
-        return lm_logits
-
-    @overrides(DecoderTransformer)
     def decoder_embedding(self,
                           src_ids: LongTensorT['B,SrcSeqLen'],
                           src_mask: IntTensorT['B,SrcSeqLen'], ) -> \
@@ -353,6 +339,49 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
                                             max_new_tokens=max_new_tokens,
                                             do_sample=False)
         return LongTensorT(generate_output)
+
+    @overrides(BaseTransformer)
+    def generate_logits(self,
+                        src_ids: LongTensorT['B,SrcSeqLen'],
+                        src_mask: IntTensorT['B,SrcSeqLen'],
+                        max_new_tokens: int = None,
+                        ) -> (
+            Tuple[
+                LogitsTensorT['B,TgtSeqLen,VocabSize'],
+                LogitsTensorT['B,TgtSeqLen'],
+                LongTensorT['B,TgtSeqLen']
+            ]):
+        assert src_ids.shape[
+                   -1] - max_new_tokens < self.get_max_decoder_positions(), \
+            'TODO, find exact mechanism that triggers the stop'
+
+        all_logits: List[FloatTensorT['B,TgtSeqLen,VocabSize']] = []
+        selected_tokens: List[LongTensorT['B,TgtSeqLen,VocabSize']] = []
+        selected_logits: List[FloatTensorT['B,TgtSeqLen,VocabSize']] = []
+        
+        for i in range(0, max_new_tokens):
+            output: CausalLMOutputWithPast = self.hug.forward(src_ids,
+                                                              attention_mask=src_mask,
+                                                              return_dict=True,
+                                                              use_cache=True)
+            logits: FloatTensorT['B,TgtSeqLen,VocabSize'] = output.logits
+
+            logits_filtered = top_k(logits)
+            generated_logit: FloatTensorT['B,VocabSize'] = logits_filtered[:,
+                                                           -1, :]
+            sampled_token: LongTensorT['B,1'] = (
+                gumbel_sample(generated_logit, temperature=1.0,
+                              dim=-1).unsqueeze(-1))
+            sampled_logits: FloatTensorT['B,1'] = (
+                generated_logit.gather(-1, sampled_token))
+            all_logits.append(generated_logit)
+            selected_tokens.append(sampled_token)
+            selected_logits.append(sampled_logits)
+            src_ids = sampled_token
+            src_mask = torch.ones_like(src_ids)
+        return (LogitsTensorT(torch.stack(all_logits, dim=1)),
+                LogitsTensorT(torch.cat(selected_tokens, dim=1)),
+                LongTensorT(torch.cat(selected_logits, dim=1)))
 
 
 class MistralForCausalLMHugMock(MistralForCausalLMHug):
@@ -416,15 +445,6 @@ class MistralForCausalLMHugMock(MistralForCausalLMHug):
             src_ids: LongTensorT['B,SrcSeqLen'],
             src_mask: IntTensorT['B,1|SrcSeqLen,SrcSeqLen'],
     ) -> LogitsTensorT['B,TgtSeqLen,OutNClasses']:
-        b, src_len = src_ids.shape
-        return LogitsTensorT(torch.rand(b, self.embed_dim))
-
-    @overrides(DecoderTransformer)
-    def decode_logits(self,
-                      src_ids: LongTensorT['B,SrcSeqLen'],
-                      src_mask: IntTensorT['B,SrcSeqLen'],
-                      ret_last: bool = True) -> (
-            LogitsTensorT)['B,Opt[SrcSeqLen],VocabSize']:
         b, src_len = src_ids.shape
         return LogitsTensorT(torch.rand(b, self.embed_dim))
 

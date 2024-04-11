@@ -7,7 +7,7 @@ import transformers as hug
 
 import spaces as sp
 from mgz.ds.base_dataset import BaseDataset
-from mgz.ds.sentence_datasets.sentence_datasets import Sent2TagMetaTaskBatch, \
+from mgz.ds.sentence_datasets.datasets_metalearning_responsiveness.responsive_batch import \
     TagQAMetaTaskBatch
 from mgz.math_utils.nlp.metrics import DistanceMeasuresPerClass
 from mgz.model_running.base_routine import BaseProtocol
@@ -86,11 +86,11 @@ def predict_probs_with_optional_prototypes(
 
 class TaggingRoutine(BaseNLPProtocol):
     def __init__(self,
-                 distance_measure: DistanceMeasure = None,
                  tokenizer: hug.PreTrainedTokenizerBase = None,
                  gpu_max_batch_size: int = 4,
+                 gradient_accumulation_steps: int = 4,
                  debug: bool = False,
-                 gradient_accumulation_steps: int = 4, ):
+                 distance_measure: DistanceMeasure = None, ):
         super().__init__(tokenizer=tokenizer,
                          gpu_max_batch_size=gpu_max_batch_size, debug=debug,
                          gradient_accumulation_steps=gradient_accumulation_steps)
@@ -172,34 +172,12 @@ class TaggingRoutine(BaseNLPProtocol):
             query_embeds, support_centers, no_yes_logits, routine=self,
             distance_measure=self.distance_measure)
 
-        # predictions = cls_logits.argmax(-1)
-        #
-        # for i in range(len(predictions)):
-        #     if predictions[i] != query_lbls[i]:
-        #         print('----------------------------------')
-        #         print('----------------------------------')
-        #         print('----------------------------------')
-        #         print('query_lbls', query_lbls.shape)
-        #         print('predictions', predictions.shape)
-        #         print('cls_logits', cls_logits.shape)
-        #         InferenceContext(self.tokenizer).debug(
-        #             lm_logits[i])
-        #         print(no_yes_logits[i])
-        #         print(
-        #             f'Predicted {predictions[i]} for label {query_lbls[i]}')
-        #         print('argmax', lm_logits[i].argmax(-1))
-        #         print(
-        #             f'query output: {self.tokenizer.decode(lm_logits[i].argmax(-1))}')
-        #
-        #         print(
-        #             f'query input: {self.tokenizer.decode(batch.queries[i], skip_special_tokens=True)}')
-        #         exit(3)
         return cls_logits, query_lbls, no_yes_logits
 
     @overrides(BaseProtocol)
     def run_batch(self,
                   model: Union[EncoderDecoderTransformer, DecoderTransformer],
-                  batch: Union[Sent2TagMetaTaskBatch, TagQAMetaTaskBatch],
+                  batch: TagQAMetaTaskBatch,
                   model_edge: ModelTransitionEdge, ) -> \
             Tuple[FloatTensorT['1'], float]:
         cls_logits: ['NQuery,NClasses']
@@ -209,13 +187,14 @@ class TaggingRoutine(BaseNLPProtocol):
             model, batch)
 
         if self.distance_measure == DistanceMeasure.L2:
-            T = 10.0
+            softmax_temp = 10.0
         else:
-            T = 1.0
+            softmax_temp = 1.0
 
         # Calculate accuracy
         with torch.no_grad():
-            proto_probs = torch.softmax(cls_logits.detach() / T, dim=-1)
+            proto_probs = torch.softmax(cls_logits.detach() / softmax_temp,
+                                        dim=-1)
             no_yes_probs = torch.softmax(no_yes_logits.detach(), dim=-1)
 
             proto_probs_weighted = (batch.n_support_per_cls * proto_probs)
@@ -236,20 +215,7 @@ class TaggingRoutine(BaseNLPProtocol):
 
             predictions: LongTensorT['NQuery'] = cls_logits.argmax(-1)
             accuracy = (predictions == query_lbls).float().mean().item()
-            # print('accuracy', accuracy)
-            # print('proto_probs', torch.softmax(
-            #     cls_logits.detach(), dim=-1))
-            # print('classification_accuracy', classification_accuracy)
-            # print('no_yes_probs', no_yes_probs)
-            # print('no_yes_probs', no_yes_probs)
-            # print('cls_logits', cls_logits)
-            # print('argmax', cls_logits.argmax(-1))
-            # print('query_lbls', query_lbls)
-            # print('accuracy', accuracy)
-            # print('accuracy_cls', (no_yes_logits.argmax(
-            #     -1) == query_lbls).float().mean().item())
-            # print('accuracy_augment_weak', accuracy_augment_weak)
-            # print('accuracy_augment_strong', accuracy_augment_strong)
+
         if model_edge is not None:
             total_samples = cls_logits.shape[0] * cls_logits.shape[1]
 
@@ -257,7 +223,8 @@ class TaggingRoutine(BaseNLPProtocol):
             noisy_no_yes_probs = batch.use_heuristic_to_identify_hard_query(
                 no_yes_log_probs=no_yes_log_probs.detach(),
                 tokenizer=self.tokenizer)
-            prototypical_probs = torch.log_softmax(cls_logits / T, dim=-1)
+            prototypical_probs = torch.log_softmax(cls_logits / softmax_temp,
+                                                   dim=-1)
             loss = model_edge.loss_fn(
                 prototypical_probs + noisy_no_yes_probs.detach(),
                 query_lbls)

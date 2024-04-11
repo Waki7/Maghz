@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mgz.ds.sentence_datasets.synthetic_memorization import \
+from mgz.ds.sentence_datasets.behavioral_tuning_datasets.synthetic_memorization import \
     SyntheticMemorization
 from archive.models.bert_basic import PositionalEncoding
 from mgz.model_running.run_ops import *

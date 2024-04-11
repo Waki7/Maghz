@@ -39,6 +39,10 @@ class BaseDataset(Dataset):
         self.dataset_dir = dataset_dir
 
     @property
+    def sampling_technique(self) -> sp.Sentence:
+        raise NotImplementedError
+
+    @property
     def input_space(self) -> sp.Sentence:
         raise NotImplementedError
 

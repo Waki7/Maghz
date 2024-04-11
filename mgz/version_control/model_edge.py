@@ -9,6 +9,7 @@ import mgz.log_utils as log_utils
 import mgz.version_control as vc
 from mgz.ds import BaseDataset
 from mgz.model_running.base_routine import TrainState
+from mgz.model_running.nlp_routines.base_nlp_routine import BaseNLPProtocol
 from mgz.typing import *
 
 
@@ -29,9 +30,8 @@ class ModelTransitionEdge:
     one model state to another.
     """
 
-    def __init__(self, orig_model: vc.ModelNode, loss_fn,
-                 optimizer: torch.optim.Optimizer, ds: BaseDataset,
-                 scheduler: torch.optim.lr_scheduler.LRScheduler = None,
+    def __init__(self, orig_model: vc.ModelNode, ds: BaseDataset,
+                 routine: BaseNLPProtocol,
                  models_to_store: ModelsToStore = ModelsToStore.LATEST_AND_BEST_VAL,
                  ):
         """
@@ -49,10 +49,11 @@ class ModelTransitionEdge:
         orig_model.edges_out.append(self)
 
         self.child: Optional[vc.ModelNode] = None
-        self.optimizer = optimizer
-        self.loss_fn = loss_fn
-        self.scheduler = scheduler
         self.ds = ds
+        assert routine.configured, "Routine must be configured before use"
+        self.optimizer = routine.optimizer
+        self.loss_fn = routine.loss_fn
+        self.scheduler = routine.scheduler
 
         # Temporary data used during training
         self.train_state = TrainState()

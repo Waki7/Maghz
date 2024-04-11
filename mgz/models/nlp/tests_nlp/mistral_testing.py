@@ -5,10 +5,9 @@ import os
 import time
 
 from mgz import settings
-from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagQA
-from mgz.ds.sentence_datasets.sentence_datasets import \
+from mgz.ds.sentence_datasets.responsivenes_datasets.enron_emails import EnronEmailsTagQA
+from mgz.ds.sentence_datasets.datasets_base.sentence_datasets import \
     strings_to_padded_id_tensor_w_mask
-from mgz.model_running.run_ops import summarize_controller_from_texts
 from mgz.models.nlp.mistral import MistralForCausalLM
 from mgz.models.nlp.mistral_hug import MistralForCausalLMHug
 from mgz.typing import *

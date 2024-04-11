@@ -9,7 +9,7 @@ from transformers import PreTrainedTokenizer
 
 import spaces as sp
 from mgz.ds.base_dataset import T, DataState, BaseDataset
-from mgz.ds.sentence_datasets.sentence_datasets import SentenceDataset, \
+from mgz.ds.sentence_datasets.datasets_base.sentence_datasets import SentenceDataset, \
     SampleType
 from mgz.typing import *
 

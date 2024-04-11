@@ -10,7 +10,7 @@ from transformers import PreTrainedTokenizerBase, \
     LlamaTokenizer
 
 import mgz.settings as settings
-from mgz.ds.sentence_datasets.enron_emails import EnronEmailsTagQA
+from mgz.ds.sentence_datasets.responsivenes_datasets.enron_emails import EnronEmailsTagQA
 from mgz.model_running import run_ops
 from mgz.model_running.nlp_routines.model_routine_tagging import TaggingRoutine
 from mgz.model_running.run_ops import embedding_controller_from_texts, \
@@ -194,7 +194,7 @@ def predict_tag(association_embedding: NDArrayT['EmbedLen'],
 
 
 def importing_sample_data() -> List[Dict[str, Union[int, str, FloatTensorT]]]:
-    from mgz.ds.sentence_datasets.enron_emails import SampleType, \
+    from mgz.ds.sentence_datasets.responsivenes_datasets.enron_emails import SampleType, \
         EnronEmailsTagging
     import transformers as hug
     cfg: hug.MistralConfig = MODELS[TAGGING_MODEL].config

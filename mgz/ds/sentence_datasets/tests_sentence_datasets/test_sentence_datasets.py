@@ -8,7 +8,7 @@ from transformers import LlamaTokenizer
 
 from mgz.ds.sentence_datasets.gpt_input_augments import ContextPromptingInput, \
     PromptType, PromptConfig
-from mgz.ds.sentence_datasets.sentence_datasets import \
+from mgz.ds.sentence_datasets.datasets_base.sentence_datasets import \
     prompts_to_padded_id_tensor_w_mask, strings_to_padded_id_tensor_w_mask
 
 

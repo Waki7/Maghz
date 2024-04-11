@@ -75,7 +75,8 @@ class PromptingInput:
     @staticmethod
     def prompt_mistral(main_body: str,
                        system_context: Optional[str] = None,
-                       additional_chat: List[str] = []):
+                       prompt_prefix: Optional[str] = None,
+                       follow_up_questions: List[str] = None):
         """
         <s>[INST] <<SYS>>
         {{ system_prompt }}
@@ -84,26 +85,28 @@ class PromptingInput:
         {{ user_msg_1 }} [/INST] {{ model_answer_1 }} </s><s>[INST] {{ user_msg_2 }} [/INST]
 
         """
-
-        if system_context:
-            prompt = f"GTP4 Correct User: " \
-                     f"{system_context}\n"
-        else:
-            prompt = f"GTP4 Correct User: "
-        prompt += f"{main_body}\n" \
-                  f"<|end_of_turn|>" \
-                  f"GPT4 Correct Assistant:"
-        for chat in additional_chat:
-            prompt += f"<|end_of_turn|>" \
-                      f"GPT4 Correct User: " \
-                      f"{chat}\n" \
-                      f"GPT4 Correct Assistant:"
-        return prompt
+        return PromptingInput.prompt_adapt(main_body, system_context,
+                                           follow_up_questions)
+        # if system_context:
+        #     prompt = f"GTP4 Correct User: " \
+        #              f"{system_context}\n"
+        # else:
+        #     prompt = f"GTP4 Correct User: "
+        # prompt += f"{main_body}\n" \
+        #           f"<|end_of_turn|>" \
+        #           f"GPT4 Correct Assistant:"
+        # for chat in additional_chat:
+        #     prompt += f"<|end_of_turn|>" \
+        #               f"GPT4 Correct User: " \
+        #               f"{chat}\n" \
+        #               f"GPT4 Correct Assistant:"
+        # return prompt
 
     @staticmethod
     def prompt_adapt(main_body: str,
                      system_context: Optional[str] = None,
-                     additional_chat: List[str] = []):
+                     prompt_prefix: Optional[str] = None,
+                     follow_up_questions: List[str] = None):
         """
         <s>[INST] <<SYS>>
         {{ system_prompt }}
@@ -112,13 +115,18 @@ class PromptingInput:
         {{ user_msg_1 }} [/INST] {{ model_answer_1 }} </s><s>[INST] {{ user_msg_2 }} [/INST]
 
         """
+        if prompt_prefix is not None and follow_up_questions is not None:
+            raise ValueError("Prompt prefix and follow up questions are mutually exclusive")
         if system_context:
             prompt = f"<s>[INST] <<SYS>>{system_context}<</SYS>>\n\n{main_body} [/INST]"
         else:
             prompt = f"<s>[INST] \n\n{main_body} [/INST]"
-        for chat in additional_chat:
-            prompt += f" </s><s>[INST]" \
-                      f"{chat} [/INST]"
+        if prompt_prefix:
+            prompt = f" {prompt} {prompt_prefix} "
+        if follow_up_questions:
+            for chat in follow_up_questions:
+                prompt += f" </s><s>[INST]" \
+                          f"{chat} [/INST]"
         return prompt
 
     def __init__(self,
@@ -128,7 +136,10 @@ class PromptingInput:
                  document_type: str = "e-mail",
                  ):
         self.document_text = document_text
-        self.document_requests = document_requests
+        if isinstance(document_requests, str):
+            self.document_requests = [document_requests]
+        else:
+            self.document_requests = document_requests
         self.document_type = document_type
         self.prompt_config = prompt_config
         self.prompt_type = prompt_config.prompt_type
@@ -149,7 +160,8 @@ class ContextPromptingInput(PromptingInput):
         def _make_tag_prompt(tag: str) -> str:
             # return f"We are looking for {tag}. Is this {self.document_type} what we are looking for. Yes or no.\n"
             # return f"Is it apparent that the {self.document_type} is part of \"{tag}\"? Yes or no.\n"
-            return f"Is the {self.document_type} part of \"{tag}\"? Answer yes or no"
+            return f"I'm looking for \"{tag}\", does this {self.document_type} confidently fit that description? Yes or no.\n"
+            # return f"Is the {self.document_type} part of \"{tag}\"? Answer yes or no"
 
         if isinstance(self.document_requests, str):
             if add_trunc:
@@ -173,12 +185,12 @@ class ContextPromptingInput(PromptingInput):
                 self.document_requests[1:]]
             if self.prompt_type == PromptType.MISTRAL:
                 return self.prompt_mistral(main_body=prompt_body,
-                                           additional_chat=additional_tag_prompts,
+                                           follow_up_questions=additional_tag_prompts,
                                            system_context=self.system_context)
             else:
                 # TODO 20 and 2 * are both random estimates
                 return self.prompt_adapt(main_body=prompt_body,
-                                         additional_chat=additional_tag_prompts,
+                                         follow_up_questions=additional_tag_prompts,
                                          system_context=self.system_context)
 
 

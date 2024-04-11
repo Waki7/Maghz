@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mgz.ds.sentence_datasets.sentence_datasets import Sent2SentBatch
+from mgz.ds.sentence_datasets.datasets_base.sentence_datasets import Sent2SentBatch
 from archive.models.bert_basic import subsequent_mask, EncoderDecoder
 from mgz.typing import *
 
