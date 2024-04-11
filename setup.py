@@ -138,6 +138,7 @@ setup(
                          'fsspec[http]==2023.10.0',
                          'fvcore==0.1.5.post20221221',
                          'gast==0.5.4',
+                         'nltk',
                          'google-pasta==0.2.0',
                          'gputil==1.4.0',
                          'grpcio==1.62.1',
