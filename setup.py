@@ -232,7 +232,7 @@ setup(
                          'torchaudio==2.1.2',
                          'torchdata==0.7.1',
                          'torchmetrics==1.3.2',
-                         'torchtext==0.16.2',
+                         'torchtext',
                          'torchtyping==0.1.4',
                          'torchvision==0.16.2',
                          'tqdm==4.66.2',
