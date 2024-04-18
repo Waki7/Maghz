@@ -116,7 +116,8 @@ class PromptingInput:
 
         """
         if prompt_prefix is not None and follow_up_questions is not None:
-            raise ValueError("Prompt prefix and follow up questions are mutually exclusive")
+            raise ValueError(
+                "Prompt prefix and follow up questions are mutually exclusive")
         if system_context:
             prompt = f"<s>[INST] <<SYS>>{system_context}<</SYS>>\n\n{main_body} [/INST]"
         else:
@@ -154,13 +155,17 @@ class PromptingInput:
 
 
 class ContextPromptingInput(PromptingInput):
-
     def get_tokenizer_input(self, add_trunc: bool = True):
 
-        def _make_tag_prompt(tag: str) -> str:
+        def _make_tag_prompt(tag: str,
+                             document_request_prompt: bool = True) -> str:
             # return f"We are looking for {tag}. Is this {self.document_type} what we are looking for. Yes or no.\n"
             # return f"Is it apparent that the {self.document_type} is part of \"{tag}\"? Yes or no.\n"
-            return f"I'm looking for \"{tag}\", does this {self.document_type} confidently fit that description? Yes or no.\n"
+            if document_request_prompt:
+                return f"We are looking for {tag}. Is this {self.document_type} what we are looking for. Yes or no.\n"
+            else:
+                return f"Does the tag \"{tag}\", confidently apply to this {self.document_type}? Yes or no.\n"
+
             # return f"Is the {self.document_type} part of \"{tag}\"? Answer yes or no"
 
         if isinstance(self.document_requests, str):
@@ -178,9 +183,9 @@ class ContextPromptingInput(PromptingInput):
             if add_trunc:
                 prompt_body = f"{self.truncate_token_start} {self.document_text} {self.truncate_token_end}\n{_make_tag_prompt(self.document_requests[0])}"
             else:
-                prompt_body = f" {self.document_text} \n{_make_tag_prompt(self.document_requests[0])}"
+                prompt_body = f" {self.document_text} \n{_make_tag_prompt(self.document_requests[0], len(self.system_context) > 0)}"
             additional_tag_prompts: List[str] = [
-                _make_tag_prompt(document_request)
+                _make_tag_prompt(document_request, len(self.system_context) > 0)
                 for document_request in
                 self.document_requests[1:]]
             if self.prompt_type == PromptType.MISTRAL:
