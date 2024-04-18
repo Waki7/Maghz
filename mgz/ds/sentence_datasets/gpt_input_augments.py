@@ -162,7 +162,7 @@ class ContextPromptingInput(PromptingInput):
             # return f"We are looking for {tag}. Is this {self.document_type} what we are looking for. Yes or no.\n"
             # return f"Is it apparent that the {self.document_type} is part of \"{tag}\"? Yes or no.\n"
             if document_request_prompt:
-                return f"We are looking for \"{tag}\". Is this {self.document_type} what we are looking for? Yes or no.\n"
+                return f"Is the {self.document_type} part of \"{tag}\"? Answer yes or no"
             else:
                 return f"Does the tag \"{tag}\", confidently apply to this {self.document_type}? Yes or no.\n"
 
