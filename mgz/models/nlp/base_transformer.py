@@ -4,8 +4,7 @@ from enum import Enum
 
 import torch.nn as nn
 import transformers as hug
-from transformers import BitsAndBytesConfig, LlamaTokenizer, \
-    LlamaTokenizerFast, PreTrainedTokenizerBase
+from transformers import BitsAndBytesConfig, PreTrainedTokenizerBase
 from transformers import PreTrainedTokenizer
 from transformers.integrations import replace_with_bnb_linear
 
@@ -81,77 +80,37 @@ def quantize_model_inference(model: BaseTransformer):
 
 class InferenceContext:
     @staticmethod
-    def get_adapt_no_yes_scores() -> \
-            Dict[str, List[int]]:
-        block_Yes = 3869
-        block_YES = 22483
-        block_yes = 4874
-        Yes_id = 8241
-        YES_id = 21143
-        yes_id = 3582
-        yes_ids = [Yes_id, yes_id, YES_id, block_YES, block_yes, block_Yes]
+    def get_no_yes_scores(tokenizer: PreTrainedTokenizerBase):
 
-        block_no = 694
-        block_No = 1939
-        block_NO = 11698
-        NO_id = 6632
-        no_id = 1217
-        No_id = 3782
-        no_ids = [NO_id, no_id, No_id, block_no, block_No, block_NO]
-        words_to_keep: Dict[str, List[int]] = {
-            "no": no_ids,
-            "yes": yes_ids,
+        potential_no_words = ["NO", "_NO", "no", "_no", "No", "_No"]
+        potential_yes_words = ["YES", "_YES", "yes", "_yes", "Yes", "_Yes"]
+
+        tokenizer_no_ids = []
+        for word in potential_no_words:
+            tokenizer_no_ids.extend(tokenizer.encode(word))
+
+        tokenizer_yes_ids = []
+        for word in potential_yes_words:
+            tokenizer_yes_ids.extend(tokenizer.encode(word))
+
+        return {
+            "no": tokenizer_no_ids,
+            "yes": tokenizer_yes_ids
         }
-        return words_to_keep
-
-    @staticmethod
-    def get_mistral_no_yes_scores() -> \
-            Dict[str, List[int]]:
-        Yes_id = 5613
-        block_Yes_id = 5592
-        yes_id = 9780
-        block_yes_id = 5081
-        yes_ids = [Yes_id, block_Yes_id, yes_id, block_yes_id]
-
-        NO_id = 4032
-        block_NO_id = 7929
-        no_id = 1510
-        block_no_id = 708
-        No_id = 2501
-        block_No_id = 1770
-        no_ids = [NO_id, block_NO_id, no_id, block_no_id, No_id,
-                  block_No_id]
-        words_to_keep: Dict[str, List[int]] = {
-            "no": no_ids,
-            "yes": yes_ids,
-        }
-        return words_to_keep
 
     def __init__(self, tokenizer: PreTrainedTokenizerBase,
-                 words_to_keep_in_order: Optional[
-                     Dict[str, [List[int]]]] = None,
+                 words_to_keep_in_order: List[str] = None,
                  device: Optional[torch.device] = None):
-        assert isinstance(tokenizer, LlamaTokenizer) or isinstance(tokenizer,
-                                                                   LlamaTokenizerFast), \
-            f"found {type(tokenizer)} expected LlamaTokenizer or LlamaTokenizerFast"
-
-        tokenizer_mismatch = False
-        for words_to_keep_in_order in [self.get_mistral_no_yes_scores(),
-                                       self.get_adapt_no_yes_scores()]:
-            tokenizer_mismatch = False
-            for key, val_list in words_to_keep_in_order.items():
-                for val in val_list:
-                    if not key in tokenizer.decode(val).lower():
-                        tokenizer_mismatch = True
-            if not tokenizer_mismatch:
-                break
-        if tokenizer_mismatch:
-            raise ValueError(f"key not in vocab")
-
+        if words_to_keep_in_order:
+            # if tokenizer_mismatch:
+            #     raise ValueError(f"key not in vocab")
+            self.words_to_keep = {
+                word: tokenizer.encode(word) for word in words_to_keep_in_order
+            }
+        else:
+            self.words_to_keep = self.get_no_yes_scores(tokenizer)
         self.tokenizer = tokenizer
         self.device = device
-
-        self.words_to_keep = words_to_keep_in_order
 
         tokens_to_match: str = "<|end_of_turn|>GPT4 Correct Assistant:"
         self.answer_triggers: LongTensorT['N']
@@ -363,7 +322,6 @@ class BaseTransformer(BaseModel):
     def __init__(self, config):
         super(BaseTransformer, self).__init__()
         self.config: hug.PretrainedConfig = config
-        print('config', config)
         self.embed_dim: int = None
         if hasattr(config, 'd_model'):
             self.embed_dim = config.d_model

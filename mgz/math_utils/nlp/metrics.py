@@ -6,7 +6,6 @@ from torchtext.data.metrics import bleu_score
 import mgz.settings as settings
 from mgz.models.nlp.bart import BartModel
 from mgz.typing import *
-from mgz.version_control.model_index import Indexer
 
 
 class DistanceMeasuresPerClass:

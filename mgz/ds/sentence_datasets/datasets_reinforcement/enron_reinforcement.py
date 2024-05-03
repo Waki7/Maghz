@@ -10,7 +10,7 @@ from mgz.ds.sentence_datasets.datasets_base.sentence_datasets import \
 from mgz.ds.sentence_datasets.datasets_reinforcement.reinforcement_batch import \
     ReinforcementBatch
 from mgz.ds.sentence_datasets.gpt_input_augments import PromptConfig, \
-    PromptingInput, ContextPromptingInput
+    BatchChatInput, DocumentRequestChat
 from mgz.typing import *
 
 
@@ -68,10 +68,10 @@ class EnronReinforcement(EnronEmails):
         return partial(ReinforcementBatch.default_collate_fn, self, device)
 
     @overrides(EnronEmails)
-    def __getitem__(self, idx) -> PromptingInput:
+    def __getitem__(self, idx) -> BatchChatInput:
         tags_as_list = list(self.tags)[0]
-        prompt_input: PromptingInput = \
-            ContextPromptingInput(
+        prompt_input: BatchChatInput = \
+            DocumentRequestChat(
                 prompt_config=self.prompt_config,
                 document_text=self.data[idx][SampleType.FULL_AS_STRING],
                 document_requests=tags_as_list)

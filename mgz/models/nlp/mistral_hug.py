@@ -358,7 +358,7 @@ class MistralForCausalLMHug(MistralPreTrainedModel):
         all_logits: List[FloatTensorT['B,TgtSeqLen,VocabSize']] = []
         selected_tokens: List[LongTensorT['B,TgtSeqLen,VocabSize']] = []
         selected_logits: List[FloatTensorT['B,TgtSeqLen,VocabSize']] = []
-        
+
         for i in range(0, max_new_tokens):
             output: CausalLMOutputWithPast = self.hug.forward(src_ids,
                                                               attention_mask=src_mask,
@@ -428,13 +428,14 @@ class MistralForCausalLMHugMock(MistralForCausalLMHug):
             model_id,
             attn_implementation="flash_attention_2",
             torch_dtype=torch.float16, device_map={"": torch.device('cpu')}, )
+        generation_config = hug.GenerationConfig.from_pretrained(
+            model_id)
         if config.pad_token_id is None:
             config.pad_token_id = tokenizer.pad_token_id
         if config.sep_token_id is None:
             config.sep_token_id = tokenizer.sep_token_id
         config._flash_attn_2_enabled = True
         config._attn_implementation = "flash_attention_2"
-
         with open(os.path.normpath(os.path.join(path, 'config.json')),
                   'w') as f:
             json.dump(config.to_dict(), f)

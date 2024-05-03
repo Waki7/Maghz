@@ -2,18 +2,20 @@ from __future__ import annotations
 
 import torch.utils.data
 from transformers import PreTrainedTokenizerBase
+from transformers.modeling_outputs import CausalLMOutputWithPast
 
 import mgz.model_running.nlp_routines.model_routine_tagging as tagging
 import mgz.settings as settings
-from mgz.ds.sentence_datasets.gpt_input_augments import tag_question_augment, \
-    SummarizePromptInput, PromptingInput, ContextPromptingInput, \
-    PromptConfig
-from mgz.ds.sentence_datasets.datasets_base.sentence_datasets import subsequent_mask, \
+from mgz.ds.sentence_datasets.datasets_base.sentence_datasets import \
+    subsequent_mask, \
     strings_to_padded_id_tensor_w_mask, prompts_to_padded_id_tensor_w_mask
+from mgz.ds.sentence_datasets.gpt_input_augments import SummarizePromptInput, \
+    BatchChatInput, DocumentRequestChat, \
+    PromptConfig
 from mgz.models.nlp.base_transformer import BaseTransformer, \
     EncoderDecoderTransformer, DecoderTransformer, InferenceContext, ModelType
 from mgz.typing import *
-
+import transformers as hug
 
 @torch.no_grad()
 def embedding_controller_from_texts(model: BaseTransformer, texts: List[str],
@@ -120,7 +122,7 @@ def generate_controller_from_texts(model: DecoderTransformer, texts: List[str],
 
 @torch.no_grad()
 def _qa_controller_from_prompts(model: DecoderTransformer,
-                                prompts: List[PromptingInput],
+                                prompts: List[BatchChatInput],
                                 tokenizer: PreTrainedTokenizerBase,
                                 max_src_len: int = None,
                                 max_new_tokens=1000,
@@ -272,9 +274,9 @@ def tag_questions_controller_from_texts(model: DecoderTransformer,
     if prompt_config is None:
         prompt_config = PromptConfig(system_context=system_context,
                                      model=model)
-    prompts = ContextPromptingInput.from_list(prompt_config=prompt_config,
-                                              document_texts=texts,
-                                              document_requests_list=tags)
+    prompts = DocumentRequestChat.from_list(prompt_config=prompt_config,
+                                            document_texts=texts,
+                                            document_requests_list=tags)
     with torch.cuda.amp.autocast(enabled=True):
         return _qa_controller_from_prompts(model, prompts, tokenizer,
                                            tags=tags,
@@ -311,9 +313,9 @@ def hybrid_generation_tagging_from_texts(model: DecoderTransformer,
     if prompt_config is None:
         prompt_config = PromptConfig(system_context=system_context,
                                      model=model)
-    prompts = ContextPromptingInput.from_list(prompt_config=prompt_config,
-                                              document_texts=texts,
-                                              document_requests_list=tags)
+    prompts = DocumentRequestChat.from_list(prompt_config=prompt_config,
+                                            document_texts=texts,
+                                            document_requests_list=tags)
 
     if max_src_len is None:
         max_src_len = model.get_max_decoder_positions() - 1
@@ -475,23 +477,27 @@ def prompt_lm_logits_controller(model: DecoderTransformer,
     """
     assert model.MODEL_TYPE == ModelType.DecoderTransformer
     assert len(texts) == len(tags)
-    if prompt_config is None:
-        prompt_config = PromptConfig(system_context=system_context,
-                                     model=model)
-    prompts = ContextPromptingInput.from_list(prompt_config=prompt_config,
-                                              document_texts=texts,
-                                              document_requests_list=tags)
+    prompts = DocumentRequestChat(document_texts=texts,
+                                  document_requests=[tags])
 
     if max_src_len is None:
         max_src_len = model.get_max_decoder_positions() - 1
     src_ids, src_mask = prompts_to_padded_id_tensor_w_mask(
         prompts, tokenizer, max_src_len, settings.DEVICE)
     # don't need tgt_mask because you are generating one token at a time
-    lm_logits = \
-        model.decode_embedding_w_lm_logits(src_ids=src_ids, src_mask=src_mask)[
-            1]
-    return lm_logits
+    print('type', type(model))
+    if isinstance(model, hug.PreTrainedModel):
+        out: CausalLMOutputWithPast = model.forward(
+            input_ids=src_ids, attention_mask=src_mask)
+        return out.logits[:, -1, :]
 
+    else:
+
+        lm_logits = \
+            model.decode_embedding_w_lm_logits(src_ids=src_ids,
+                                               src_mask=src_mask)[
+                1]
+        return lm_logits
 
 def main():
     pass

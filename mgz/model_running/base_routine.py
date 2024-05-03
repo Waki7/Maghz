@@ -5,7 +5,6 @@ import json
 import torch.utils.data
 
 import mgz.settings as settings
-import mgz.version_control as vc
 from mgz.ds.base_dataset import BaseDataset
 from mgz.ds.sentence_datasets.datasets_base.sentence_batch import SentenceBatch
 from mgz.models.nlp.base_transformer import BaseTransformer
@@ -76,14 +75,14 @@ class BaseProtocol(object):
         raise NotImplementedError
 
     @abstractmethod
-    def predict(self, model_node: vc.ModelNode):
+    def predict(self, model_node: ModelNode):
         raise NotImplementedError
 
-    def train(self, model_node: vc.ModelNode, ds: BaseDataset,
-              model_edge: vc.ModelTransitionEdge, device=None,
+    def train(self, model_node: ModelNode, ds: BaseDataset,
+              model_edge: ModelTransitionEdge, device=None,
               distributed: bool = False,
               turn_off_shuffle=False,
-              val_ds: BaseDataset = None, n_epochs=1) -> vc.ModelNode:
+              val_ds: BaseDataset = None, n_epochs=1) -> ModelNode:
         model_node.model.train()
         self._check(ds)
 

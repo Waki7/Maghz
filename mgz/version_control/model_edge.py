@@ -9,8 +9,10 @@ import mgz.log_utils as log_utils
 import mgz.version_control as vc
 from mgz.ds import BaseDataset
 from mgz.model_running.base_routine import TrainState
-from mgz.model_running.nlp_routines.base_nlp_routine import BaseNLPProtocol
 from mgz.typing import *
+
+if TYPE_CHECKING:
+    from mgz.model_running.nlp_routines.base_nlp_routine import BaseNLPProtocol
 
 
 class ModelsToStore(str, Enum):

@@ -7,8 +7,8 @@ from transformers import PreTrainedTokenizerBase
 
 from mgz.ds.sentence_datasets.datasets_base.sentence_datasets import \
     prompts_to_padded_id_tensor_w_mask, MetaLearningMixIn
-from mgz.ds.sentence_datasets.gpt_input_augments import PromptingInput, \
-    ContextPromptingInput
+from mgz.ds.sentence_datasets.gpt_input_augments import BatchChatInput, \
+    DocumentRequestChat
 from mgz.typing import *
 
 
@@ -117,7 +117,7 @@ class TagQAMetaTaskBatch:
         return noisy_no_yes_log_probs
 
     @staticmethod
-    def collate_batch(batch: List[Tuple[PromptingInput, int]],
+    def collate_batch(batch: List[Tuple[BatchChatInput, int]],
                       tokenizer: PreTrainedTokenizerBase,
                       device,
                       n_support_per_cls: int,
@@ -143,13 +143,13 @@ class TagQAMetaTaskBatch:
     def default_collate_fn(
             ds: MetaLearningMixIn,
             device: Union[int, torch.device],
-            batch: List[Tuple[List[Tuple[ContextPromptingInput, int]], List[
-                Tuple[ContextPromptingInput, int]]]],
+            batch: List[Tuple[List[Tuple[DocumentRequestChat, int]], List[
+                Tuple[DocumentRequestChat, int]]]],
     ):
         assert len(batch) == 1, "Only one meta-task per batch is supported."
         meta_task = batch[0]
         batch: List[
-            Tuple[PromptingInput, int]] = meta_task[0] + meta_task[1]
+            Tuple[BatchChatInput, int]] = meta_task[0] + meta_task[1]
         return TagQAMetaTaskBatch.collate_batch(
             batch=batch,
             tokenizer=ds.tokenizer_src,

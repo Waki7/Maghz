@@ -1,22 +1,42 @@
 import logging
 
 import torch.cuda.amp
+import transformers as hug
 
 from mgz import settings
-from mgz.ds.sentence_datasets.gpt_input_augments import \
-    ContextPromptingInput, PromptConfig
 from mgz.ds.sentence_datasets.datasets_base.sentence_datasets import \
     prompts_to_padded_id_tensor_w_mask
+from mgz.ds.sentence_datasets.gpt_input_augments import \
+    DocumentRequestChat
 from mgz.model_running.run_ops import prompt_lm_logits_controller
-from mgz.models.nlp.base_transformer import InferenceContext
-from mgz.version_control import ModelNode, ModelDatabase
+from mgz.models.nlp.base_transformer import InferenceContext, ModelType
+from mgz.version_control import ModelDatabase, ModelNode
+
 with torch.cuda.amp.autocast(enabled=True):
     logging.basicConfig(level=logging.WARNING)
-    model_node: ModelNode = ModelDatabase.get_quantized_model(
-        # "AdaptLLM/law-chat")
-        "/home/ceyer/Documents/Projects/Maghz/index_dir/main/mistralai/Mistral-7B-Instruct-v0.1")
-        # "mistralai/Mistral-cont-exp/data_EnronEmailsTagQA_1e-5_lbl_fix1/BEST")
-        # "mistralai/Mistral-cont-exp/data_EnronEmailsTagQA_1e-7")
+    model_id = 'mistralai/Mistral-7B-Instruct-v0.2'
+    model_node = ModelDatabase.get_quantized_model(model_id)
+    model = model_node.model
+    tokenizer = model_node.tokenizer
+
+    # model = hug.LlamaForCausalLM.from_pretrained('meta-llama/Meta-Llama-3-8B-Instruct', device_map="auto").half()
+    #
+    # model.config._flash_attn_2_enabled = True
+    # model.config._attn_implementation = "flash_attention_2"
+    #
+    # tokenizer = hug.PreTrainedTokenizerFast.from_pretrained('meta-llama/Meta-Llama-3-8B-Instruct', )
+    # tokenizer.pad_token = tokenizer.eos_token
+    # model.MODEL_TYPE = ModelType.DecoderTransformer
+    # model_node = ModelNode(model=model,
+    #                         tokenizer=tokenizer, model_id='meta-llama/Meta-Llama-3-8B-Instruct')
+
+    settings.print_gpu_usage()
+
+    # model_node: ModelNode = ModelDatabase.get_quantized_model(
+    #     # "AdaptLLM/law-chat")
+    #     "meta-llama/Meta-Llama-3-8B-Instruct")
+    #     # "mistralai/Mistral-cont-exp/data_EnronEmailsTagQA_1e-5_lbl_fix1/BEST")
+    #     # "mistralai/Mistral-cont-exp/data_EnronEmailsTagQA_1e-7")
     # "openchat/openchat-3.5-0106")
     # "teknium/OpenHermes-2.5-Mistral-7B")
     # AdaptLLM/law-chat
@@ -69,7 +89,7 @@ with torch.cuda.amp.autocast(enabled=True):
     # tag = 'document or communication between enron employees discussing government inquiries and investigations into enron'
     tag = 'all documents or communications between enron employees discussing government inquiries and investigations into enron'
     system_context = (
-        "Given this as some of the background: The FERC's investigating enron for market manipulation. The FERC investigation primarily focused on Enron's role in the California energy crisis of 2000-2001, "
+        "Given this as the only background: The FERC's investigating enron for market manipulation. The FERC investigation primarily focused on Enron's role in the California energy crisis of 2000-2001, "
         "along with its trading practices and their impact on electricity markets across the United States. Determine if the email is related to the document request.")
 
     # 12818
@@ -94,15 +114,17 @@ with torch.cuda.amp.autocast(enabled=True):
           model_node.tokenizer.batch_decode(lm_logits.argmax(-1),
                                             skip_special_tokens=True))
     src_ids, src_mask = prompts_to_padded_id_tensor_w_mask(
-        ContextPromptingInput.from_list(
-            PromptConfig(model=model_node.model, system_context=system_context),
+        DocumentRequestChat(
             document_texts=[email],
-            document_requests_list=[tag]),
+            document_requests=[[tag]]),
         tokenizer=model_node.tokenizer, max_len=max_src_len,
         device=settings.DEVICE)
 
-    result = model_node.model.generate(src_ids=src_ids, src_mask=src_mask,
-                                       max_new_tokens=200)
+    generation_config: hug.GenerationConfig = hug.GenerationConfig()
+    generation_config.use_cache = True
+    generation_config.max_new_tokens = 100
+    result = model_node.model.generate(input_ids=src_ids,
+                                       attention_mask=src_mask)
 
     answer_start = int(src_ids.shape[-1])
     answer = model_node.tokenizer.batch_decode(result[:, answer_start:],
@@ -110,5 +132,6 @@ with torch.cuda.amp.autocast(enabled=True):
 
     print('answer', answer)
 
-    print('original', model_node.tokenizer.batch_decode(result[:, :answer_start],
-                                                        skip_special_tokens=True))
+    print('original',
+          model_node.tokenizer.batch_decode(result[:, :answer_start],
+                                            skip_special_tokens=True))

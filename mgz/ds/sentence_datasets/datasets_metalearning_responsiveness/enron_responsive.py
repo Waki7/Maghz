@@ -21,7 +21,7 @@ from mgz.ds.sentence_datasets.datasets_base.sentence_datasets import \
 from mgz.ds.sentence_datasets.datasets_metalearning_responsiveness.responsive_batch import \
     TagQAMetaTaskBatch
 from mgz.ds.sentence_datasets.gpt_input_augments import PromptConfig, \
-    PromptingInput, ContextPromptingInput
+    BatchChatInput, DocumentRequestChat
 from mgz.ds.sentence_datasets.heuristic_matching import DocumentRuleEvaluator
 from mgz.model_running.run_ops import prompt_lm_logits_controller
 from mgz.models.nlp.base_transformer import InferenceContext
@@ -108,7 +108,7 @@ class EnronEmailsTagQA(EnronEmails, MetaLearningMixIn):
 
     @overrides(EnronEmails)
     def __getitem__(self, idx) -> Tuple[
-        List[Tuple[PromptingInput, int]], List[Tuple[PromptingInput, int]]]:
+        List[Tuple[BatchChatInput, int]], List[Tuple[BatchChatInput, int]]]:
         tags = list(self._tag_to_sample_idx_map.keys())
         tag_idx = idx % len(self._tag_to_sample_idx_map)
         selected_tag: TgtStringT = tags[tag_idx]
@@ -148,16 +148,16 @@ class EnronEmailsTagQA(EnronEmails, MetaLearningMixIn):
                 if pos_tag not in neg_tags:
                     negative_examples.add(neg_sample_idx)
             neg_sampling_tries += 1
-        pos_batch: List[Tuple[PromptingInput, LabelT]] = \
-            [(ContextPromptingInput(
+        pos_batch: List[Tuple[BatchChatInput, LabelT]] = \
+            [(DocumentRequestChat(
                 prompt_config=self.prompt_config,
                 # document_text=ds.data[i][SampleType.FILE_NAME] + ds.data[i][
                 #     SampleType.FULL_AS_STRING],
                 document_text=self.data[i][SampleType.FULL_AS_STRING],
                 document_requests=pos_tag, ),
               1) for i in positive_examples]
-        neg_batch: List[Tuple[PromptingInput, LabelT]] = \
-            [(ContextPromptingInput(
+        neg_batch: List[Tuple[BatchChatInput, LabelT]] = \
+            [(DocumentRequestChat(
                 prompt_config=self.prompt_config,
                 # document_text=ds.data[i][SampleType.FILE_NAME] + ds.data[i][
                 #     SampleType.FULL_AS_STRING],

@@ -7,7 +7,7 @@ from mgz.ds import SentenceDataset
 from mgz.ds.base_dataset import DataState
 from mgz.ds.sentence_datasets.datasets_base.sentence_datasets import \
     prompts_to_padded_id_tensor_w_mask
-from mgz.ds.sentence_datasets.gpt_input_augments import PromptingInput
+from mgz.ds.sentence_datasets.gpt_input_augments import BatchChatInput
 from mgz.typing import *
 
 
@@ -37,7 +37,7 @@ class ReinforcementBatch:
 
     @staticmethod
     def collate_batch(
-            batch: List[PromptingInput],
+            batch: List[BatchChatInput],
             tokenizer: PreTrainedTokenizerBase,
             device,
             max_src_len: int,
@@ -58,7 +58,7 @@ class ReinforcementBatch:
     @staticmethod
     def default_collate_fn(ds: SentenceDataset,
                            device: Union[int, torch.device],
-                           batch: List[PromptingInput]) -> ReinforcementBatch:
+                           batch: List[BatchChatInput]) -> ReinforcementBatch:
         assert ds.data_state != DataState.NOT_LOADED, "Dataset not loaded"
         return ReinforcementBatch.collate_batch(
             batch=batch,

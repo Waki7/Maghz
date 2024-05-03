@@ -9,8 +9,7 @@ from transformers import PreTrainedTokenizerBase, BatchEncoding
 
 from mgz.ds.base_dataset import BaseDataset, DataState
 from mgz.ds.sentence_datasets.datasets_base.sentence_batch import SentenceBatch
-from mgz.ds.sentence_datasets.gpt_input_augments import PromptingInput, \
-    PromptConfig
+from mgz.ds.sentence_datasets.gpt_input_augments import BatchChatInput
 from mgz.typing import *
 
 
@@ -81,7 +80,7 @@ def strings_to_padded_id_tensor_w_mask(txts: List[SrcStringT],
         input_encodings.attention_mask.to(device)
 
 
-def prompts_to_padded_id_tensor_w_mask(prompts: List[PromptingInput],
+def prompts_to_padded_id_tensor_w_mask(prompts: BatchChatInput,
                                        tokenizer: PreTrainedTokenizerBase,
                                        max_len: int,
                                        device=torch.device('cpu'),
@@ -95,13 +94,14 @@ def prompts_to_padded_id_tensor_w_mask(prompts: List[PromptingInput],
     """
     tokenizer.padding_side = 'left'
     tokenizer.add_tokens(
-        new_tokens=[prompts[0].truncate_token_start,
-                    prompts[0].truncate_token_end], special_tokens=True)
+        new_tokens=[prompts.truncate_token_start,
+                    prompts.truncate_token_end], special_tokens=True)
     truncate_start_token = tokenizer.get_vocab()[
-        prompts[0].truncate_token_start]
-    truncate_end_token = tokenizer.get_vocab()[prompts[0].truncate_token_end]
+        prompts.truncate_token_start]
+    truncate_end_token = tokenizer.get_vocab()[prompts.truncate_token_end]
 
-    tokenizer_input = [prompt.get_tokenizer_input() for prompt in prompts]
+    tokenizer_input = prompts.get_tokenizer_input(tokenizer)
+    bsz = len(tokenizer_input)
     input_encodings: BatchEncoding = (
         tokenizer.__call__(tokenizer_input,
                            padding=True,
@@ -111,15 +111,15 @@ def prompts_to_padded_id_tensor_w_mask(prompts: List[PromptingInput],
     attention_mask: IntTensorT['B,SrcSeqLen'] = input_encodings.attention_mask
 
     input_ids_padded: LongTensorT['B,SrcSeqLen'] = tokenizer.pad_token_id * (
-        torch.ones((len(prompts), max_len)).to(torch.int32))
+        torch.ones((bsz, max_len)).to(torch.int32))
     attention_masks_padded: IntTensorT['B,SrcSeqLen'] = IntTensorT(
-        torch.zeros((len(prompts), max_len)))
+        torch.zeros((bsz, max_len)))
     pre_pad_lengths: IntTensorT['B'] = input_encodings.length
     start_idxs: IntTensorT['B'] = (
             input_ids == truncate_start_token).int().argmax(-1)
     end_idxs: IntTensorT['B'] = (
             input_ids == truncate_end_token).int().argmax(-1)
-    for b in range(len(prompts)):
+    for b in range(bsz):
         length: int = pre_pad_lengths[b] - 2  # for the truncation tokens
         trim = max(length - max_len, 0)
         strt_idx = start_idxs[b]
